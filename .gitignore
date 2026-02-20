@@ -1,0 +1,42 @@
+# ── 框架輸出 ──────────────────────────────────────
+output.txt
+*output*.txt
+v_output.txt
+
+# ── 練習 / 使用者專案（本地保留，不上 GitHub）──────
+bookmark-app/
+counter-app/
+expense-tracker/
+AgentFlow/
+simple-app/
+sdid-test-app/
+control-tower/
+github_project/
+mindhive/
+my_workflow/
+smart-assistant/
+選股用/
+
+# ── 根目錄臨時檔案 ────────────────────────────────
+memory.json
+debug-scanner.js
+test.js
+QUICK_START.md
+
+# ── Python ────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+
+# ── Node.js ───────────────────────────────────────
+node_modules/
+
+# ── OS ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── 編輯器 ────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

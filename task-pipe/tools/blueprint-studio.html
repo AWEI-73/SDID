@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📐 Blueprint Studio - SDID 藍圖工作室</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+.app{display:grid;grid-template-columns:420px 1fr;height:100vh}
+@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:50vh 50vh}}
+
+/* Left Panel */
+.left{background:#1e293b;border-right:1px solid #334155;display:flex;flex-direction:column;overflow:hidden}
+.hdr{padding:12px 16px;border-bottom:1px solid #334155;background:#0f172a}
+.hdr h1{font-size:1.1rem;margin-bottom:8px}
+.cfg{display:flex;gap:6px;margin-bottom:6px}
+.cfg input,.cfg select{flex:1;background:#1e293b;border:1px solid #475569;color:#e2e8f0;padding:5px 8px;border-radius:5px;font-size:.82rem}
+.cfg select{flex:0 0 130px}
+#endpointRow{display:none}
+
+/* Steps */
+.steps{display:flex;padding:6px 10px;gap:3px;border-bottom:1px solid #334155;background:#0f172a}
+.stp{flex:1;text-align:center;padding:5px 2px;border-radius:5px;font-size:.68rem;font-weight:600;background:#1e293b;color:#64748b;transition:.2s}
+.stp.done{background:#166534;color:#86efac}
+.stp.cur{background:#1e3a5f;color:#38bdf8;box-shadow:0 0 8px rgba(56,189,248,.3)}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="left">
+<div class="hdr">
+<h1>📐 Blueprint Studio</h1>
+<div class="cfg">
+<select id="prov" onchange="onProvChange()">
+<option value="openai">OpenAI</option>
+<option value="anthropic">Anthropic</option>
+<option value="custom">Custom</option>
+</select>
+<input type="password" id="apiKey" placeholder="API Key..." />
+</div>
+<div class="cfg">
+<input id="model" placeholder="Model" value="gpt-4o" />
+</div>
+<div class="cfg" id="endpointRow">
+<input id="endpoint" placeholder="https://your-api/v1/chat/completions" />
+</div>
+</div>
+<div class="steps" id="stepBar">
+<div class="stp cur" data-r="1">🎯 R1 目標</div>
+<div class="stp" data-r="2">📦 R2 實體</div>
+<div class="stp" data-r="3">🧩 R3 模組</div>
+<div class="stp" data-r="4">📅 R4 迭代</div>
+<div class="stp" data-r="5">📋 R5 動作</div>
+<div class="stp" data-r="6">✅ 完成</div>
+</div>
+<div class="chat" id="chat"></div>
+<div class="ipt">
+<textarea id="inp" placeholder="描述你的專案需求..." rows="3"></textarea>
+<div class="btns">
+<button id="sendBtn" onclick="send()">發送</button>
+<button onclick="resetAll()" class="btn2">重置</button>
+</div>
+</div>
+</div>
+
+<!-- Right Panel -->
+<div class="right">
+<div class="tabs-bar">
+<div class="tabs">
+<button class="tb active" onclick="switchTab(this,'prev')">📊 預覽</button>
+<button class="tb" onclick="switchTab(this,'md')">📝 Markdown</button>
+<button class="tb" onclick="switchTab(this,'val')">✅ 驗證</button>
+</div>
+<div class="acts">
+<button onclick="exportMD()" class="btn-ex">💾 匯出 MD</button>
+<button onclick="exportHTML()" class="btn-ex">🌐 匯出 HTML</button>
+</div>
+</div>
+<div class="pane" id="prevPane">
+<div class="empty" id="emptyState">
+<div style="font-size:3.5rem;margin-bottom:12px">📐</div>
+<h2>SDID 藍圖工作室</h2>
+<p>在左側輸入專案需求，AI 引導 5 輪對話產出 Enhanced Draft</p>
+<div class="rg">
+<div>🎯 Round 1: 目標釐清</div>
+<div>📦 Round 2: 實體識別</div>
+<div>🧩 Round 3: 模組拆分</div>
+<div>📅 Round 4: 迭代規劃</div>
+<div>📋 Round 5: 動作細化</div>
+</div>
+</div>
+<div id="vizContent" style="display:none"></div>
+</div>
+<div class="pane" id="mdPane" style="display:none">
+<pre id="mdOutput" style="white-space:pre-wrap;font-size:.85rem;line-height:1.5;color:#cbd5e1;padding:16px"></pre>
+</div>
+<div class="pane" id="valPane" style="display:none">
+<div id="valOutput" style="padding:16px"></div>
+</div>
+</div>
+</div>
+<style>
+/* Chat */
+.chat{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px}
+.msg{padding:9px 12px;border-radius:9px;max-width:95%;font-size:.87rem;line-height:1.5;word-wrap:break-word}
+.mu{background:#1e3a5f;align-self:flex-end;border-bottom-right-radius:2px}
+.ma{background:#334155;align-self:flex-start;border-bottom-left-radius:2px}
+.ms{background:#0f172a;border:1px solid #475569;align-self:center;text-align:center;font-size:.78rem;color:#94a3b8;padding:6px 14px}
+.ma table{width:100%;border-collapse:collapse;margin:6px 0;font-size:.78rem}
+.ma th{background:#1e293b;padding:3px 6px;text-align:left;border:1px solid #475569}
+.ma td{padding:3px 6px;border:1px solid #475569}
+.ma code{background:#0f172a;padding:1px 3px;border-radius:3px;font-size:.78rem}
+.ma h3,.ma h4{margin:6px 0 3px;color:#38bdf8;font-size:.95rem}
+.ma ul,.ma ol{margin:3px 0;padding-left:18px}
+.ma strong{color:#f1f5f9}
+.ma blockquote{border-left:3px solid #38bdf8;padding-left:8px;margin:4px 0;color:#94a3b8}
+.ma pre{background:#0f172a;padding:8px;border-radius:4px;overflow-x:auto;font-size:.78rem;margin:6px 0}
+.loading::after{content:'';animation:dots 1.5s infinite}
+@keyframes dots{0%{content:''}33%{content:'.'}66%{content:'..'}100%{content:'...'}}
+
+/* Input */
+.ipt{padding:10px;border-top:1px solid #334155}
+.ipt textarea{width:100%;background:#0f172a;border:1px solid #475569;color:#e2e8f0;padding:8px;border-radius:7px;resize:vertical;font-family:inherit;font-size:.87rem}
+.ipt textarea:focus{outline:none;border-color:#38bdf8}
+.btns{display:flex;gap:6px;margin-top:6px}
+.btns button{padding:7px 18px;border:none;border-radius:5px;font-weight:600;cursor:pointer;font-size:.83rem}
+#sendBtn{background:#38bdf8;color:#0f172a;flex:1}
+#sendBtn:hover{background:#7dd3fc}
+#sendBtn:disabled{background:#475569;color:#94a3b8;cursor:not-allowed}
+.btn2{background:#334155;color:#94a3b8}
+.btn2:hover{background:#475569}
+
+/* Right */
+.right{display:flex;flex-direction:column;overflow:hidden}
+.tabs-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 14px;border-bottom:1px solid #334155;background:#1e293b}
+.tabs{display:flex;gap:3px}
+.tb{background:transparent;border:1px solid transparent;color:#94a3b8;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:.82rem}
+.tb.active{background:#0f172a;color:#38bdf8;border-color:#334155}
+.acts{display:flex;gap:4px}
+.btn-ex{background:#334155;border:1px solid #475569;color:#94a3b8;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:.78rem}
+.btn-ex:hover{background:#475569;color:#e2e8f0}
+.pane{flex:1;overflow-y:auto;padding:16px}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;color:#64748b}
+.empty h2{color:#94a3b8;margin-bottom:6px}
+.empty p{max-width:380px;margin-bottom:18px;font-size:.9rem}
+.rg{display:flex;flex-direction:column;gap:4px}
+.rg div{background:#1e293b;padding:6px 14px;border-radius:5px;font-size:.85rem;color:#94a3b8}
+</style>
+<style>
+/* Viz styles */
+.viz-header{background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;border-radius:10px;padding:18px;margin-bottom:18px}
+.viz-header h2{font-size:1.3rem;margin-bottom:6px}
+.viz-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.vm{background:#1e293b;border:1px solid #475569;border-radius:5px;padding:3px 10px;font-size:.8rem}
+.vm.enh{border-color:#22c55e;color:#22c55e}
+.goal-box{background:#1e3a5f;border-left:4px solid #38bdf8;padding:12px;border-radius:0 7px 7px 0;margin:12px 0;font-size:1rem}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:12px 0}
+.sc{background:#1e293b;border:1px solid #334155;border-radius:7px;padding:12px;text-align:center}
+.sv{font-size:1.6rem;font-weight:700;color:#38bdf8}
+.sl{font-size:.75rem;color:#94a3b8;margin-top:2px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:7px;padding:14px;margin-bottom:12px}
+.card h3{font-size:1rem;margin-bottom:8px;color:#f1f5f9}
+.card table{width:100%;border-collapse:collapse;font-size:.82rem}
+.card th{background:#334155;padding:5px 8px;text-align:left;font-weight:600;color:#cbd5e1}
+.card td{padding:5px 8px;border-bottom:1px solid #1e293b}
+.card tr:hover td{background:#334155}
+.card code{background:#0f172a;padding:1px 4px;border-radius:3px;font-size:.8rem;color:#a78bfa}
+.ecard{border-left:3px solid #a78bfa}
+.mcard{border-left:3px solid #38bdf8}
+.badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:.7rem;font-weight:600}
+.b-full{background:#166534;color:#86efac}
+.b-part{background:#854d0e;color:#fde047}
+.b-stub{background:#374151;color:#9ca3af}
+.b-par{background:#1e3a5f;color:#38bdf8}
+.pb{display:inline-block;padding:1px 6px;border-radius:3px;font-size:.7rem;font-weight:700;color:#fff}
+.fc{font-family:'Fira Code',monospace;font-size:.8rem;color:#94a3b8}
+.fa{color:#38bdf8;font-weight:700;margin:0 2px}
+.tl-item{display:flex;gap:12px;margin-bottom:14px}
+.tl-mark{min-width:60px;background:#38bdf8;color:#0f172a;font-weight:700;text-align:center;padding:6px;border-radius:7px;font-size:.85rem;height:fit-content}
+.tl-body{flex:1;background:#1e293b;border:1px solid #334155;border-radius:7px;padding:12px}
+.tl-hdr{font-weight:600;margin-bottom:8px}
+.mg{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px}
+.mc{background:#0f172a;border:1px solid #475569;border-radius:5px;padding:10px}
+.dep{background:#1e3a5f;color:#7dd3fc;padding:1px 5px;border-radius:3px;font-size:.7rem;margin-right:3px}
+.fi{padding:3px 0;font-size:.85rem}
+.fi.ck{color:#86efac}
+.pbar-c{display:flex;height:24px;border-radius:5px;overflow:hidden;background:#0f172a;margin:6px 0}
+.pbar{display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:#fff;transition:width .3s}
+.arch-l{display:flex;flex-direction:column;gap:3px;margin:10px 0}
+.al{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:3px;font-size:.82rem;background:#0f172a;border:1px solid #334155}
+.al .ln{min-width:20px;height:20px;background:#38bdf8;color:#0f172a;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.7rem}
+.al .lname{font-weight:600;min-width:70px}
+.al .ldesc{color:#94a3b8}
+.sec-h{font-size:1.1rem;margin:24px 0 12px;padding-bottom:6px;border-bottom:2px solid #334155;color:#38bdf8}
+.sec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+/* Validation */
+.vr{padding:6px 0;font-size:.9rem}
+.vr.pass{color:#86efac}
+.vr.warn{color:#fde047}
+.vr.fail{color:#f87171}
+</style>
+<script>
+// ============================================
+// STATE
+// ============================================
+let messages = []; // {role, content}
+let currentRound = 1;
+let draftMarkdown = '';
+let sending = false;
+
+const ROUNDS = [
+  {r:1, label:'目標釐清', icon:'🎯', hint:'請描述你的專案需求：要解決什麼問題？誰會用？'},
+  {r:2, label:'實體識別', icon:'📦', hint:'系統需要管理哪些資料？'},
+  {r:3, label:'模組拆分', icon:'🧩', hint:'哪些功能是共用的？哪些是特定角色專屬的？'},
+  {r:4, label:'迭代規劃', icon:'📅', hint:'MVP 要做到什麼程度？哪些後面再做？'},
+  {r:5, label:'動作細化', icon:'📋', hint:'每個模組具體要做哪些操作？'},
+  {r:6, label:'完成', icon:'✅', hint:'Enhanced Draft 已產出'}
+];
+
+// ============================================
+// SYSTEM PROMPT (from blueprint-architect.cjs)
+// ============================================
+const SYSTEM_PROMPT = `你是 SDID 藍圖架構師 (Blueprint Architect)。
+你的任務是透過 5 輪結構化對話，將使用者的需求轉化為一份 Enhanced Draft (Markdown 格式)。
+
+## 產出路徑
+完成的 Enhanced Draft 放在：\`{專案}/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md\`
+
+## 核心原則
+- 每輪只聚焦一個主題，不要一次問太多
+- 使用者回答模糊時，給出 2-3 個具體選項讓他選
+- 每輪結束時，用表格或清單總結該輪成果，請使用者確認後再進入下一輪
+- 使用繁體中文
+- 不要腦補，不確定就問
+
+## 重要：輪次追蹤
+你必須在每次回覆的最後一行加上隱藏標記：<!-- ROUND:N --> (N=當前輪次 1-5)
+當你認為該輪已完成（使用者確認了），下一次回覆改為 <!-- ROUND:N+1 -->
+第 5 輪結束後，輸出完整的 Enhanced Draft Markdown，並標記 <!-- ROUND:DONE -->
+
+## 模組化架構概念
+### 橫向分層 (6 層)
+| 層級 | 目錄 | 職責 | 依賴限制 |
+|------|------|------|---------|
+| 1. Config | src/config/ | 全域配置 | 不可依賴其他層 |
+| 2. Assets | src/assets/ | 靜態資源 | 不可依賴其他層 |
+| 3. Lib | src/lib/ | 第三方庫封裝 | 僅依賴 Config |
+| 4. Shared | src/shared/ | 跨模組共用 | 依賴 Config, Lib, Assets |
+| 5. Modules | src/modules/ | 核心業務 (垂直分片) | 依賴 Shared, Config, Lib |
+| 6. Routes | src/routes/ | 路由定義 | 依賴 Modules, Shared |
+
+### 標準模組內部結構
+index.ts (Facade) / constants.ts / types/ / api/ / services/ / hooks/ / components/ / pages/
+
+### 關鍵規則
+- API/Service 分離: API 只管 HTTP，Service 管資料轉換
+- DTO vs Domain Model: 在 Service 層轉換
+- Hooks 優先: 邏輯從 UI 抽離至 hooks/
+
+## 對話流程
+### Round 1: 目標釐清 → 一句話目標 + 族群識別表
+### Round 2: 實體識別 → 實體定義表格
+### Round 3: 模組拆分 → 共用模組 + 獨立模組 + 路由結構
+### Round 4: 迭代規劃 → 迭代規劃表 + 不做什麼
+### Round 5: 動作細化 → 模組動作清單
+
+## 動作類型 → 模組目錄映射
+| 類型 | 對應目錄 | 說明 |
+|------|---------|------|
+| CONST | constants.ts | 常數/配置 |
+| LIB | lib/ | 第三方庫封裝 |
+| API | api/ | 純 HTTP 請求 |
+| SVC | services/ | 業務邏輯/資料轉換 |
+| HOOK | hooks/ | 互動邏輯 |
+| UI | components/ | 介面元件 |
+| ROUTE | pages/ | 路由頁面 |
+
+## 規模: S(≤3) / M(≤6) / L(≤10 Stories)
+## 優先級: P0(端到端) / P1(整合) / P2(獨立) / P3(輔助)
+
+## 第 5 輪結束後
+組裝完整 Enhanced Draft Markdown (包含所有區塊)，設定 POC Level。`;
+</script>
+<script>
+// ============================================
+// UI HELPERS
+// ============================================
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+function onProvChange(){
+  const p=document.getElementById('prov').value;
+  const er=document.getElementById('endpointRow');
+  const m=document.getElementById('model');
+  er.style.display=p==='custom'?'flex':'none';
+  if(p==='openai')m.value='gpt-4o';
+  else if(p==='anthropic')m.value='claude-sonnet-4-20250514';
+  else m.value='';
+}
+
+function updateSteps(){
+  document.querySelectorAll('.stp').forEach(el=>{
+    const r=parseInt(el.dataset.r);
+    el.classList.remove('done','cur');
+    if(r<currentRound)el.classList.add('done');
+    else if(r===currentRound)el.classList.add('cur');
+  });
+}
+
+function addMsg(role, content){
+  const chat=document.getElementById('chat');
+  const div=document.createElement('div');
+  if(role==='user'){div.className='msg mu';div.innerHTML=esc(content).replace(/\n/g,'<br>');}
+  else if(role==='system'){div.className='msg ms';div.textContent=content;}
+  else{div.className='msg ma';div.innerHTML=renderMd(content);}
+  chat.appendChild(div);
+  chat.scrollTop=chat.scrollHeight;
+  return div;
+}
+
+function switchTab(btn, id){
+  document.querySelectorAll('.tb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.pane').forEach(p=>p.style.display='none');
+  document.getElementById(id+'Pane').style.display='block';
+}
+
+// ============================================
+// SIMPLE MARKDOWN RENDERER
+// ============================================
+function renderMd(text){
+  // Remove hidden round markers from display
+  let s=text.replace(/<!--\s*ROUND:\w+\s*-->/g,'');
+  // Code blocks
+  s=s.replace(/```(\w*)\n([\s\S]*?)```/g,(_,lang,code)=>`<pre><code>${esc(code)}</code></pre>`);
+  // Tables
+  s=s.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)*)/gm,(_,hdr,sep,body)=>{
+    const ths=hdr.split('|').filter(c=>c.trim()).map(c=>`<th>${c.trim()}</th>`).join('');
+    const rows=body.trim().split('\n').map(r=>{
+      const tds=r.split('|').filter(c=>c.trim()).map(c=>`<td>${c.trim()}</td>`).join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+    return `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
+  });
+  // Headers
+  s=s.replace(/^#### (.+)$/gm,'<h4>$1</h4>');
+  s=s.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+  s=s.replace(/^## (.+)$/gm,'<h3>$1</h3>');
+  // Bold
+  s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  // Inline code
+  s=s.replace(/`([^`]+)`/g,'<code>$1</code>');
+  // Blockquote
+  s=s.replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>');
+  // Lists
+  s=s.replace(/^- \[x\] (.+)$/gm,'<div class="fi ck">✅ $1</div>');
+  s=s.replace(/^- \[ \] (.+)$/gm,'<div class="fi">⬜ $1</div>');
+  s=s.replace(/^- (.+)$/gm,'<div style="padding-left:12px">• $1</div>');
+  // Line breaks
+  s=s.replace(/\n\n/g,'<br><br>');
+  s=s.replace(/\n/g,'<br>');
+  return s;
+}
+</script>
+<script>
+// ============================================
+// API CALL
+// ============================================
+async function callAPI(msgs){
+  const prov=document.getElementById('prov').value;
+  const key=document.getElementById('apiKey').value.trim();
+  const model=document.getElementById('model').value.trim();
+  const customEp=document.getElementById('endpoint').value.trim();
+
+  if(!key)throw new Error('請輸入 API Key');
+  if(!model)throw new Error('請輸入 Model 名稱');
+
+  if(prov==='anthropic'){
+    // Anthropic Messages API
+    const url='https://api.anthropic.com/v1/messages';
+    const sysMsg=msgs.find(m=>m.role==='system');
+    const chatMsgs=msgs.filter(m=>m.role!=='system');
+    const resp=await fetch(url,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model,
+        max_tokens:8192,
+        system:sysMsg?sysMsg.content:'',
+        messages:chatMsgs.map(m=>({role:m.role,content:m.content}))
+      })
+    });
+    if(!resp.ok){const e=await resp.text();throw new Error(`Anthropic API 錯誤 (${resp.status}): ${e}`);}
+    const data=await resp.json();
+    return data.content[0].text;
+  } else {
+    // OpenAI-compatible
+    const url=prov==='custom'&&customEp?customEp:'https://api.openai.com/v1/chat/completions';
+    const resp=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+      body:JSON.stringify({model,messages:msgs,max_tokens:8192,temperature:0.7})
+    });
+    if(!resp.ok){const e=await resp.text();throw new Error(`API 錯誤 (${resp.status}): ${e}`);}
+    const data=await resp.json();
+    return data.choices[0].message.content;
+  }
+}
+
+// ============================================
+// SEND MESSAGE
+// ============================================
+async function send(){
+  if(sending)return;
+  const inp=document.getElementById('inp');
+  const text=inp.value.trim();
+  if(!text)return;
+
+  sending=true;
+  document.getElementById('sendBtn').disabled=true;
+  inp.value='';
+
+  // Add user message
+  addMsg('user',text);
+  messages.push({role:'user',content:text});
+
+  // Show loading
+  const loadDiv=addMsg('assistant','思考中');
+  loadDiv.classList.add('loading');
+
+  try{
+    const apiMsgs=[{role:'system',content:SYSTEM_PROMPT},...messages];
+    const reply=await callAPI(apiMsgs);
+
+    // Remove loading
+    loadDiv.remove();
+
+    // Detect round marker
+    const roundMatch=reply.match(/<!--\s*ROUND:(\w+)\s*-->/);
+    if(roundMatch){
+      const val=roundMatch[1];
+      if(val==='DONE'){
+        currentRound=6;
+        // Extract the draft markdown (everything in the reply)
+        draftMarkdown=reply.replace(/<!--\s*ROUND:\w+\s*-->/g,'').trim();
+        updatePreview();
+      } else {
+        const n=parseInt(val);
+        if(!isNaN(n)&&n>=1&&n<=5){
+          if(n>currentRound)currentRound=n;
+        }
+      }
+    }
+
+    // Check if reply contains a full Enhanced Draft (fallback detection)
+    if(!draftMarkdown && reply.includes('Enhanced Blueprint Draft') && reply.includes('模組動作清單')){
+      draftMarkdown=reply.replace(/<!--\s*ROUND:\w+\s*-->/g,'').trim();
+      currentRound=6;
+      updatePreview();
+    }
+
+    addMsg('assistant',reply);
+    messages.push({role:'assistant',content:reply});
+    updateSteps();
+
+    // Update hint
+    if(currentRound<=5){
+      inp.placeholder=ROUNDS[currentRound-1].hint;
+    } else {
+      inp.placeholder='Draft 已完成！可繼續對話修改，或匯出結果。';
+    }
+  }catch(err){
+    loadDiv.remove();
+    addMsg('system','❌ '+err.message);
+  }
+
+  sending=false;
+  document.getElementById('sendBtn').disabled=false;
+  inp.focus();
+}
+
+// Enter to send (Shift+Enter for newline)
+document.getElementById('inp').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}
+});
+</script>
+<script>
+// ============================================
+// DRAFT PARSER (browser-side, mirrors draft-parser.cjs)
+// ============================================
+function parseDraft(md){
+  const d={title:'',iteration:'',date:'',level:'',goal:'',requirement:'',
+    groups:[],entities:{},sharedModules:[],modules:{},routes:'',
+    iterationPlan:[],moduleActions:{},features:[],exclusions:[],clarifications:{}};
+
+  // Title
+  const tm=md.match(/^#\s+📋\s+(.+?)\s*-\s*需求草稿/m);
+  if(tm)d.title=tm[1].trim();
+
+  // Meta
+  const im=md.match(/\*\*迭代\*\*:\s*(\S+)/);if(im)d.iteration=im[1];
+  const dm=md.match(/\*\*日期\*\*:\s*(\S+)/);if(dm)d.date=dm[1];
+  const lm=md.match(/\*\*規模\*\*:\s*(\S+)/);if(lm)d.level=lm[1];
+
+  // Goal
+  const gm=md.match(/## 一句話目標\s*\n+(.+)/);if(gm)d.goal=gm[1].trim();
+
+  // Requirement
+  const rm=md.match(/## 用戶原始需求\s*\n+>\s*(.+(?:\n>\s*.+)*)/);
+  if(rm)d.requirement=rm[1].replace(/^>\s*/gm,'').trim();
+
+  // Groups table
+  const gsec=md.match(/### 1\. 族群識別[\s\S]*?\n(\|.+\|[\s\S]*?)(?=\n###|\n---|\n##|$)/);
+  if(gsec){
+    const rows=gsec[1].trim().split('\n').filter(r=>r.includes('|')&&!r.match(/^[\s|:-]+$/));
+    rows.shift(); // header
+    for(const r of rows){
+      const cols=r.split('|').map(c=>c.trim()).filter(Boolean);
+      if(cols.length>=3&&!cols[0].startsWith('{'))d.groups.push({name:cols[0],desc:cols[1],needs:cols[2]});
+    }
+  }
+
+  // Entities
+  const entRe=/####\s+(\w+)\s*\n(\|.+\|[\s\S]*?)(?=\n####|\n###|\n---|\n##|$)/g;
+  let em2;
+  while((em2=entRe.exec(md))!==null){
+    const name=em2[1];
+    if(name.match(/^(模組|Iter|Shared)/))continue;
+    const rows=em2[2].trim().split('\n').filter(r=>r.includes('|')&&!r.match(/^[\s|:-]+$/));
+    rows.shift();
+    const fields=[];
+    for(const r of rows){
+      const c=r.split('|').map(x=>x.trim()).filter(Boolean);
+      if(c.length>=4&&!c[0].startsWith('{'))fields.push({field:c[0],type:c[1],constraint:c[2],desc:c[3]});
+    }
+    if(fields.length>0)d.entities[name]=fields;
+  }
+
+  // Shared modules
+  const ssec=md.match(/### 3\. 共用模組[\s\S]*?\n((?:- \[.\].+\n?)+)/);
+  if(ssec){
+    for(const line of ssec[1].trim().split('\n')){
+      const m2=line.match(/- \[(x| )\]\s*(.+)/);
+      if(m2)d.sharedModules.push({checked:m2[1]==='x',text:m2[2].trim()});
+    }
+  }
+
+  // Independent modules
+  const msec=md.match(/### 4\. 獨立模組[\s\S]*?(?=\n### 5\.|\n---|\n## 📅|$)/);
+  if(msec){
+    const mRe=/####\s+模組[：:]\s*(\S+)(?:\s*\(([^)]+)\))?\s*\n([\s\S]*?)(?=\n####|\n###|\n---|\n##|$)/g;
+    let mm;
+    while((mm=mRe.exec(msec[0]))!==null){
+      const name=mm[1],label=mm[2]||'';
+      const body=mm[3];
+      const deps=[];
+      const dm2=body.match(/依賴:\s*\[([^\]]*)\]/);
+      if(dm2)deps.push(...dm2[1].split(',').map(x=>x.trim()).filter(Boolean));
+      const feats=[];
+      const fRe=/- \[(x| )\]\s*(.+)/g;
+      let fm;
+      while((fm=fRe.exec(body))!==null)feats.push({checked:fm[1]==='x',text:fm[2].trim()});
+      d.modules[name]={label,deps,features:feats};
+    }
+  }
+
+  // Routes
+  const rsec=md.match(/### 5\. 路由結構[\s\S]*?```\s*\n?([\s\S]*?)```/);
+  if(rsec)d.routes=rsec[1].trim();
+
+  // Iteration plan table
+  const ipsec=md.match(/## 📅 迭代規劃表[\s\S]*?\n(\|.+\|[\s\S]*?)(?=\n>|\n---|\n##|$)/);
+  if(ipsec){
+    const rows=ipsec[1].trim().split('\n').filter(r=>r.includes('|')&&!r.match(/^[\s|:-]+$/));
+    rows.shift();
+    for(const r of rows){
+      const c=r.split('|').map(x=>x.trim()).filter(Boolean);
+      if(c.length>=5)d.iterationPlan.push({iter:parseInt(c[0])||c[0],scope:c[1],goal:c[2],module:c[3],deps:c[4]});
+    }
+  }
+
+  // Module actions
+  const masec=md.match(/## 📋 模組動作清單[\s\S]*?(?=\n## 功能|\n---\s*\n## 功能|$)/);
+  if(masec){
+    const maRe=/### Iter (\d+):\s*(\S+)(?:\s*\((\w+)\))?\s*\n([\s\S]*?)(?=\n### Iter|\n---|\n## |$)/g;
+    let mam;
+    while((mam=maRe.exec(masec[0]))!==null){
+      const iter=parseInt(mam[1]),name=mam[2],fillHint=mam[3]||'';
+      const body=mam[4].trim();
+      if(body.startsWith('>')){
+        d.moduleActions[name]={iter,fillLevel:'stub',stubDescription:body.replace(/^>\s*/,''),items:[]};
+      } else {
+        const rows=body.split('\n').filter(r=>r.includes('|')&&!r.match(/^[\s|:-]+$/)&&!r.match(/業務語意/));
+        const items=[];
+        for(const r of rows){
+          const c=r.split('|').map(x=>x.trim()).filter(Boolean);
+          if(c.length>=5)items.push({semantic:c[0],type:c[1],techName:c[2],priority:c[3],flow:c[4]});
+        }
+        const fl=fillHint.toLowerCase()==='stub'?'stub':fillHint.toLowerCase()==='partial'?'partial':items.length>0?'full':'stub';
+        d.moduleActions[name]={iter,fillLevel:fl,items};
+      }
+    }
+  }
+
+  // Features
+  const fsec=md.match(/## 功能模組清單\s*\n([\s\S]*?)(?=\n### 不做|\n---|\n## 釐清|$)/);
+  if(fsec){
+    const fRe=/- \[(x| )\]\s*(.+)/g;
+    let fm;
+    while((fm=fRe.exec(fsec[1]))!==null)d.features.push({checked:fm[1]==='x',text:fm[2].trim()});
+  }
+
+  // Exclusions
+  const esec=md.match(/### 不做什麼\s*\n([\s\S]*?)(?=\n---|\n##|$)/);
+  if(esec){
+    for(const line of esec[1].trim().split('\n')){
+      const m2=line.match(/^-\s+(.+)/);
+      if(m2&&!m2[1].startsWith('{'))d.exclusions.push(m2[1].trim());
+    }
+  }
+
+  return d;
+}
+
+function calcStats(d){
+  const totalModules=Object.keys(d.modules).length;
+  const totalEntities=Object.keys(d.entities).length;
+  let totalActions=0;
+  const priorities={P0:0,P1:0,P2:0,P3:0};
+  for(const[,a]of Object.entries(d.moduleActions)){
+    for(const item of(a.items||[])){
+      totalActions++;
+      if(priorities[item.priority]!==undefined)priorities[item.priority]++;
+    }
+  }
+  const totalIterations=d.iterationPlan.length||new Set(Object.values(d.moduleActions).map(a=>a.iter)).size;
+  return{totalModules,totalEntities,totalActions,totalIterations,priorities};
+}
+</script>
+<script>
+// ============================================
+// VISUALIZATION RENDERER
+// ============================================
+function renderViz(d){
+  const s=calcStats(d);
+  const pC={P0:'#ef4444',P1:'#f59e0b',P2:'#3b82f6',P3:'#6b7280'};
+  const tot=s.totalActions||1;
+
+  // Priority bars
+  const pBars=['P0','P1','P2','P3'].map(p=>{
+    const n=s.priorities[p]||0;const pct=Math.round(n/tot*100);
+    return `<div class="pbar" style="width:${Math.max(pct,2)}%;background:${pC[p]}" title="${p}:${n}">${n>0?`${p}(${n})`:''}</div>`;
+  }).join('');
+
+  // Entities
+  let entHTML='';
+  for(const[name,fields]of Object.entries(d.entities)){
+    const rows=fields.map(f=>`<tr><td>${esc(f.field)}</td><td><code>${esc(f.type)}</code></td><td>${esc(f.constraint)}</td><td>${esc(f.desc)}</td></tr>`).join('');
+    entHTML+=`<div class="card ecard"><h3>📦 ${esc(name)}</h3><table><thead><tr><th>欄位</th><th>型別</th><th>約束</th><th>說明</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  // Groups
+  let grpHTML='';
+  if(d.groups.length>0){
+    const rows=d.groups.map(g=>`<tr><td><strong>${esc(g.name)}</strong></td><td>${esc(g.desc)}</td><td>${esc(g.needs)}</td></tr>`).join('');
+    grpHTML=`<div class="card"><table><thead><tr><th>族群</th><th>描述</th><th>特殊需求</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  // Modules
+  let modHTML='';
+  for(const[name,mod]of Object.entries(d.modules)){
+    const deps=(mod.deps||[]).map(x=>`<span class="dep">${esc(x)}</span>`).join(' ')||'<span style="color:#64748b;font-size:.75rem">無</span>';
+    const feats=(mod.features||[]).map(f=>`<div class="fi ${f.checked?'ck':''}">${f.checked?'✅':'⬜'} ${esc(f.text)}</div>`).join('');
+    modHTML+=`<div class="card mcard"><h3>🧩 ${esc(name)}${mod.label?' ('+esc(mod.label)+')':''}</h3><div style="font-size:.8rem;color:#94a3b8;margin:4px 0">依賴: ${deps}</div>${feats}</div>`;
+  }
+
+  // Timeline
+  let tlHTML='';
+  for(const ip of d.iterationPlan){
+    const canPar=ip.deps==='無'||ip.deps==='-';
+    const parBadge=canPar?'<span class="badge b-par">⚡ 可並行</span>':'';
+    // Find module actions for this iter
+    const mods=Object.entries(d.moduleActions).filter(([,a])=>a.iter===ip.iter||String(a.iter)===String(ip.iter));
+    let modCards='';
+    for(const[mn,ma]of mods){
+      const fb=ma.fillLevel==='full'?'<span class="badge b-full">Full</span>':ma.fillLevel==='partial'?'<span class="badge b-part">Partial</span>':'<span class="badge b-stub">Stub</span>';
+      modCards+=`<div class="mc"><strong>${esc(mn)}</strong> ${fb}<div style="font-size:.78rem;color:#64748b">${ma.items.length} 個動作</div></div>`;
+    }
+    tlHTML+=`<div class="tl-item"><div class="tl-mark">Iter ${ip.iter}</div><div class="tl-body"><div class="tl-hdr">${esc(ip.goal||ip.scope||'')} ${parBadge}</div><div class="mg">${modCards}</div></div></div>`;
+  }
+
+  // Actions
+  let actHTML='';
+  for(const[name,act]of Object.entries(d.moduleActions)){
+    if(act.fillLevel==='stub'){
+      actHTML+=`<div class="card"><h3>📋 Iter ${act.iter}: ${esc(name)} <span class="badge b-stub">Stub</span></h3><p style="color:#94a3b8;font-style:italic">${esc(act.stubDescription||'待細化')}</p></div>`;
+      continue;
+    }
+    const rows=(act.items||[]).map(i=>{
+      const pc=pC[i.priority]||'#6b7280';
+      return `<tr><td>${esc(i.semantic)}</td><td><code>${esc(i.type)}</code></td><td><strong>${esc(i.techName)}</strong></td><td><span class="pb" style="background:${pc}">${esc(i.priority)}</span></td><td class="fc">${esc(i.flow).replace(/→/g,'<span class="fa">→</span>')}</td></tr>`;
+    }).join('');
+    const sfx=act.fillLevel==='partial'?' <span class="badge b-part">Partial</span>':'';
+    actHTML+=`<div class="card"><h3>📋 Iter ${act.iter}: ${esc(name)}${sfx}</h3><table><thead><tr><th>業務語意</th><th>類型</th><th>技術名稱</th><th>優先級</th><th>流向</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  // Features
+  let featHTML=(d.features||[]).map(f=>`<div class="fi ${f.checked?'ck':''}">${f.checked?'✅':'⬜'} ${esc(f.text)}</div>`).join('');
+
+  // Exclusions
+  let exclHTML=(d.exclusions||[]).map(e=>`<li>${esc(e)}</li>`).join('');
+
+  const isEnh=Object.keys(d.entities).length>0||d.iterationPlan.length>0||Object.keys(d.moduleActions).length>0;
+
+  return `
+<div class="viz-header">
+  <h2>📐 ${esc(d.title||'Blueprint')}</h2>
+  <div class="viz-meta">
+    <span class="vm">${esc(d.iteration||'iter-1')}</span>
+    <span class="vm">${esc(d.date||'')}</span>
+    <span class="vm">Level ${esc(d.level||'?')}</span>
+    <span class="vm ${isEnh?'enh':''}">${isEnh?'✅ Enhanced':'📄 Standard'}</span>
+    <span class="vm">SDID v1.0</span>
+  </div>
+</div>
+<div class="goal-box">🎯 ${esc(d.goal||'(未設定)')}</div>
+<div class="sg">
+  <div class="sc"><div class="sv">${s.totalModules}</div><div class="sl">模組</div></div>
+  <div class="sc"><div class="sv">${s.totalEntities}</div><div class="sl">實體</div></div>
+  <div class="sc"><div class="sv">${s.totalActions}</div><div class="sl">動作</div></div>
+  <div class="sc"><div class="sv">${s.totalIterations}</div><div class="sl">迭代</div></div>
+  <div class="sc"><div class="sv">${d.level||'?'}</div><div class="sl">規模</div></div>
+  <div class="sc"><div class="sv">${d.groups.length}</div><div class="sl">族群</div></div>
+</div>
+<div class="sec-h">📊 優先級分佈</div>
+<div class="pbar-c">${pBars}</div>
+<div class="sec-h">🏗️ 架構分層</div>
+<div class="arch-l">
+  <div class="al"><span class="ln">1</span><span class="lname">Config</span><span class="ldesc">全域配置</span></div>
+  <div class="al"><span class="ln">2</span><span class="lname">Assets</span><span class="ldesc">靜態資源</span></div>
+  <div class="al"><span class="ln">3</span><span class="lname">Lib</span><span class="ldesc">第三方庫封裝</span></div>
+  <div class="al"><span class="ln">4</span><span class="lname">Shared</span><span class="ldesc">跨模組共用</span></div>
+  <div class="al"><span class="ln">5</span><span class="lname">Modules</span><span class="ldesc">核心業務 (垂直分片)</span></div>
+  <div class="al"><span class="ln">6</span><span class="lname">Routes</span><span class="ldesc">路由定義</span></div>
+</div>
+${grpHTML?`<div class="sec-h">👥 族群識別</div>${grpHTML}`:''}
+${entHTML?`<div class="sec-h">📦 實體定義</div>${entHTML}`:''}
+${modHTML?`<div class="sec-h">🧩 獨立模組</div><div class="sec-grid">${modHTML}</div>`:''}
+${tlHTML?`<div class="sec-h">🗓️ 迭代規劃</div>${tlHTML}`:''}
+${actHTML?`<div class="sec-h">📋 模組動作清單</div>${actHTML}`:''}
+${featHTML?`<div class="sec-h">✅ 功能模組</div><div class="card">${featHTML}</div>`:''}
+${exclHTML?`<div class="sec-h">🚫 不做什麼</div><div class="card"><ul>${exclHTML}</ul></div>`:''}
+`;
+}
+</script>
+<script>
+// ============================================
+// VALIDATION
+// ============================================
+function validateDraft(d){
+  const checks=[];
+  const pass=m=>checks.push({level:'pass',msg:m});
+  const warn=m=>checks.push({level:'warn',msg:m});
+  const fail=m=>checks.push({level:'fail',msg:m});
+
+  if(d.goal&&d.goal.length>=10&&!d.goal.includes('{'))pass('一句話目標');else fail('一句話目標未填寫或過短 (≥10 字)');
+  if(d.level&&/^[SML]$/.test(d.level))pass('POC Level: '+d.level);else fail('POC Level 未設定 (S/M/L)');
+  if(d.requirement&&d.requirement.length>=20)pass('用戶原始需求');else fail('用戶原始需求過短 (≥20 字)');
+  if(d.groups.length>=1)pass('族群識別: '+d.groups.length+' 個');else fail('族群識別未填寫');
+  const mc=Object.keys(d.modules).length;
+  if(mc>=1)pass('獨立模組: '+mc+' 個');else fail('獨立模組未定義');
+  if(d.sharedModules.some(s=>s.checked))pass('共用模組已勾選');else fail('共用模組至少需勾選 1 個');
+  if(d.routes)pass('路由結構');else warn('路由結構未定義');
+  const ec=Object.keys(d.entities).length;
+  if(ec>0)pass('實體定義: '+ec+' 個');else warn('實體定義未填寫 (建議)');
+  if(d.iterationPlan.length>0)pass('迭代規劃表: '+d.iterationPlan.length+' 個迭代');else warn('迭代規劃表未填寫 (建議)');
+  const ac=Object.values(d.moduleActions).reduce((n,a)=>n+(a.items||[]).length,0);
+  if(ac>0)pass('模組動作清單: '+ac+' 個動作');else warn('模組動作清單未填寫 (建議)');
+  const cf=d.features.filter(f=>f.checked).length;
+  if(cf>=2)pass('功能模組: '+cf+' 個已勾選');else fail('功能模組至少需勾選 2 個');
+
+  const placeholders=['{專案名稱}','{貼上用戶原始需求}','{填寫核心目標}','{模組 1}','{模組 2}'];
+  const found=placeholders.filter(p=>draftMarkdown.includes(p));
+  if(found.length>0)fail('存在佔位符: '+found.join(', '));else pass('無佔位符');
+
+  return checks;
+}
+
+function renderValidation(){
+  if(!draftMarkdown){document.getElementById('valOutput').innerHTML='<p style="color:#64748b">尚無 Draft 可驗證</p>';return;}
+  const d=parseDraft(draftMarkdown);
+  const checks=validateDraft(d);
+  const fails=checks.filter(c=>c.level==='fail').length;
+  const warns=checks.filter(c=>c.level==='warn').length;
+  const passes=checks.filter(c=>c.level==='pass').length;
+  const icon={pass:'✅',warn:'⚠️',fail:'❌'};
+  let html=`<h3 style="color:#38bdf8;margin-bottom:12px">📐 Enhanced Draft 驗證報告</h3>`;
+  html+=`<p style="margin-bottom:12px">${fails===0?'<span style="color:#86efac">✅ PASS</span>':'<span style="color:#f87171">❌ FAIL</span>'}</p>`;
+  for(const c of checks)html+=`<div class="vr ${c.level}">${icon[c.level]} ${esc(c.msg)}</div>`;
+  html+=`<p style="margin-top:12px;color:#94a3b8">📊 ${passes} pass | ${warns} warn | ${fails} fail</p>`;
+  document.getElementById('valOutput').innerHTML=html;
+}
+
+// ============================================
+// UPDATE PREVIEW
+// ============================================
+function updatePreview(){
+  if(!draftMarkdown)return;
+  // Parse and render viz
+  const d=parseDraft(draftMarkdown);
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('vizContent').style.display='block';
+  document.getElementById('vizContent').innerHTML=renderViz(d);
+  // Update markdown tab
+  document.getElementById('mdOutput').textContent=draftMarkdown;
+  // Update validation tab
+  renderValidation();
+}
+
+// ============================================
+// EXPORT
+// ============================================
+function exportMD(){
+  if(!draftMarkdown){alert('尚無 Draft 可匯出');return;}
+  const blob=new Blob([draftMarkdown],{type:'text/markdown;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='requirement_draft_iter-1.md';
+  a.click();
+}
+
+function exportHTML(){
+  if(!draftMarkdown){alert('尚無 Draft 可匯出');return;}
+  const d=parseDraft(draftMarkdown);
+  const vizHTML=renderViz(d);
+  const fullHTML=`<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>📐 ${esc(d.title||'Blueprint')}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:20px;max-width:1100px;margin:0 auto;line-height:1.6}
+${document.querySelectorAll('style')[2]?.textContent||''}
+</style></head><body>${vizHTML}<footer style="text-align:center;padding:24px;color:#475569;font-size:.8rem">SDID Blueprint Studio | ${new Date().toISOString().split('T')[0]}</footer></body></html>`;
+  const blob=new Blob([fullHTML],{type:'text/html;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(d.title||'blueprint')+'-viz.html';
+  a.click();
+}
+
+// ============================================
+// RESET
+// ============================================
+function resetAll(){
+  if(!confirm('確定要重置所有對話？'))return;
+  messages=[];currentRound=1;draftMarkdown='';
+  document.getElementById('chat').innerHTML='';
+  document.getElementById('emptyState').style.display='flex';
+  document.getElementById('vizContent').style.display='none';
+  document.getElementById('mdOutput').textContent='';
+  document.getElementById('valOutput').innerHTML='';
+  document.getElementById('inp').placeholder=ROUNDS[0].hint;
+  updateSteps();
+}
+
+// ============================================
+// ALSO: Allow pasting a draft directly for preview
+// ============================================
+document.addEventListener('paste',e=>{
+  // If pasting into the markdown pane area, parse it
+  const active=document.activeElement;
+  if(active&&active.id==='mdOutput'){
+    e.preventDefault();
+    const text=(e.clipboardData||window.clipboardData).getData('text');
+    if(text.includes('Enhanced Blueprint Draft')||text.includes('模組化設計藍圖')){
+      draftMarkdown=text;
+      updatePreview();
+      addMsg('system','📋 已從剪貼簿載入 Draft，預覽已更新');
+    }
+  }
+});
+
+// Init
+updateSteps();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "sdid-monitor",
+  "version": "1.0.0",
+  "description": "SDID Task-Pipe Monitor",
+  "main": "server.cjs",
+  "scripts": {
+    "start": "node server.cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

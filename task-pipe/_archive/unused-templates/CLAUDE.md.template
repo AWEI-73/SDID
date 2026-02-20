@@ -1,0 +1,75 @@
+# CLAUDE.md - AI 協作規則
+
+## 函式分片讀取
+
+修改函式時，請遵循以下流程：
+
+### 1. 先查詢索引
+
+```bash
+cat .gems/docs/function-index.json
+```
+
+找到目標函式的位置：
+- `byFile` - 按檔案查詢
+- `byPriority` - 按優先級查詢 (P0 最重要)
+- `byStory` - 按 Story 查詢
+
+### 2. 分片讀取
+
+找到函式後，只讀取該函式的行範圍：
+
+```
+# 範例: createTask 在 KanbanService.ts 的 19-40 行
+# 只讀這 22 行，不要讀整個檔案
+```
+
+### 3. 遵守 FLOW 約束
+
+每個函式都有 `flow` 欄位，例如：
+```
+flow: "ValidateInput→DataStore.add→EventBus.emit→Return"
+```
+
+修改時必須保持這個流程順序，不能：
+- 跳過步驟
+- 改變順序
+- 加入未定義的步驟
+
+### 4. 遵守 DEPS 邊界
+
+每個函式都有 `deps` 欄位，例如：
+```
+deps: "[Internal.DataStore], [Internal.EventBus]"
+```
+
+不能引入未宣告的依賴。如需新依賴，先更新 GEMS 標籤。
+
+---
+
+## GEMS 標籤格式
+
+```typescript
+/**
+ * GEMS: functionName | P[0-3] | ✓✓ | (args)→Result | Story-X.X | 描述
+ * GEMS-FLOW: Step1→Step2→Step3
+ * GEMS-DEPS: [Type.Name (說明)]
+ * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH
+ */
+```
+
+---
+
+## 優先級說明
+
+- **P0**: 核心邏輯，修改需謹慎
+- **P1**: 重要功能
+- **P2**: 輔助功能
+- **P3**: 工具函式
+
+---
+
+## 索引檔案位置
+
+- `.gems/docs/functions.json` - 完整函式清單（含行號）
+- `.gems/docs/function-index.json` - 快速索引

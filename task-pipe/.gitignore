@@ -1,0 +1,37 @@
+# Node modules
+node_modules/
+
+# Test outputs
+*_test.txt
+test-output.txt
+dry_test.txt
+error_test.txt
+full_log*.txt
+loop_history.txt
+
+# Old/backup files
+old_*.cjs
+old_*.md
+original_*.cjs
+*.backup
+*.bak
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test configs
+test-configs.json
+test-*.cjs
+
+# Temporary files
+*.tmp
+*.temp

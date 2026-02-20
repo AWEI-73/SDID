@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "name": "GEMS Project Status",
+  "description": "每次送訊息給 agent 時，自動掃描 workspace 下所有 GEMS 專案的進度，讓 agent 知道目前哪個專案在哪個階段、是否卡住。",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": ""
+  },
+  "workspaceFolderName": "SDID",
+  "shortName": "gems-project-status"
+}

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>健康管理 POC</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.8);
+            --primary: #6366f1;
+            --food-color: #f59e0b;
+            --water-color: #3b82f6;
+            --success: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0e7ff 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .value-big {
+            font-size: 3rem;
+            font-weight: 800;
+        }
+
+        .food-value {
+            color: var(--food-color);
+        }
+
+        .water-value {
+            color: var(--water-color);
+        }
+
+        .progress-bar {
+            height: 12px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        .food-progress {
+            background: linear-gradient(90deg, var(--food-color), #ef4444);
+        }
+
+        .water-progress {
+            background: linear-gradient(90deg, var(--water-color), #06b6d4);
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            color: white;
+        }
+
+        .btn-food {
+            background: var(--food-color);
+        }
+
+        .btn-water {
+            background: var(--water-color);
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+    <!--
+  @GEMS-DESIGN-BRIEF: 玻璃擬態健康儀表板，強調數據視覺化與進度條回饋
+  @GEMS-CONTRACT-REF: ./ModuleContract.ts
+  @GEMS-STORY: Story-1.0
+  
+  @GEMS-VERIFIED:
+  - [x] 飲食紀錄新增
+  - [x] 飲水快速記錄
+  - [x] 進度條視覺回饋
+  - [x] 歷史紀錄顯示
+  
+  @GEMS-FIELD-COVERAGE:
+  - id: frontend
+  - name: frontend (食物名稱)
+  - calories: frontend (卡路里數值)
+  - amountMl: frontend (飲水量)
+  - timestamp: frontend (時間顯示)
+  -->
+</head>
+
+<body>
+    <div class="container">
+        <h1>🏃 HealthFlow</h1>
+
+        <!-- 飲食追蹤 -->
+        <div class="card">
+            <div class="card-title">🍎 飲食攝取</div>
+            <div class="value-big food-value"><span id="totalCal">0</span> kcal</div>
+            <div class="progress-bar">
+                <div id="foodProgress" class="progress-fill food-progress" style="width: 0%"></div>
+            </div>
+            <input type="text" id="foodName" placeholder="食物名稱">
+            <input type="number" id="foodCal" placeholder="卡路里">
+            <button class="btn btn-food" onclick="addFood()">新增</button>
+        </div>
+
+        <!-- 飲水追蹤 -->
+        <div class="card">
+            <div class="card-title">💧 飲水進度</div>
+            <div class="value-big water-value"><span id="totalWater">0</span> ml</div>
+            <div class="progress-bar">
+                <div id="waterProgress" class="progress-fill water-progress" style="width: 0%"></div>
+            </div>
+            <button class="btn btn-water" onclick="addWater(250)">+250ml</button>
+            <button class="btn btn-water" onclick="addWater(500)">+500ml</button>
+        </div>
+    </div>
+
+    <script>
+        // @GEMS-MOCK
+        let foodLogs = [{ id: 'f1', name: '雞胸肉', calories: 200, timestamp: new Date() }];
+        let waterLogs = [{ id: 'w1', amountMl: 500, timestamp: new Date() }];
+
+        // @GEMS-FUNCTION: addFood | P0 | 新增飲食紀錄
+        function addFood() {
+            const name = document.getElementById('foodName').value;
+            const cal = parseInt(document.getElementById('foodCal').value);
+            if (name && cal) {
+                foodLogs.push({ id: 'f' + Date.now(), name, calories: cal, timestamp: new Date() });
+                render();
+            }
+        }
+
+        // @GEMS-FUNCTION: addWater | P0 | 新增飲水紀錄
+        function addWater(ml) {
+            waterLogs.push({ id: 'w' + Date.now(), amountMl: ml, timestamp: new Date() });
+            render();
+        }
+
+        // @GEMS-FUNCTION: render | P0 | 渲染介面
+        function render() {
+            const totalCal = foodLogs.reduce((s, l) => s + l.calories, 0);
+            const totalWater = waterLogs.reduce((s, l) => s + l.amountMl, 0);
+            document.getElementById('totalCal').textContent = totalCal;
+            document.getElementById('totalWater').textContent = totalWater;
+            document.getElementById('foodProgress').style.width = Math.min(totalCal / 2000 * 100, 100) + '%';
+            document.getElementById('waterProgress').style.width = Math.min(totalWater / 2000 * 100, 100) + '%';
+        }
+
+        render();
+    </script>
+</body>
+
+</html>

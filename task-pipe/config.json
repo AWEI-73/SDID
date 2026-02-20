@@ -1,0 +1,247 @@
+{
+  "$schema": "task-pipe-config-v1",
+  "version": "1.0.0",
+  "project": {
+    "srcDir": "src",
+    "testPattern": "**/*.test.ts",
+    "testCommand": "npx vitest --run"
+  },
+  "hub": {
+    "path": null,
+    "note": "v2.4: task-pipe 獨立運作，不再依賴外部 control-tower"
+  },
+  "fallback": {
+    "enabled": true,
+    "templates": "./templates"
+  },
+  "projectTypes": {
+    "typescript": {
+      "extensions": [
+        ".ts",
+        ".tsx"
+      ],
+      "srcDir": "src",
+      "testDir": "__tests__",
+      "testCommand": "npm test",
+      "defaultLevel": "M",
+      "init": "npm init -y && npm install typescript @types/node"
+    },
+    "javascript": {
+      "extensions": [
+        ".js",
+        ".jsx"
+      ],
+      "srcDir": "src",
+      "testDir": "__tests__",
+      "testCommand": "npm test",
+      "defaultLevel": "M",
+      "init": "npm init -y"
+    },
+    "gas": {
+      "extensions": [
+        ".gs",
+        ".js"
+      ],
+      "srcDir": ".",
+      "testDir": null,
+      "testCommand": null,
+      "defaultLevel": "S",
+      "init": null,
+      "note": "Google Apps Script - 無需初始化，略過測試"
+    },
+    "python": {
+      "extensions": [
+        ".py"
+      ],
+      "srcDir": "src",
+      "testDir": "tests",
+      "testCommand": "pytest",
+      "defaultLevel": "M",
+      "init": "python -m venv .venv && pip install pytest"
+    }
+  },
+  "levels": {
+    "S": {
+      "description": "Prototype - 能跑通 UI 原型即可",
+      "poc": {
+        "story0Scope": "必要的資料型別與 Mock 資料",
+        "maxStories": 3,
+        "forbiddenPatterns": [
+          "axios-interceptor",
+          "shared-utils",
+          "complex-state",
+          "middleware",
+          "caching"
+        ],
+        "requirePocVerification": true
+      },
+      "build": {
+        "phases": [
+          1,
+          2,
+          8
+        ],
+        "testRequired": false,
+        "tagsRequired": [
+          "GEMS"
+        ]
+      }
+    },
+    "M": {
+      "description": "Standard - 專案骨架與基礎配置",
+      "poc": {
+        "story0Scope": "專案骨架與基礎配置",
+        "maxStories": 6,
+        "forbiddenPatterns": [
+          "complex-middleware",
+          "advanced-caching"
+        ],
+        "requirePocVerification": false
+      },
+      "build": {
+        "phases": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          8
+        ],
+        "testRequired": true,
+        "tagsRequired": [
+          "GEMS",
+          "GEMS-TEST",
+          "GEMS-TEST-FILE"
+        ]
+      }
+    },
+    "L": {
+      "description": "Strict - 完整架構規範",
+      "poc": {
+        "story0Scope": "完整基礎建設（types, config, shared, lib）",
+        "maxStories": 10,
+        "forbiddenPatterns": [],
+        "requirePocVerification": false
+      },
+      "build": {
+        "phases": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "testRequired": true,
+        "tagsRequired": [
+          "GEMS",
+          "GEMS-FLOW",
+          "GEMS-DEPS",
+          "GEMS-DEPS-RISK",
+          "GEMS-TEST",
+          "GEMS-TEST-FILE"
+        ]
+      }
+    }
+  },
+  "phaseChain": {
+    "POC": {
+      "steps": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "gate": "poc-gate.cjs"
+    },
+    "PLAN": {
+      "steps": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "gate": "plan-gate.cjs"
+    },
+    "BUILD": {
+      "phases": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8"
+      ],
+      "gate": "build-gate.cjs"
+    },
+    "SCAN": {
+      "steps": [
+        "scan"
+      ],
+      "gate": null
+    }
+  },
+  "tacticalFix": {
+    "maxAttempts": 3,
+    "onExceed": "STRATEGIC_BLOCKER"
+  },
+  "bluemouse": {
+    "enabled": true,
+    "socraticQuestions": {
+      "enabled": true,
+      "language": "zh-TW",
+      "minQuestions": 3
+    },
+    "codeValidation": {
+      "enabled": false,
+      "layers": ["L1", "L2", "L5", "L6", "L7", "L12", "L15", "L16"],
+      "gemsValidation": true,
+      "failOnCritical": false
+    },
+    "securityCheck": {
+      "enabled": false,
+      "level": "standard",
+      "failOnCritical": false
+    }
+  },
+  "output": {
+    "guard": {
+      "forbidden": "task-pipe/ sdid-tools/",
+      "allowed": "專案檔案"
+    },
+    "anchors": {
+      "summary": [
+        "@SUMMARY-START",
+        "@SUMMARY-END"
+      ],
+      "error": [
+        "@ERROR-START",
+        "@ERROR-END"
+      ],
+      "fix": [
+        "@FIX-START",
+        "@FIX-END"
+      ],
+      "template": [
+        "@TEMPLATE-START",
+        "@TEMPLATE-END"
+      ],
+      "rule": [
+        "@RULE-START",
+        "@RULE-END"
+      ]
+    },
+    "status": {
+      "pass": "@PASS",
+      "fail": "@FAIL",
+      "blocker": "@BLOCKER",
+      "skip": "@SKIP"
+    }
+  }
+}

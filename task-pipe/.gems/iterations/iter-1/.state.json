@@ -1,0 +1,43 @@
+{
+  "version": "3.0",
+  "iteration": "iter-1",
+  "status": "active",
+  "flow": {
+    "entryPoint": "POC-1",
+    "currentNode": "POC-1",
+    "exitPoint": null,
+    "mode": "full"
+  },
+  "stories": {},
+  "retries": {},
+  "humanAlerts": [],
+  "createdAt": "2026-02-17T08:41:04.993Z",
+  "lastUpdated": "2026-02-20T10:24:38.060Z",
+  "tacticalFixes": {
+    "BUILD-phase-1-Story-1.0": {
+      "count": 1,
+      "issues": [
+        {
+          "timestamp": "2026-02-19T15:25:24.739Z",
+          "issue": {
+            "errorType": "E5",
+            "issue": "缺少: 專案設定 (package.json), TypeScript 設定 (tsconfig.json)",
+            "timestamp": "2026-02-19T15:25:24.738Z"
+          }
+        }
+      ],
+      "firstRun": false,
+      "firstRunAt": "2026-02-17T08:41:04.995Z"
+    },
+    "POC-step-4": {
+      "count": 0,
+      "issues": [],
+      "firstRun": true
+    },
+    "POC-step-1": {
+      "count": 0,
+      "issues": [],
+      "firstRun": true
+    }
+  }
+}

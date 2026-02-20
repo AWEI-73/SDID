@@ -1,0 +1,71 @@
+{
+  "version": "7.0",
+  "generatedAt": "2026-02-12T10:00:00.000Z",
+  "totalCount": 3,
+  "functions": [
+    {
+      "name": "CoreTypes",
+      "file": "src/shared/types/core-types.ts",
+      "startLine": 5,
+      "endLine": 40,
+      "commentLine": 1,
+      "lines": 36,
+      "priority": "P0",
+      "description": "核心型別定義",
+      "signature": "()→Types",
+      "storyId": "Story-1.0",
+      "flow": "DEFINE→FREEZE→EXPORT",
+      "deps": [],
+      "depsRisk": "LOW",
+      "testStatus": "✓ Unit"
+    },
+    {
+      "name": "storage",
+      "file": "src/shared/storage/memory-store.ts",
+      "startLine": 10,
+      "endLine": 80,
+      "commentLine": 3,
+      "lines": 71,
+      "priority": "P1",
+      "description": "儲存層封裝",
+      "signature": "(config)→Store",
+      "storyId": "Story-1.0",
+      "flow": "INIT→CRUD_OPS→EXPORT",
+      "deps": ["CoreTypes"],
+      "depsRisk": "LOW",
+      "testStatus": "✓ Unit | ✓ Integration"
+    },
+    {
+      "name": "calcWeekly",
+      "file": "src/shared/services/calc-weekly.ts",
+      "startLine": 15,
+      "endLine": 45,
+      "commentLine": 8,
+      "lines": 31,
+      "priority": "P0",
+      "description": "基礎計價邏輯",
+      "signature": "(planId)→number",
+      "storyId": "Story-1.0",
+      "flow": "LOAD_PLAN→SUM_ITEMS→RETURN",
+      "deps": ["CoreTypes", "storage"],
+      "depsRisk": "MEDIUM",
+      "testStatus": "✓ Unit | ✓ Integration"
+    },
+    {
+      "name": "validateMealItem",
+      "file": "src/shared/validation/meal-validator.ts",
+      "startLine": 5,
+      "endLine": 25,
+      "commentLine": 1,
+      "lines": 21,
+      "priority": "P3",
+      "description": "餐別項目驗證",
+      "signature": "(item)→boolean",
+      "storyId": "Story-1.0",
+      "flow": "CHECK_FIELDS→VALIDATE_RANGE→RETURN",
+      "deps": ["CoreTypes"],
+      "depsRisk": "LOW",
+      "testStatus": "✓ Unit"
+    }
+  ]
+}

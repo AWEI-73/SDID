@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任務管理系統 POC - Design First Edition</title>
+    <!--
+  ═══════════════════════════════════════════════════════════════════════════
+  @GEMS-DESIGN-BRIEF:
+  - Purpose: 驗證任務管理的 CRUD 流程與狀態切換
+  - Aesthetic: Neo-Brutalist Dark - 深色暗黑風格，銳利邊角，霓虹強調色
+  - Typography: Space Grotesk (Google Fonts) - 科技感幾何字體
+  - ColorPalette:
+    - Background: #0a0a0f (深黑紫)
+    - Surface: #12121a (卡片表面)
+    - Accent: #818cf8 (靛藍螢光)
+    - AccentGlow: rgba(129, 140, 248, 0.3) (光暈效果)
+    - Success: #34d399 (綠色完成)
+    - Danger: #f87171 (紅色刪除)
+    - Text: #e4e4e7 (淺灰文字)
+    - TextMuted: #71717a (次要文字)
+  - Motion: 
+    - Elastic hover (cubic-bezier(0.34, 1.56, 0.64, 1))
+    - Staggered list animations
+    - Glow pulse on focus
+  - Avoid: 純白背景、Arial/Inter 字體、紫白漸層、圓潤卡通風格
+  - Memorable: 霓虹光暈卡片效果 + 完成任務的打勾動畫
+
+  @GEMS-CONTRACT-REF: ./TaskContract.ts
+
+  @GEMS-VERIFIED:
+  - [x] 任務列表渲染 (render)
+  - [x] 新增任務 (addTask)
+  - [x] 切換完成狀態 (toggleTask)
+  - [x] 刪除任務 (deleteTask)
+  - [x] 統計計數顯示 (updateStats)
+  - [ ] 任務編輯 (DEFERRED: iter-2)
+  - [ ] 拖拉排序 (DEFERRED: iter-2)
+
+  @GEMS-STORY: Story-1.0 (基礎建設) + Story-1.1 (任務CRUD)
+  ═══════════════════════════════════════════════════════════════════════════
+  -->
+
+    <!-- 獨特字體 - Space Grotesk -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        /* ═══════════════════════════════════════════════════════════════════════
+           設計系統 - Neo-Brutalist Dark Theme
+           ═══════════════════════════════════════════════════════════════════════ */
+        :root {
+            /* 配色系統 */
+            --color-bg: #0a0a0f;
+            --color-surface: #12121a;
+            --color-surface-hover: #1a1a24;
+            --color-border: rgba(255, 255, 255, 0.08);
+            --color-border-hover: rgba(255, 255, 255, 0.15);
+
+            /* 強調色 */
+            --color-accent: #818cf8;
+            --color-accent-hover: #a5b4fc;
+            --color-accent-glow: rgba(129, 140, 248, 0.3);
+            --color-accent-subtle: rgba(129, 140, 248, 0.1);
+
+            /* 狀態色 */
+            --color-success: #34d399;
+            --color-success-glow: rgba(52, 211, 153, 0.3);
+            --color-danger: #f87171;
+            --color-danger-hover: #fca5a5;
+
+            /* 文字色 */
+            --color-text: #e4e4e7;
+            --color-text-muted: #71717a;
+            --color-text-dim: #52525b;
+
+            /* 陰影系統 */
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+            --shadow-glow: 0 0 30px var(--color-accent-glow);
+            --shadow-glow-success: 0 0 20px var(--color-success-glow);
+
+            /* 間距系統 */
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 24px;
+            --spacing-xl: 32px;
+            --spacing-2xl: 48px;
+
+            /* 圓角 */
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+
+            /* 過渡效果 */
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.25s ease;
+            --transition-elastic: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Space Grotesk', -apple-system, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            min-height: 100vh;
+            padding: var(--spacing-xl);
+            line-height: 1.6;
+
+            /* 微妙的背景紋理 */
+            background-image:
+                radial-gradient(circle at 20% 80%, rgba(129, 140, 248, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(52, 211, 153, 0.02) 0%, transparent 50%);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           @GEMS-ZONE: [Header] 頁首區
+           ═══════════════════════════════════════════════════════════════════════ */
+        .header {
+            max-width: 640px;
+            margin: 0 auto var(--spacing-xl);
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-success) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: var(--spacing-sm);
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            color: var(--color-text-muted);
+            font-size: 0.9rem;
+            font-weight: 300;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           @GEMS-ZONE: [Stats] 統計區
+           ═══════════════════════════════════════════════════════════════════════ */
+        .stats {
+            display: flex;
+            gap: var(--spacing-md);
+            justify-content: center;
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .stat-card {
+            background: var(--color-surface);
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--color-border);
+            text-align: center;
+            min-width: 100px;
+            transition: all var(--transition-normal);
+        }
+
+        .stat-card:hover {
+            border-color: var(--color-border-hover);
+            transform: translateY(-2px);
+        }
+
+        .stat-card .number {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--color-accent);
+            line-height: 1.2;
+        }
+
+        .stat-card .label {
+            font-size: 0.7rem;
+            color: var(--color-text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 500;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           @GEMS-ZONE: [Input] 輸入區
+           ═══════════════════════════════════════════════════════════════════════ */
+        .input-container {
+            max-width: 640px;
+            margin: 0 auto var(--spacing-xl);
+            display: flex;
+            gap: var(--spacing-sm);
+        }
+
+        .input-container input {
+            flex: 1;
+            padding: var(--spacing-md);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            font-family: inherit;
+            color: var(--color-text);
+            transition: all var(--transition-normal);
+        }
+
+        .input-container input::placeholder {
+            color: var(--color-text-dim);
+        }
+
+        .input-container input:focus {
+            outline: none;
+            border-color: var(--color-accent);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .input-container button {
+            padding: var(--spacing-md) var(--spacing-lg);
+            background: var(--color-accent);
+            color: var(--color-bg);
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 0.95rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all var(--transition-elastic);
+        }
+
+        .input-container button:hover {
+            background: var(--color-accent-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .input-container button:active {
+            transform: translateY(0);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           @GEMS-ZONE: [List] 任務列表區
+           ═══════════════════════════════════════════════════════════════════════ */
+        .task-list {
+            max-width: 640px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+
+        .task-item {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            background: var(--color-surface);
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--color-border);
+            transition: all var(--transition-elastic);
+
+            /* 動畫入場 */
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .task-item:hover {
+            border-color: var(--color-border-hover);
+            background: var(--color-surface-hover);
+            transform: translateX(4px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .task-item.completed {
+            border-color: rgba(52, 211, 153, 0.2);
+        }
+
+        .task-item.completed .task-title {
+            text-decoration: line-through;
+            color: var(--color-text-muted);
+        }
+
+        .task-item.completed .checkbox {
+            background: var(--color-success);
+            border-color: var(--color-success);
+            box-shadow: var(--shadow-glow-success);
+        }
+
+        .task-item.completed .checkbox::after {
+            content: '✓';
+            color: var(--color-bg);
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        /* Checkbox */
+        .checkbox {
+            width: 22px;
+            height: 22px;
+            border: 2px solid var(--color-border-hover);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-elastic);
+            flex-shrink: 0;
+        }
+
+        .checkbox:hover {
+            border-color: var(--color-accent);
+            box-shadow: 0 0 10px var(--color-accent-glow);
+        }
+
+        .task-title {
+            flex: 1;
+            font-size: 0.95rem;
+            font-weight: 400;
+        }
+
+        .task-date {
+            font-size: 0.75rem;
+            color: var(--color-text-dim);
+            font-weight: 300;
+        }
+
+        .delete-btn {
+            padding: var(--spacing-xs) var(--spacing-sm);
+            background: transparent;
+            color: var(--color-danger);
+            border: 1px solid var(--color-danger);
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-family: inherit;
+            cursor: pointer;
+            opacity: 0;
+            transition: all var(--transition-normal);
+        }
+
+        .task-item:hover .delete-btn {
+            opacity: 1;
+        }
+
+        .delete-btn:hover {
+            background: var(--color-danger);
+            color: var(--color-bg);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           @GEMS-ZONE: [Empty] 空狀態
+           ═══════════════════════════════════════════════════════════════════════ */
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-2xl);
+            color: var(--color-text-muted);
+        }
+
+        .empty-state .icon {
+            font-size: 3rem;
+            margin-bottom: var(--spacing-md);
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            font-weight: 300;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           錯誤提示 Toast
+           ═══════════════════════════════════════════════════════════════════════ */
+        .error-toast {
+            position: fixed;
+            bottom: var(--spacing-xl);
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--color-danger);
+            color: white;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            font-weight: 500;
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .error-toast.visible {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- @GEMS-ZONE: [Header] 頁首區 -->
+    <header class="header">
+        <h1>📋 任務管理器</h1>
+        <p>簡單高效地管理您的待辦事項</p>
+    </header>
+
+    <!-- @GEMS-ZONE: [Stats] 統計區 -->
+    <div class="stats">
+        <div class="stat-card">
+            <div class="number" id="totalCount">0</div>
+            <div class="label">全部任務</div>
+        </div>
+        <div class="stat-card">
+            <div class="number" id="completedCount">0</div>
+            <div class="label">已完成</div>
+        </div>
+        <div class="stat-card">
+            <div class="number" id="pendingCount">0</div>
+            <div class="label">進行中</div>
+        </div>
+    </div>
+
+    <!-- @GEMS-ZONE: [Input] 輸入區 -->
+    <div class="input-container">
+        <input type="text" id="taskInput" placeholder="輸入新任務..." maxlength="100"
+            onkeypress="if(event.key==='Enter') addTask()">
+        <button onclick="addTask()">新增</button>
+    </div>
+
+    <!-- @GEMS-ZONE: [List] 任務列表區 -->
+    <div class="task-list" id="taskList">
+        <!-- 由 JavaScript 動態渲染 -->
+    </div>
+
+    <!-- 錯誤提示 -->
+    <div class="error-toast" id="errorToast"></div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-CONTRACT: Task
+        // 注意：這是前後端交握的唯一真理。後端 API 必須返回此結構。
+        // @GEMS-TABLE: tbl_tasks
+        // ═══════════════════════════════════════════════════════════════════════
+        /**
+         * @typedef {Object} Task
+         * @property {string} id - UUID, PK
+         * @property {string} title - VARCHAR(100), NOT NULL
+         * @property {boolean} completed - BOOLEAN, DEFAULT false
+         * @property {string} createdAt - TIMESTAMP, DEFAULT NOW()
+         */
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-MOCK: 初始測試資料 (至少 3 筆，涵蓋不同狀態)
+        // ═══════════════════════════════════════════════════════════════════════
+        const MOCK_DATA = [
+            {
+                id: 'mock-001',
+                title: '完成 GEMS 需求規格書',
+                completed: true,
+                createdAt: '2026-01-10T09:00:00.000Z'
+            },
+            {
+                id: 'mock-002',
+                title: '撰寫單元測試案例',
+                completed: false,
+                createdAt: '2026-01-11T14:30:00.000Z'
+            },
+            {
+                id: 'mock-003',
+                title: '審查 Pull Request',
+                completed: false,
+                createdAt: '2026-01-12T10:15:00.000Z'
+            },
+            {
+                id: 'mock-004',
+                title: '更新設計文件',
+                completed: true,
+                createdAt: '2026-01-09T16:45:00.000Z'
+            }
+        ];
+
+        // 本地儲存 Key
+        const STORAGE_KEY = 'gems_tasks_v2';
+
+        // 任務資料 (從 LocalStorage 載入或使用 Mock)
+        let tasks = loadData() || MOCK_DATA;
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-FUNCTION: loadData | P0 | Story-1.0
+        // GEMS-FLOW: ReadStorage → ParseJSON → ValidateStructure → ReturnData
+        // ═══════════════════════════════════════════════════════════════════════
+        function loadData() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (!data) return null;
+                const parsed = JSON.parse(data);
+                // 驗證資料結構
+                if (!Array.isArray(parsed)) return null;
+                return parsed.filter(item =>
+                    item && typeof item.id === 'string' && typeof item.title === 'string'
+                );
+            } catch (error) {
+                console.error('[loadData] 載入失敗:', error);
+                return null;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-FUNCTION: saveData | P0 | Story-1.0
+        // GEMS-FLOW: SerializeData → WriteStorage → HandleError
+        // ═══════════════════════════════════════════════════════════════════════
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+            } catch (error) {
+                console.error('[saveData] 儲存失敗:', error);
+                showError('資料儲存失敗');
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-FUNCTION: render | P0 | Story-1.1
+        // GEMS-FLOW: ClearList → CheckEmpty → IterateTasks → CreateElements → AppendToDOM
+        // ═══════════════════════════════════════════════════════════════════════
+        function render() {
+            const listEl = document.getElementById('taskList');
+
+            // 清空現有內容
+            listEl.innerHTML = '';
+
+            // 空狀態處理
+            if (tasks.length === 0) {
+                listEl.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📝</div>
+                        <p>尚無任務，開始新增吧！</p>
+                    </div>
+                `;
+                updateStats();
+                return;
+            }
+
+            // 渲染每個任務
+            tasks.forEach((task, index) => {
+                const taskEl = document.createElement('div');
+                taskEl.className = `task-item${task.completed ? ' completed' : ''}`;
+                taskEl.style.animationDelay = `${index * 0.05}s`;
+                taskEl.innerHTML = `
+                    <div class="checkbox" onclick="toggleTask('${task.id}')"></div>
+                    <span class="task-title">${escapeHtml(task.title)}</span>
+                    <span class="task-date">${formatDate(task.createdAt)}</span>
+                    <button class="delete-btn" onclick="deleteTask('${task.id}')">刪除</button>
+                `;
+                listEl.appendChild(taskEl);
+            });
+
+            updateStats();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-FUNCTION: addTask | P0 | Story-1.1
+        // GEMS-FLOW: GetInput → ValidateEmpty → ValidateLength → ValidateDuplicate → CreateEntity → SaveData → RefreshUI
+        // ═══════════════════════════════════════════════════════════════════════
+        function addTask() {
+            const input = document.getElementById('taskInput');
+            const title = input.value.trim();
+
+            // 驗證：不可為空
+            if (!title) {
+                showError('任務名稱不可為空');
+                input.focus();
+                return;
+            }
+
+            // 驗證：長度限制
+            if (title.length > 100) {
+                showError('任務名稱不可超過 100 字');
+                return;
+            }
+
+            // 驗證：重複檢查
+            if (tasks.some(t => t.title.toLowerCase() === title.toLowerCase())) {
+                showError('已存在相同名稱的任務');
+                return;
+            }
+
+            // 建立新任務
+            const newTask = {
+                id: generateId(),
+                title: title,
+                completed: false,
+                createdAt: new Date().toISOString()
+            };
+
+            // 新增到陣列開頭（最新的在最上面）
+            tasks.unshift(newTask);
+
+            // 儲存並更新 UI
+            saveData();
+            render();
+
+            // 清空輸入框
+            input.value = '';
+            input.focus();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-FUNCTION: toggleTask | P0 | Story-1.1
+        // GEMS-FLOW: FindTask → ValidateExists → ToggleState → SaveData → RefreshUI
+        // ═══════════════════════════════════════════════════════════════════════
+        function toggleTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) {
+                showError('找不到該任務');
+                return;
+            }
+
+            task.completed = !task.completed;
+            saveData();
+            render();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-FUNCTION: deleteTask | P0 | Story-1.1
+        // GEMS-FLOW: FindTask → ValidateExists → FilterOut → SaveData → RefreshUI
+        // ═══════════════════════════════════════════════════════════════════════
+        function deleteTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) {
+                showError('找不到該任務');
+                return;
+            }
+
+            tasks = tasks.filter(t => t.id !== id);
+            saveData();
+            render();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // @GEMS-FUNCTION: updateStats | P0 | Story-1.1
+        // GEMS-FLOW: CountTotal → CountCompleted → CalcPending → UpdateDOM
+        // ═══════════════════════════════════════════════════════════════════════
+        function updateStats() {
+            const total = tasks.length;
+            const completed = tasks.filter(t => t.completed).length;
+            const pending = total - completed;
+
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('completedCount').textContent = completed;
+            document.getElementById('pendingCount').textContent = pending;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // 工具函式
+        // ═══════════════════════════════════════════════════════════════════════
+
+        function generateId() {
+            return 'task-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleDateString('zh-TW', {
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        function showError(message) {
+            const toast = document.getElementById('errorToast');
+            toast.textContent = message;
+            toast.classList.add('visible');
+            setTimeout(() => {
+                toast.classList.remove('visible');
+            }, 3000);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // 初始化
+        // ═══════════════════════════════════════════════════════════════════════
+        document.addEventListener('DOMContentLoaded', () => {
+            render();
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDID Monitor</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+    :root {
+      --bg: #0d0d0f;
+      --surface: #111114;
+      --card: #16161a;
+      --border: #1e1e24;
+      --border2: #2a2a33;
+      --text: #e8e8f0;
+      --text2: #8888a0;
+      --text3: #44445a;
+      --pass: #34d399;
+      --pass-bg: #0a2318;
+      --err: #f87171;
+      --err-bg: #200d0d;
+      --warn: #fbbf24;
+      --warn-bg: #1f1500;
+      --idle: #818cf8;
+      --idle-bg: #12123a;
+      --p0: #f87171;
+      --p1: #fbbf24;
+      --p2: #34d399;
+      --p3: #44445a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 44px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      color: var(--text);
+    }
+
+    .logo em {
+      color: var(--idle);
+      font-style: normal;
+    }
+
+    .conn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text2);
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--pass);
+      flex-shrink: 0;
+    }
+
+    .dot.off {
+      background: var(--err);
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      height: calc(100vh - 44px);
+    }
+
+    /* ── Panel Left ── */
+    .panel-left {
+      width: 260px;
+      min-width: 200px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+    }
+
+    .panel-left-head {
+      padding: 10px 14px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      color: var(--text3);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .proj {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background .12s;
+    }
+
+    .proj:hover {
+      background: var(--card);
+    }
+
+    .proj.active {
+      background: var(--card);
+      border-left: 2px solid var(--idle);
+      padding-left: 12px;
+    }
+
+    .proj-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .proj-meta {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+
+    .proj-bar {
+      height: 2px;
+      background: var(--border2);
+      border-radius: 1px;
+      margin-top: 7px;
+      overflow: hidden;
+    }
+
+    .proj-bar-fill {
+      height: 100%;
+      border-radius: 1px;
+      transition: width .3s;
+    }
+
+    .proj-bar-fill.pass {
+      background: var(--pass);
+    }
+
+    .proj-bar-fill.error {
+      background: var(--err);
+    }
+
+    .proj-bar-fill.info {
+      background: var(--warn);
+    }
+
+    .proj-bar-fill.idle {
+      background: var(--idle);
+    }
+
+    /* ── Panel Mid ── */
+    .panel-mid {
+      flex: 1;
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+      min-width: 0;
+    }
+
+    /* ── Panel Right ── */
+    .panel-right {
+      width: 380px;
+      min-width: 260px;
+      flex-shrink: 0;
+      overflow-y: auto;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 20px;
+      white-space: nowrap;
+      letter-spacing: .02em;
+    }
+
+    .badge.pass {
+      background: var(--pass-bg);
+      color: var(--pass);
+    }
+
+    .badge.error {
+      background: var(--err-bg);
+      color: var(--err);
+    }
+
+    .badge.info {
+      background: var(--warn-bg);
+      color: var(--warn);
+    }
+
+    .badge.idle {
+      background: var(--idle-bg);
+      color: var(--idle);
+    }
+
+    /* ── Detail header ── */
+    .det-head {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    .det-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .iter-tabs {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .iter-tab {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border2);
+      transition: all .12s;
+    }
+
+    .iter-tab:hover {
+      border-color: var(--text3);
+      color: var(--text);
+    }
+
+    .iter-tab.active {
+      background: var(--idle-bg);
+      color: var(--idle);
+      border-color: var(--idle);
+    }
+
+    /* ── Flow section ── */
+    .flow-sec {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sec-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 8px;
+    }
+
+    .flow-track {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-wrap: wrap;
+    }
+
+    .flow-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+    }
+
+    .flow-row-label {
+      font-size: 11px;
+      font-weight: 500;
+      width: 68px;
+      flex-shrink: 0;
+      color: var(--text2);
+    }
+
+    .node-arrow {
+      color: var(--border2);
+      font-size: 10px;
+      padding: 0 1px;
+      flex-shrink: 0;
+    }
+
+    /* ── Pill Node ── */
+    .node {
+      height: 22px;
+      border-radius: 11px;
+      font-size: 10px;
+      font-weight: 500;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: opacity .12s, box-shadow .12s;
+      user-select: none;
+      white-space: nowrap;
+      position: relative;
+      border: 1px solid transparent;
+    }
+
+    .node:hover {
+      opacity: .8;
+    }
+
+    .node.pending {
+      background: transparent;
+      color: var(--text3);
+      border-color: var(--border2);
+      cursor: default;
+    }
+
+    .node.pending:hover {
+      opacity: 1;
+    }
+
+    .node.pass {
+      background: var(--pass-bg);
+      color: var(--pass);
+      border-color: #1a4a35;
+    }
+
+    .node.error {
+      background: var(--err-bg);
+      color: var(--err);
+      border-color: #4a1a1a;
+    }
+
+    .node.info {
+      background: var(--warn-bg);
+      color: var(--warn);
+      border-color: #4a3500;
+    }
+
+    /* ── Retry badge ── */
+    .retry-dot {
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      background: var(--err);
+      color: #fff;
+      font-size: 8px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    /* ── Tooltip ── */
+    .node[data-tip] {
+      position: relative;
+    }
+
+    .node[data-tip]::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e1e28;
+      color: var(--text);
+      border: 1px solid var(--border2);
+      font-size: 11px;
+      font-weight: 400;
+      padding: 4px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+      z-index: 100;
+    }
+
+    .node[data-tip]:hover::after {
+      opacity: 1;
+    }
+
+    /* ── Flow type tag ── */
+    .flow-tag {
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 20px;
+      letter-spacing: .04em;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    .flow-tag.blueprint {
+      background: var(--idle-bg);
+      color: var(--idle);
+    }
+
+    .flow-tag.task-pipe {
+      background: var(--pass-bg);
+      color: var(--pass);
+    }
+
+    .flow-tag.quick-start {
+      background: var(--warn-bg);
+      color: var(--warn);
+    }
+
+    .flow-tag.mixed {
+      background: #1a0f2e;
+      color: #c084fc;
+    }
+
+    .flow-tag.unknown {
+      background: var(--card);
+      color: var(--text3);
+    }
+
+    /* ── SCAN viz ── */
+    .scan-sec {
+      padding: 12px 14px;
+    }
+
+    .scan-stats {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .stat-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      text-align: center;
+      min-width: 56px;
+    }
+
+    .stat-val {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .stat-lbl {
+      font-size: 10px;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+
+    .stat-val.p0 {
+      color: var(--p0);
+    }
+
+    .stat-val.p1 {
+      color: var(--p1);
+    }
+
+    .stat-val.p2 {
+      color: var(--p2);
+    }
+
+    .stat-val.p3 {
+      color: var(--p3);
+    }
+
+    .fn-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .fn-item {
+      padding: 7px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background .1s;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .fn-item:hover {
+      background: var(--card);
+      border-color: var(--border);
+    }
+
+    .fn-risk {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 4px;
+      align-self: center;
+      flex-shrink: 0;
+    }
+
+    .fn-risk.P0 {
+      background: var(--err-bg);
+      color: var(--p0);
+    }
+
+    .fn-risk.P1 {
+      background: var(--warn-bg);
+      color: var(--p1);
+    }
+
+    .fn-risk.P2 {
+      background: var(--pass-bg);
+      color: var(--p2);
+    }
+
+    .fn-risk.P3 {
+      background: var(--card);
+      color: var(--p3);
+    }
+
+    .fn-name {
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .fn-desc {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 1px;
+    }
+
+    .fn-flow {
+      font-size: 10px;
+      color: var(--idle);
+      margin-top: 2px;
+      font-family: 'Consolas', monospace;
+    }
+
+    .fn-story {
+      font-size: 10px;
+      color: var(--text3);
+      white-space: nowrap;
+    }
+
+    /* ── Log viewer ── */
+    .log-head {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 10px;
+      color: var(--text2);
+      word-break: break-all;
+      font-family: 'Consolas', monospace;
+    }
+
+    .log-body {
+      padding: 12px 14px;
+      font-size: 11px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: 'Consolas', 'Monaco', monospace;
+    }
+
+    .kw-pass {
+      color: var(--pass);
+      font-weight: 700;
+    }
+
+    .kw-block {
+      color: var(--err);
+      font-weight: 700;
+    }
+
+    .kw-fix {
+      color: var(--warn);
+      font-weight: 700;
+    }
+
+    .kw-section {
+      color: var(--idle);
+      font-weight: 600;
+    }
+
+    .kw-task {
+      color: #c084fc;
+      font-weight: 600;
+    }
+
+    .kw-next {
+      color: var(--text2);
+      font-style: italic;
+    }
+
+    /* ── Empty state ── */
+    .empty {
+      padding: 48px 16px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 12px;
+    }
+
+    .empty .ico {
+      font-size: 24px;
+      margin-bottom: 8px;
+      opacity: .5;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="logo">SDID <em>Monitor</em></div>
+    <div class="conn">
+      <div class="dot" id="dot"></div><span id="conn-lbl">connecting...</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="panel-left" id="proj-list">
+      <div class="panel-left-head">Projects</div>
+      <div class="empty">
+        <div class="ico">⏳</div>Loading...
+      </div>
+    </div>
+    <div class="panel-mid" id="proj-detail">
+      <div class="empty">
+        <div class="ico">👈</div>Select a project
+      </div>
+    </div>
+    <div class="panel-right" id="right-panel">
+      <div class="empty">
+        <div class="ico">📋</div>Click a node to view log
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Tooltip labels ──────────────────────────────────────────
+    const TIPS = {
+      // POC steps
+      'poc-1': '模糊消除', 'poc-2': '規模評估', 'poc-3': '契約設計',
+      'poc-4': 'UI 原型', 'poc-5': '需求規格',
+      // PLAN steps
+      'plan-1': '需求確認', 'plan-2': '規格注入', 'plan-3': '架構審查',
+      'plan-4': '標籤規格設計', 'plan-5': '需求規格說明',
+      // BUILD phases
+      'build-1': '骨架檢查', 'build-2': '標籤驗收', 'build-3': '測試腳本',
+      'build-4': 'Test Gate', 'build-5': 'TDD 測試執行',
+      'build-6': '修改檔案測試', 'build-7': '整合檢查', 'build-8': 'Fillback',
+      // Blueprint gates
+      'gate-check': '藍圖門控驗證', 'gate-plan': '藍圖→Plan 轉換',
+      'gate-shrink': '收縮迭代', 'gate-expand': '展開下一 iter',
+      'gate-verify': '最終驗證', 'gate-scan': '全專案掃描',
+    };
+
+    let projects = [], selProject = null, selIter = null, projDetail = null;
+
+    // ── SSE ──────────────────────────────────────────────────────
+    function connectSSE() {
+      const es = new EventSource('/api/events');
+      const dot = document.getElementById('dot'), lbl = document.getElementById('conn-lbl');
+      es.onopen = () => { dot.classList.remove('off'); lbl.textContent = 'live'; loadProjects(); };
+      es.onmessage = e => { if (JSON.parse(e.data).type === 'refresh') loadProjects(); };
+      es.onerror = () => {
+        dot.classList.add('off'); lbl.textContent = 'disconnected';
+        es.close(); setTimeout(connectSSE, 3000);
+      };
+    }
+
+    // ── Data ─────────────────────────────────────────────────────
+    async function loadProjects() {
+      try {
+        projects = await fetch('/api/projects').then(r => r.json());
+        if (!Array.isArray(projects)) projects = [];
+      } catch (e) {
+        projects = [];
+      }
+      renderList();
+      if (selProject && projects.find(p => p.name === selProject)) loadDetail(selProject);
+    }
+    async function loadDetail(name) {
+      selProject = name;
+      projDetail = await fetch(`/api/projects/${name}`).then(r => r.json());
+      if (!selIter || !projDetail.iters.find(i => i.iter === selIter))
+        selIter = projDetail.iters[projDetail.iters.length - 1]?.iter;
+      renderList(); renderDetail();
+    }
+    async function loadLog(project, iter, file) {
+      const text = await fetch(`/api/log?project=${encodeURIComponent(project)}&iter=${encodeURIComponent(iter)}&file=${encodeURIComponent(file)}`).then(r => r.text());
+      renderLog(file, text);
+    }
+    async function loadScan(project) {
+      const data = await fetch(`/api/scan/${encodeURIComponent(project)}`).then(r => r.json()).catch(() => null);
+      renderScan(data);
+    }
+
+    // ── Layer 1: Project List ─────────────────────────────────────
+    function renderList() {
+      const el = document.getElementById('proj-list');
+      const st = el.scrollTop;
+      if (!projects.length) {
+        el.innerHTML = '<div class="panel-left-head">Projects</div><div class="empty"><div class="ico">🔍</div>No projects found</div>';
+        el.scrollTop = st;
+        return;
+      }
+      const items = projects.map(p => {
+        const bc = p.badgeClass || 'idle';
+        const badge = p.badge ? `<span class="badge ${bc}">${p.badge}</span>` : '';
+        const ft = p.flowType && p.flowType !== 'unknown'
+          ? `<span class="flow-tag ${p.flowType}">${p.flowType}</span>` : '';
+        return `<div class="proj ${p.name === selProject ? 'active' : ''}" onclick="loadDetail('${escAttr(p.name)}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+        <div>
+          <div class="proj-name">${escHtml(p.name)}${ft}</div>
+          <div class="proj-meta">${p.currentIter || '—'} · ${p.phase || '—'}</div>
+        </div>${badge}
+      </div>
+      <div class="proj-bar"><div class="proj-bar-fill ${bc}" style="width:${p.progress || 0}%"></div></div>
+    </div>`;
+      }).join('');
+      el.innerHTML = '<div class="panel-left-head">Projects</div>' + items;
+      el.scrollTop = st;
+    }
+
+    // ── Layer 2: Detail ───────────────────────────────────────────
+    function renderDetail() {
+      const el = document.getElementById('proj-detail');
+      if (!projDetail) return;
+      const iterData = projDetail.iters.find(i => i.iter === selIter);
+      if (!iterData) return;
+
+      const { gatePhases = {}, stories = [], logs = [], pocSteps = {}, planSteps = {}, noStoryPhases = {}, flowType } = iterData;
+      const pname = projDetail.name;
+
+      const tabs = projDetail.iters.map(i =>
+        `<span class="iter-tab ${i.iter === selIter ? 'active' : ''}" onclick="selectIter('${i.iter}')">${i.iter}</span>`
+      ).join('');
+
+      const ftTag = flowType && flowType !== 'unknown'
+        ? `<span class="flow-tag ${flowType}" style="margin-left:8px">${flowType}</span>` : '';
+
+      // ── node builder ──────────────────────────────────────────
+      function node(label, tipKey, status, logFile, count) {
+        const cls = !status ? 'pending' : status === 'pass' ? 'pass' : status === 'error' ? 'error' : 'info';
+        const icon = !status ? '' : status === 'pass' ? '✓ ' : status === 'error' ? '✕ ' : '~ ';
+        const click = logFile ? `onclick="loadLog('${escAttr(pname)}','${selIter}','${escAttr(logFile)}')"` : '';
+        const tip = TIPS[tipKey] ? ` data-tip="${TIPS[tipKey]}"` : '';
+        const badge = count > 1 ? `<span class="retry-dot">${count}</span>` : '';
+        return `<div class="node ${cls}"${tip} ${click}>${icon}${escHtml(label)}${badge}</div>`;
+      }
+
+      function gateNode(key, label) {
+        const status = gatePhases[key] || null;
+        const allLogs = logs.filter(f => key === 'scan' ? f.startsWith('scan-scan-') : f.startsWith(`gate-${key}-`));
+        const latest = allLogs[allLogs.length - 1] || null;
+        return node(label, `gate-${key}`, status, latest, allLogs.length);
+      }
+
+      function stepNode(phase, n, stepObj, prefix) {
+        const key = String(n);
+        const info = stepObj[key] || stepObj[n] || null;
+        const allLogs = logs.filter(f => f.startsWith(`${prefix}-step-${key}-`));
+        const tipKey = Number.isInteger(n) ? `${phase}-${n}` : null;
+        return node(`${n}`, tipKey, info ? info.status : null, info ? info.logFile : null, allLogs.length);
+      }
+
+      function buildNode(storyId, n, info, cnt) {
+        return node(`${n}`, `build-${n}`, info ? info.status : null, info ? info.logFile : null, cnt);
+      }
+
+      const A = `<span class="node-arrow">→</span>`;
+      const hasAnyGate = Object.values(gatePhases).some(Boolean);
+      const effectiveBP = flowType === 'blueprint' || flowType === 'mixed' || hasAnyGate;
+      const effectiveTP = flowType === 'task-pipe' || flowType === 'mixed' || !effectiveBP;
+
+      const sections = [];
+
+      // Blueprint pre-build
+      if (effectiveBP) {
+        sections.push(`<div class="flow-sec">
+      <div class="sec-label">Blueprint — Pre-build</div>
+      <div class="flow-track">${gateNode('check', 'Gate')}${A}${gateNode('plan', 'Plan')}</div>
+    </div>`);
+      }
+
+      // Task-Pipe POC / PLAN
+      if (effectiveTP) {
+        const pocAll = [...new Set([1, 2, 3, 4, 5, ...Object.keys(pocSteps).map(Number)])].sort((a, b) => a - b);
+        const planAll = [...new Set([1, 2, 3, 4, 5, ...Object.keys(planSteps).map(Number)])].sort((a, b) => a - b);
+        const pocTrack = pocAll.map(n => stepNode('poc', n, pocSteps, 'poc')).join(A);
+        const planTrack = planAll.map(n => stepNode('plan', n, planSteps, 'plan')).join(A);
+        sections.push(`<div class="flow-sec">
+      <div class="sec-label">Task-Pipe — POC / PLAN</div>
+      <div class="flow-row"><span class="flow-row-label">POC</span><div class="flow-track">${pocTrack}</div></div>
+      <div class="flow-row"><span class="flow-row-label">PLAN</span><div class="flow-track">${planTrack}</div></div>
+    </div>`);
+      }
+
+      // BUILD phases
+      const buildRows = stories.map(s => {
+        const boxes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => {
+          const info = s.phases[n] || null;
+          const cnt = logs.filter(f => f.startsWith(`build-phase-${n}-Story-${s.story}-`)).length;
+          return buildNode(s.story, n, info, cnt);
+        }).join(A);
+        return `<div class="flow-row">
+      <span class="flow-row-label">Story-${s.story}</span>
+      <div class="flow-track">${boxes}</div>
+      <span class="badge ${s.badgeClass}" style="margin-left:8px;flex-shrink:0">${s.badge}</span>
+    </div>`;
+      });
+
+      if (Object.keys(noStoryPhases).length) {
+        const boxes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => {
+          const info = noStoryPhases[n] || null;
+          return buildNode('legacy', n, info, 1);
+        }).join(A);
+        buildRows.push(`<div class="flow-row">
+      <span class="flow-row-label" style="font-style:italic;color:var(--text3)">legacy</span>
+      <div class="flow-track">${boxes}</div>
+    </div>`);
+      }
+
+      if (!buildRows.length) {
+        const boxes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => buildNode('—', n, null, 0)).join(A);
+        buildRows.push(`<div class="flow-row">
+      <span class="flow-row-label" style="color:var(--text3)">—</span>
+      <div class="flow-track">${boxes}</div>
+    </div>`);
+      }
+
+      sections.push(`<div class="flow-sec">
+    <div class="sec-label">Build Phases</div>
+    ${buildRows.join('')}
+  </div>`);
+
+      // Blueprint post-build
+      if (effectiveBP) {
+        const scanPass = gatePhases.scan === 'pass';
+        const reportBtn = scanPass
+          ? A + `<div class="node pass" data-tip="全專案掃描" onclick="loadScan('${escAttr(pname)}')">📊 Report</div>`
+          : '';
+        const track = [
+          gateNode('shrink', 'Shrink'), A,
+          gateNode('expand', 'Expand'), A,
+          gateNode('verify', 'Verify'), A,
+          gateNode('scan', 'SCAN'),
+        ].join('') + reportBtn;
+        sections.push(`<div class="flow-sec">
+      <div class="sec-label">Blueprint — Post-build</div>
+      <div class="flow-track">${track}</div>
+    </div>`);
+      } else if (gatePhases.scan) {
+        const allScanLogs = logs.filter(f => f.startsWith('scan-scan-'));
+        const scanNode = node('SCAN', 'gate-scan', gatePhases.scan, allScanLogs[allScanLogs.length - 1] || null, allScanLogs.length);
+        const reportBtn = gatePhases.scan === 'pass'
+          ? A + `<div class="node pass" data-tip="全專案掃描" onclick="loadScan('${escAttr(pname)}')">📊 Report</div>`
+          : '';
+        sections.push(`<div class="flow-sec">
+      <div class="sec-label">SCAN</div>
+      <div class="flow-track">${scanNode}${reportBtn}</div>
+    </div>`);
+      }
+
+      const st = el.scrollTop;
+      el.innerHTML = `
+    <div class="det-head">
+      <div class="det-title">${escHtml(pname)}${ftTag}</div>
+      <div class="iter-tabs">${tabs}</div>
+    </div>
+    ${sections.join('')}`;
+      el.scrollTop = st;
+    }
+
+    function selectIter(iter) {
+      selIter = iter;
+      renderDetail();
+      document.getElementById('right-panel').innerHTML = '<div class="empty"><div class="ico">📋</div>Click a node to view log</div>';
+    }
+
+    // ── Layer 3a: Log ─────────────────────────────────────────────
+    function renderLog(filename, text) {
+      // highlight line by line to avoid cross-span issues
+      const lines = escHtml(text).split('\n').map(line => {
+        // @PASS anywhere in line
+        if (/@PASS/.test(line)) return line.replace(/(@PASS)/g, '<span class="kw-pass">$1</span>');
+        // @BLOCKER / @BLOCK
+        if (/@BLOCK/.test(line)) return line.replace(/(@BLOCK(?:ER)?)/g, '<span class="kw-block">$1</span>');
+        // @FIX variants
+        if (/@FIX/.test(line)) return line.replace(/(@FIX(?:-\w+)*)/g, '<span class="kw-fix">$1</span>');
+        // @TASK-N
+        if (/@TASK-/.test(line)) return line.replace(/(@TASK-\d+)/g, '<span class="kw-task">$1</span>');
+        // NEXT: / 下一步:
+        if (/^(NEXT:|下一步:)/.test(line)) return `<span class="kw-next">${line}</span>`;
+        // standalone @SECTION (whole line is a single @TAG)
+        if (/^@[A-Z_][A-Z0-9_\-]*$/.test(line.trim())) return `<span class="kw-section">${line}</span>`;
+        return line;
+      });
+      const hl = lines.join('\n');
+      document.getElementById('right-panel').innerHTML =
+        `<div class="log-head">${escHtml(filename)}</div><div class="log-body">${hl}</div>`;
+    }
+
+    // ── Layer 3b: SCAN viz ────────────────────────────────────────
+    function renderScan(data) {
+      const el = document.getElementById('right-panel');
+      if (!data || !data.functions) {
+        el.innerHTML = '<div class="empty"><div class="ico">📭</div>No scan data</div>'; return;
+      }
+      const { totalCount, byRisk = {}, avgFunctionLines, functions } = data;
+      const stats = `<div class="scan-stats">
+    <div class="stat-box"><div class="stat-val">${totalCount}</div><div class="stat-lbl">Functions</div></div>
+    <div class="stat-box"><div class="stat-val p0">${byRisk.P0 || 0}</div><div class="stat-lbl">P0</div></div>
+    <div class="stat-box"><div class="stat-val p1">${byRisk.P1 || 0}</div><div class="stat-lbl">P1</div></div>
+    <div class="stat-box"><div class="stat-val p2">${byRisk.P2 || 0}</div><div class="stat-lbl">P2</div></div>
+    <div class="stat-box"><div class="stat-val">${avgFunctionLines || '—'}</div><div class="stat-lbl">avg lines</div></div>
+  </div>`;
+      const fnItems = functions.map(f => {
+        const flow = f.flow ? `<div class="fn-flow">${escHtml(f.flow)}</div>` : '';
+        return `<div class="fn-item">
+      <span class="fn-risk ${f.risk}">${f.risk}</span>
+      <div>
+        <div class="fn-name">${escHtml(f.name)}</div>
+        <div class="fn-desc">${escHtml(f.description || '')}</div>${flow}
+      </div>
+      <span class="fn-story">${escHtml(f.storyId || '')}</span>
+    </div>`;
+      }).join('');
+      el.innerHTML = `<div class="log-head">SCAN Report — functions.json</div>
+    <div class="scan-sec">${stats}<div class="fn-list">${fnItems}</div></div>`;
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escAttr(s) { return String(s).replace(/'/g, "\\'"); }
+
+    connectSSE();
+  </script>
+</body>
+
+</html>

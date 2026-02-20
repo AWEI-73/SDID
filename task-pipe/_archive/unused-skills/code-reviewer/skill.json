@@ -1,0 +1,55 @@
+{
+    "skillName": "code-reviewer",
+    "version": "1.0.0",
+    "description": "階段化錯誤分析與 Code Review 工具",
+    "role": "資深架構師",
+    "author": "GEMS Team",
+    "createdAt": "2026-01-08",
+    "capabilities": {
+        "errorAnalysis": true,
+        "phaseSpecific": true,
+        "structuredReporting": true,
+        "ragReady": true,
+        "autoTrigger": true
+    },
+    "supportedPhases": [
+        "poc-1",
+        "poc-2",
+        "poc-3",
+        "poc-4",
+        "poc-5",
+        "plan-1",
+        "plan-2",
+        "plan-3",
+        "plan-4",
+        "plan-5",
+        "build-1",
+        "build-2",
+        "build-3",
+        "build-4",
+        "build-5",
+        "build-6",
+        "build-7"
+    ],
+    "triggerCondition": {
+        "failureCount": 3,
+        "autoActivate": true
+    },
+    "outputFormats": [
+        "json",
+        "markdown"
+    ],
+    "dependencies": {
+        "node": ">=14.0.0"
+    },
+    "futureExtensions": [
+        "security-analyzer",
+        "performance-analyzer",
+        "llm-integration",
+        "rag-optimization"
+    ],
+    "usage": {
+        "import": "const { SimpleCodeReviewer } = require('./skills/code-reviewer');",
+        "example": "const reviewer = new SimpleCodeReviewer('build', '4');"
+    }
+}

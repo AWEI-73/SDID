@@ -1,0 +1,460 @@
+{
+    "version": "1.0.0",
+    "description": "Phase Registry - 單一真相來源，定義所有階段及其元資訊",
+    "POC": {
+        "steps": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+        ],
+        "prefix": "step",
+        "definitions": {
+            "1": {
+                "name": "Draft Generation",
+                "file": "step-1.cjs",
+                "description": "產生需求草稿",
+                "actions": [
+                    "Check requirement ambiguity",
+                    "Mark [NEEDS CLARIFICATION]"
+                ],
+                "requires": [],
+                "produces": [
+                    "requirement_draft"
+                ],
+                "checkFile": "poc/requirement_draft_{iteration}.md"
+            },
+            "2": {
+                "name": "Environment Check",
+                "file": "step-2.cjs",
+                "description": "環境檢查",
+                "actions": [
+                    "Verify project structure"
+                ],
+                "requires": [
+                    "requirement_draft"
+                ],
+                "produces": []
+            },
+            "3": {
+                "name": "Contract & POC",
+                "file": "step-3.cjs",
+                "description": "建立資料契約與 POC",
+                "actions": [
+                    "Design data contract",
+                    "Generate @GEMS-CONTRACT"
+                ],
+                "requires": [],
+                "produces": [
+                    "contract"
+                ],
+                "checkFile": "poc/*Contract.ts"
+            },
+            "4": {
+                "name": "POC Quality",
+                "file": "step-4.cjs",
+                "description": "POC 品質檢查",
+                "actions": [
+                    "Create UI prototype",
+                    "Generate POC.html"
+                ],
+                "requires": [
+                    "contract"
+                ],
+                "produces": [
+                    "poc_html"
+                ],
+                "checkFile": "poc/*POC.html"
+            },
+            "5": {
+                "name": "Spec Generation",
+                "file": "step-5.cjs",
+                "description": "產生需求規格",
+                "actions": [
+                    "Generate requirement spec",
+                    "Verify independent testability"
+                ],
+                "requires": [
+                    "poc_html"
+                ],
+                "produces": [
+                    "requirement_spec"
+                ],
+                "checkFile": "poc/requirement_spec_{iteration}.md"
+            }
+        }
+    },
+    "PLAN": {
+        "steps": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+        ],
+        "prefix": "step",
+        "definitions": {
+            "1": {
+                "name": "Story Picker",
+                "file": "step-1.cjs",
+                "description": "選擇 Story",
+                "actions": [
+                    "Requirement confirmation",
+                    "Ambiguity elimination"
+                ],
+                "requires": [
+                    "requirement_spec"
+                ],
+                "produces": []
+            },
+            "2": {
+                "name": "Implementation Plan",
+                "file": "step-2.cjs",
+                "description": "規格注入",
+                "actions": [
+                    "Spec injection",
+                    "Read POC output"
+                ],
+                "requires": [],
+                "produces": [
+                    "implementation_plan"
+                ],
+                "checkFile": "plan/implementation_plan_{story}.md"
+            },
+            "3": {
+                "name": "Architecture Audit v3.0",
+                "file": "step-3.cjs",
+                "description": "架構審查 + 風險自動校驗 + P0/P1 分佈警告",
+                "actions": [
+                    "Architecture audit",
+                    "Constitution Audit",
+                    "Risk level auto-validation (v3.0)",
+                    "P0/P1 distribution warning (v3.0)",
+                    "Test strategy linkage check (v3.0)"
+                ],
+                "requires": [
+                    "implementation_plan"
+                ],
+                "produces": [],
+                "riskValidation": {
+                    "externalDepsRequiresMedium": true,
+                    "deleteOperationsRequiresHigh": true,
+                    "paymentRequiresHighAndE2E": true
+                }
+            },
+            "4": {
+                "name": "Tag Specification",
+                "file": "step-4.cjs",
+                "description": "標籤規格設計",
+                "actions": [
+                    "Tag spec design",
+                    "GEMS v2.1"
+                ],
+                "requires": [],
+                "produces": []
+            },
+            "5": {
+                "name": "Plan Verification",
+                "file": "step-5.cjs",
+                "description": "Plan 驗證",
+                "actions": [
+                    "Generate implementation plan"
+                ],
+                "requires": [],
+                "produces": []
+            }
+        }
+    },
+    "BUILD": {
+        "phases": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
+        ],
+        "prefix": "phase",
+        "definitions": {
+            "1": {
+                "name": "開發腳本",
+                "file": "phase-1.cjs",
+                "description": "讀取 implementation plan，產出功能程式碼骨架",
+                "actions": [
+                    "Read implementation plan",
+                    "Generate dev script",
+                    "Write checkpoint"
+                ],
+                "requires": [
+                    "implementation_plan"
+                ],
+                "produces": [
+                    "source_code"
+                ]
+            },
+            "2": {
+                "name": "標籤驗收",
+                "file": "phase-2.cjs",
+                "description": "驗證 GEMS 標籤覆蓋率與 P0/P1 合規",
+                "actions": [
+                    "Scan GEMS tags",
+                    "Compare with Plan spec",
+                    "Check P0/P1 compliance"
+                ],
+                "requires": [
+                    "source_code"
+                ],
+                "produces": []
+            },
+            "3": {
+                "name": "測試腳本",
+                "file": "phase-3.cjs",
+                "description": "掃描 GEMS 標籤，檢查測試檔案是否存在",
+                "actions": [
+                    "Detect project type",
+                    "Check scaffold files",
+                    "Output missing files list"
+                ],
+                "requires": [
+                    "source_code"
+                ],
+                "produces": [
+                    "test_files"
+                ]
+            },
+            "4": {
+                "name": "Test Gate v3.0",
+                "file": "phase-4.cjs",
+                "description": "驗證測試檔案存在、import 正確、測試類型符合 Priority",
+                "actions": [
+                    "Verify GEMS-TEST-FILE exists",
+                    "Check test file imports tested function",
+                    "Verify P0 has E2E test (*.e2e.test.ts or cypress)",
+                    "Verify P1 has Integration test (*.integration.test.ts)",
+                    "Detect fake integration tests (>50% mock)"
+                ],
+                "requires": [
+                    "test_files"
+                ],
+                "produces": [],
+                "testTypeRules": {
+                    "P0": [
+                        "Unit",
+                        "Integration",
+                        "E2E"
+                    ],
+                    "P1": [
+                        "Unit",
+                        "Integration"
+                    ],
+                    "P2": [
+                        "Unit"
+                    ],
+                    "P3": []
+                }
+            },
+            "5": {
+                "name": "TDD 執行",
+                "file": "phase-5.cjs",
+                "description": "執行測試並產生 LOG",
+                "actions": [
+                    "Detect test environment",
+                    "Run npm test",
+                    "Verify 100% pass",
+                    "Save test log"
+                ],
+                "requires": [
+                    "test_files"
+                ],
+                "produces": [
+                    "test_results"
+                ]
+            },
+            "6": {
+                "name": "修改檔案測試",
+                "file": "phase-6.cjs",
+                "description": "驗證修改檔案的測試通過",
+                "actions": [
+                    "Confirm test pass"
+                ],
+                "requires": [
+                    "test_results"
+                ],
+                "produces": [],
+                "deprecated": true,
+                "deprecatedReason": "功能與 Phase 5 重複，可用 --pass 跳過",
+                "skipInLevels": [
+                    "S",
+                    "M"
+                ]
+            },
+            "7": {
+                "name": "整合檢查 v4.1",
+                "file": "phase-7.cjs",
+                "description": "檢查路由、UI Bind、模組匯出、依賴更新",
+                "actions": [
+                    "Check route integration (BLOCKER if unregistered)",
+                    "Validate @GEMS-UI-BIND consistency (Vanilla JS)",
+                    "Verify module exports",
+                    "Check dependency updates"
+                ],
+                "requires": [],
+                "produces": [],
+                "skipInLevels": [
+                    "S"
+                ],
+                "criticalChecks": {
+                    "routeIntegration": "BLOCKER",
+                    "uiBind": "WARNING",
+                    "moduleExports": "WARNING"
+                }
+            },
+            "8": {
+                "name": "完成規格",
+                "file": "phase-8.cjs",
+                "description": "產出 Fillback 與 Suggestions",
+                "actions": [
+                    "Scan source to generate Fillback",
+                    "Generate Suggestions JSON",
+                    "Clear checkpoints"
+                ],
+                "requires": [],
+                "produces": [
+                    "fillback",
+                    "suggestions"
+                ],
+                "checkFile": "build/Fillback_{story}.md"
+            }
+        }
+    },
+    "SCAN": {
+        "steps": [
+            "scan"
+        ],
+        "prefix": "",
+        "definitions": {
+            "scan": {
+                "name": "Full Scan",
+                "file": "scan.cjs",
+                "description": "完整專案掃描",
+                "actions": [
+                    "Scan all GEMS tags",
+                    "Generate functions.json",
+                    "Generate system-blueprint.json"
+                ],
+                "requires": [],
+                "produces": [
+                    "functions_json",
+                    "system_blueprint"
+                ]
+            }
+        }
+    },
+    "levelPhases": {
+        "S": [
+            "1",
+            "2",
+            "8"
+        ],
+        "M": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "7",
+            "8"
+        ],
+        "L": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
+        ]
+    },
+    "flowSequence": [
+        {
+            "phase": "POC",
+            "step": "1"
+        },
+        {
+            "phase": "POC",
+            "step": "2"
+        },
+        {
+            "phase": "POC",
+            "step": "3"
+        },
+        {
+            "phase": "POC",
+            "step": "4"
+        },
+        {
+            "phase": "POC",
+            "step": "5"
+        },
+        {
+            "phase": "PLAN",
+            "step": "1"
+        },
+        {
+            "phase": "PLAN",
+            "step": "2"
+        },
+        {
+            "phase": "PLAN",
+            "step": "3"
+        },
+        {
+            "phase": "PLAN",
+            "step": "4"
+        },
+        {
+            "phase": "PLAN",
+            "step": "5"
+        },
+        {
+            "phase": "BUILD",
+            "step": "1"
+        },
+        {
+            "phase": "BUILD",
+            "step": "2"
+        },
+        {
+            "phase": "BUILD",
+            "step": "3"
+        },
+        {
+            "phase": "BUILD",
+            "step": "4"
+        },
+        {
+            "phase": "BUILD",
+            "step": "5"
+        },
+        {
+            "phase": "BUILD",
+            "step": "6"
+        },
+        {
+            "phase": "BUILD",
+            "step": "7"
+        },
+        {
+            "phase": "BUILD",
+            "step": "8"
+        },
+        {
+            "phase": "SCAN",
+            "step": "scan"
+        }
+    ]
+}

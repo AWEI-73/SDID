@@ -1,19 +1,25 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 7: 整合檢查 v3.0
+ * BUILD Phase 7: 整合檢查 v5.2
  * 輸入: 完成的程式碼 | 產物: 整合項目確認 + checkpoint
+ * 
+ * v5.2 變更：
+ * - findNewComponents: 擴大掃描範圍，補掃 src/components/ 根層 + 遞迴任意深度
+ * - findOrphanComponents: 精確 import 偵測（PascalCase 轉換 + 5 種掛載模式）
+ * - 進入點擴大：加入 main.jsx / index.jsx / index.html (Vanilla JS)
+ * 
+ * v5.1 變更：
+ * - 孤兒 UI 組件檢查：無 Page 但有 Component 時，檢查是否掛載到 App.tsx (BLOCKER)
+ * 
+ * v5.0 變更：
+ * - 深度匯出驗證：Story 新增函式是否從 barrel export 匯出 (BLOCKER)
+ * 
+ * v4.1 變更：
+ * - UI Bind 驗證 (Vanilla JS 專案)
  * 
  * v3.0 變更：
  * - 關鍵問題（路由未整合）改為 BLOCKER，禁止 --pass 跳過
  * - 強化模組匯出檢查
- * 
- * 整合檢查清單 (integrationChecklist):
- * - packageJson: 新增工具腳本、第三方套件、npm scripts
- * - routes: 新增頁面元件、路由路徑
- * - moduleExports: 新增函式或類型、shared 模組
- * - dependencies: 新增第三方套件
- * 
- * 軍規 7: 完整執行 Phase 1-8，不可中途跳過
  */
 const fs = require('fs');
 const path = require('path');
@@ -78,18 +84,18 @@ function run(options) {
   // ============================================
   const isFrameworkProject = hasReactOrVue(target, srcPath);
   let uiBindResult = null;
-  
+
   if (!isFrameworkProject) {
     const htmlPath = path.join(target, 'index.html');
     uiBindResult = validateUIBind(target, srcPath, htmlPath);
-    
+
     if (!uiBindResult.skipped) {
       console.log(`[INFO] UI Bind 驗證: ${uiBindResult.stats.total} 個 binding | ✅ ${uiBindResult.stats.passed} | ❌ ${uiBindResult.stats.failed}`);
-      
+
       // 如果有 UI Bind 問題，輸出詳細報告
       if (!uiBindResult.valid) {
         const uiBindReport = formatUIBindResult(uiBindResult);
-        
+
         // 存檔到 logs
         const { saveLog } = require('../../lib/shared/log-output.cjs');
         saveLog({
@@ -101,7 +107,7 @@ function run(options) {
           type: 'ui-bind-error',
           content: uiBindReport
         });
-        
+
         console.log('');
         console.log(uiBindReport);
       }
@@ -114,7 +120,7 @@ function run(options) {
 
   // 檢查整合項目
   const checks = checkIntegrations(target, srcPath, iteration, story);
-  
+
   // v4.1: 加入 UI Bind 檢查結果
   if (uiBindResult && !uiBindResult.skipped && !uiBindResult.valid) {
     checks.push({
@@ -126,7 +132,7 @@ function run(options) {
       critical: false  // UI Bind 問題不是 BLOCKER，但需要修正
     });
   }
-  
+
   const needsAction = checks.filter(c => c.needsCheck && c.items.length > 0);
   const criticalIssues = checks.filter(c => c.critical && c.items.length > 0);
 
@@ -180,7 +186,7 @@ function run(options) {
   if (process.argv.includes('--pass') || needsAction.length === 0) {
     // v4.0: 可執行性預檢 - 提前警告 Phase 8 可能的問題
     const execWarnings = preflightExecutabilityCheck(target);
-    
+
     writeCheckpoint(target, iteration, story, '7', {
       verdict: 'PASS',
       checks: checks.map(c => ({ name: c.name, checked: c.needsCheck })),
@@ -193,7 +199,7 @@ function run(options) {
     });
 
     const checkSummary = checks.map(c => `${c.name}: ${c.needsCheck ? 'OK' : '跳過'}`).join(' | ');
-    const execNote = execWarnings.length > 0 
+    const execNote = execWarnings.length > 0
       ? `\n⚠️ Phase 8 預警: ${execWarnings.join('; ')}`
       : '';
     const uiBindNote = uiBindResult && !uiBindResult.skipped
@@ -250,6 +256,12 @@ function checkIntegrations(target, srcPath, iteration, story) {
     : [];
   const allExportIssues = [...structuralExportIssues, ...unexportedFunctions];
 
+  // v5.1: 孤兒 UI 組件檢查 (如果沒有 Page，但有新增 Component，檢查是否掛載到 App.tsx)
+  const allComponents = findNewComponents(srcPath);
+  const orphanComponents = (allPages.length === 0 && allComponents.length > 0)
+    ? findOrphanComponents(target, srcPath, allComponents)
+    : [];
+
   const checks = [
     {
       name: 'package.json',
@@ -282,6 +294,15 @@ function checkIntegrations(target, srcPath, iteration, story) {
       check: ['package.json', 'package-lock.json'],
       needsCheck: fs.existsSync(path.join(target, 'package.json')),
       items: []
+    },
+    {
+      name: 'UI 組件掛載 (孤兒檢查)',
+      when: ['無專屬路由頁面，但新增了 UI 元件'],
+      check: ['App.tsx', 'main.tsx'],
+      needsCheck: allPages.length === 0 && allComponents.length > 0,
+      items: orphanComponents,
+      // 這是確保使用者看得到畫面的關鍵
+      critical: orphanComponents.length > 0
     }
   ];
 
@@ -535,7 +556,7 @@ function hasReactOrVue(target, srcPath) {
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
-      
+
       // React 或 Vue 相關套件
       const frameworkPackages = ['react', 'react-dom', 'vue', '@vue/cli', 'next', 'nuxt'];
       if (frameworkPackages.some(p => allDeps[p])) {
@@ -545,7 +566,7 @@ function hasReactOrVue(target, srcPath) {
       // 忽略 JSON 解析錯誤
     }
   }
-  
+
   // 2. 檢查是否有 JSX/TSX 檔案（React 特徵）
   if (fs.existsSync(srcPath)) {
     const files = fs.readdirSync(srcPath, { recursive: true });
@@ -553,13 +574,13 @@ function hasReactOrVue(target, srcPath) {
       return true;
     }
   }
-  
+
   // 3. 檢查 App.tsx/App.jsx 是否存在
   const appFiles = ['App.tsx', 'App.jsx', 'App.vue'];
   if (appFiles.some(f => fs.existsSync(path.join(srcPath, f)))) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -574,8 +595,8 @@ function preflightExecutabilityCheck(target) {
   const srcPath = path.join(target, 'src');
 
   // 1. 檢查入口點
-  const hasIndexHtml = fs.existsSync(path.join(target, 'index.html')) || 
-                       fs.existsSync(path.join(target, 'public', 'index.html'));
+  const hasIndexHtml = fs.existsSync(path.join(target, 'index.html')) ||
+    fs.existsSync(path.join(target, 'public', 'index.html'));
   const hasMain = ['main.ts', 'main.tsx', 'main.js', 'index.ts', 'index.tsx', 'index.js']
     .some(f => fs.existsSync(path.join(srcPath, f)));
 
@@ -603,7 +624,7 @@ function preflightExecutabilityCheck(target) {
   // 3. 檢查 bundler
   const hasBundler = ['vite.config.ts', 'vite.config.js', 'webpack.config.js']
     .some(f => fs.existsSync(path.join(target, f)));
-  
+
   // 如果有 TS 檔案但沒有 bundler，警告
   if (!hasBundler && fs.existsSync(srcPath)) {
     const hasTsFiles = fs.readdirSync(srcPath).some(f => /\.tsx?$/.test(f));
@@ -613,6 +634,113 @@ function preflightExecutabilityCheck(target) {
   }
 
   return warnings;
+}
+
+/**
+ * v5.2: 尋找新增的 UI Components
+ * 擴大掃描範圍：src/components/ + shared/components/ + modules/[mod]/components/ + 任意深度
+ */
+function findNewComponents(srcPath) {
+  const components = [];
+
+  // 遞迴掃描所有 components 目錄（任意深度）
+  function scanDir(dir, relBase) {
+    if (!fs.existsSync(dir)) return;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        // 跳過 __tests__ 和 node_modules
+        if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
+        scanDir(path.join(dir, entry.name), `${relBase}/${entry.name}`);
+      } else if (/\.(tsx|jsx)$/.test(entry.name)) {
+        components.push(`${relBase}/${entry.name}`);
+      }
+    }
+  }
+
+  // 1. src/components/ (根層，AI 最常放這裡)
+  scanDir(path.join(srcPath, 'components'), 'components');
+
+  // 2. src/shared/components/
+  scanDir(path.join(srcPath, 'shared', 'components'), 'shared/components');
+
+  // 3. src/modules/*/components/ (任意深度)
+  const modulesDir = path.join(srcPath, 'modules');
+  if (fs.existsSync(modulesDir)) {
+    const modules = fs.readdirSync(modulesDir, { withFileTypes: true });
+    for (const mod of modules) {
+      if (mod.isDirectory()) {
+        scanDir(path.join(modulesDir, mod.name, 'components'), `modules/${mod.name}/components`);
+      }
+    }
+  }
+
+  return components;
+}
+
+/**
+ * v5.2: 檢查 UI Components 是否有任何被匯入到主要進入點
+ * 擴大進入點範圍，改用精確 import 偵測取代模糊字串比對
+ */
+function findOrphanComponents(target, srcPath, components) {
+  if (components.length === 0) return [];
+
+  const entryFiles = [
+    path.join(srcPath, 'App.tsx'),
+    path.join(srcPath, 'App.jsx'),
+    path.join(srcPath, 'main.tsx'),
+    path.join(srcPath, 'main.jsx'),
+    path.join(srcPath, 'main.js'),
+    path.join(srcPath, 'index.tsx'),
+    path.join(srcPath, 'index.jsx'),
+    path.join(srcPath, 'index.js'),
+    // 根目錄的 index.html (Vanilla JS 直接 script 引用)
+    path.join(target, 'index.html')
+  ];
+
+  let entryContent = '';
+  const foundEntries = [];
+  for (const ef of entryFiles) {
+    if (fs.existsSync(ef)) {
+      entryContent += fs.readFileSync(ef, 'utf8') + '\n';
+      foundEntries.push(path.basename(ef));
+    }
+  }
+
+  if (!entryContent) {
+    return ['找不到任何進入點 (App.tsx / main.tsx / index.html)，無法確認 UI 掛載'];
+  }
+
+  // 對每個 component 做精確偵測
+  const orphans = [];
+  for (const comp of components) {
+    const compName = comp.replace(/\.(tsx|jsx)$/, '').split('/').pop();
+    // PascalCase 轉換 (timer-display → TimerDisplay)
+    const pascal = compName
+      .replace(/-./g, x => x[1].toUpperCase())
+      .replace(/^./, x => x.toUpperCase());
+
+    // 偵測各種掛載方式：
+    // 1. import TimerDisplay from '...'
+    // 2. import { TimerDisplay } from '...'
+    // 3. <TimerDisplay ... />
+    // 4. React.createElement(TimerDisplay, ...)
+    // 5. Vanilla: <script src="...timer-display...">
+    const patterns = [
+      new RegExp(`import\\s+${pascal}\\s+from`, 'i'),
+      new RegExp(`import\\s*\\{[^}]*\\b${pascal}\\b[^}]*\\}`, 'i'),
+      new RegExp(`<${pascal}[\\s/>]`),
+      new RegExp(`createElement\\s*\\(\\s*${pascal}`),
+      new RegExp(`src=["'][^"']*${compName}["']`, 'i'),
+    ];
+
+    const isMounted = patterns.some(p => p.test(entryContent));
+    if (!isMounted) {
+      orphans.push(`${comp} (未在 ${foundEntries.join('/')} 中發現掛載)`);
+    }
+  }
+
+  return orphans;
 }
 
 // 自我執行判斷

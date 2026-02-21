@@ -6,6 +6,7 @@ v_output.txt
 # ── GEMS 執行產物（各專案自己的 .gems 不應進 repo）──
 .gems/
 .task-pipe/
+task-pipe/.gems/
 
 # ── 練習 / 使用者專案（本地保留，不上 GitHub）──────
 bookmark-app/

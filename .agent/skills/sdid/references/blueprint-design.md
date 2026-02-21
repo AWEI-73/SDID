@@ -47,6 +47,7 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 ### Round 5: 動作細化
 - MUST: 列出每個模組的具體動作，問使用者確認
 - ALLOWED-READ: [action-type-mapping.md](action-type-mapping.md)
+- ⚠️ 關鍵體驗規則: 如果專案包含前端 UI，**必須**在適當的模組中加入至少一個 `ROUTE` (頁面) 類型的動作（例如 `AppRoute`、`MainPage`）。這樣後續的 BUILD Phase 7 整合檢查才能自動觸發「自動路由串接」與「畫面整合」驗證，避免使用者最後看不到畫面。
 - 用 P0-P3 標記優先級
 - 用 `→` 描述資料流向
 - EXIT: 使用者確認 → 組裝 Enhanced Draft

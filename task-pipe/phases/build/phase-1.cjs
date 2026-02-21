@@ -134,10 +134,69 @@ mkdir -p ${planPath}
   const storyContext = getStoryContext(planFile);
   const planSpecsBlock = generatePlanSpecsBlock(planSpec, manifest, story);
 
-  // 判斷是 X.0 還是 X.1+
+  // 判斷是 Story-1.0 還是後續模組
   const storyMatch = story.match(/Story-(\d+)\.(\d+)/);
+  const storyX = storyMatch ? parseInt(storyMatch[1]) : 1;
   const storyY = storyMatch ? parseInt(storyMatch[2]) : 0;
-  const isFoundation = storyY === 0;
+  const isFoundation = storyX === 1 && storyY === 0;
+
+  // ========================================
+  // 🔍 VSC 垂直切片完整性檢查 (v1.0)
+  // Task-Pipe 版本：從 Plan 函式清單掃描類型
+  // Feature Story (X.Y, Y > 0) 必須有 ROUTE 類型
+  // ========================================
+  if (!isFoundation) {
+    // 從 manifest 的函式清單中，取得所有動作類型
+    const allTypes = new Set(
+      (manifest || []).map(fn => (fn.type || fn.actionType || '').toUpperCase())
+    );
+
+    // 也從 Plan 內容掃描 GEMS-FLOW 或 type 欄位
+    const planContent = fs.readFileSync(planFile, 'utf8');
+    const typeMatches = planContent.match(/\|\s*(ROUTE|SVC|API|HOOK|UI|DATA|CONST)\s*\|/gi) || [];
+    typeMatches.forEach(m => {
+      const t = m.replace(/\|/g, '').trim().toUpperCase();
+      allTypes.add(t);
+    });
+
+    const missingVSC = [];
+    if (!allTypes.has('ROUTE')) {
+      missingVSC.push('ROUTE (使用者進入點 — 路由路徑或頁面元件)');
+    }
+    if (!allTypes.has('SVC') && !allTypes.has('API')) {
+      missingVSC.push('SVC 或 API (業務邏輯層)');
+    }
+    const hasFrontend = allTypes.has('UI') || allTypes.has('HOOK');
+    if (hasFrontend && !allTypes.has('UI')) {
+      missingVSC.push('UI (前端展示層)');
+    }
+
+    if (missingVSC.length > 0) {
+      emitBlock({
+        scope: `BUILD Phase 1 | ${story}`,
+        summary: `垂直切片不完整 (VSC-002): 缺少 ${missingVSC.join(' | ')}`,
+        detail: [
+          '每個 Feature Story 必須包含完整的垂直切片，使用者才能實際看到並使用該功能。',
+          '請在 implementation_plan 中補充缺少的層次動作：',
+          ...missingVSC.map(m => `  - ${m}`),
+          '',
+          '範例：在動作表格加入 | 頁面路由 | ROUTE | TimerPage | P1 | LOAD→RENDER→BIND |'
+        ].join('\n'),
+        nextCmd: `修正 implementation_plan_${story}.md 後重跑: node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${relativeTarget}`
+      }, {
+        projectRoot: target,
+        iteration: parseInt(iteration.replace('iter-', '')),
+        phase: 'build',
+        step: 'phase-1',
+        story
+      });
+      return { verdict: 'BLOCKER', reason: 'vsc_incomplete', missing: missingVSC };
+    }
+    console.log('✅ VSC 垂直切片完整性通過');
+  }
+  // ========================================
+  // VSC 檢查結束
+  // ========================================
 
   // v2.0: 前端規格 block（提前宣告避免 TDZ）
   let frontendSpecsBlock = '';
@@ -815,7 +874,7 @@ function validateModule0Structure(target, srcDir, projectType) {
  */
 function detectExtraFiles(srcDir, manifest, extensions) {
   const extraFiles = [];
-  
+
   // 收集 Plan 定義的檔案路徑（正規化）
   const plannedPaths = new Set();
   for (const fn of manifest.functions) {
@@ -825,39 +884,39 @@ function detectExtraFiles(srcDir, manifest, extensions) {
       plannedPaths.add(norm);
     }
   }
-  
+
   // 如果 Plan 沒有定義任何檔案路徑，跳過檢查（避免誤判）
   if (plannedPaths.size === 0) return extraFiles;
-  
+
   // 掃描 src/shared/ 和 src/config/ 下的檔案
   const checkDirs = ['shared', 'config'].map(d => path.join(srcDir, d));
-  
+
   for (const dir of checkDirs) {
     if (!fs.existsSync(dir)) continue;
     const files = findSourceFilesFlat(dir, extensions);
-    
+
     for (const file of files) {
       // 取得相對於專案根目錄的路徑
       const projectRoot = path.dirname(srcDir);
       const relPath = path.relative(projectRoot, file).replace(/\\/g, '/');
-      
+
       // 跳過測試檔案
       if (relPath.includes('__tests__') || relPath.includes('.test.') || relPath.includes('.spec.')) continue;
-      
+
       // 檢查是否在 Plan 定義中
       if (!plannedPaths.has(relPath)) {
         // 額外容忍：如果是目錄的 index.ts 且該目錄有 Plan 定義的檔案，允許
         const dirOfFile = path.dirname(relPath);
         const isBarrelExport = path.basename(file).match(/^index\.(ts|js|tsx|jsx)$/);
         const dirHasPlannedFiles = [...plannedPaths].some(p => p.startsWith(dirOfFile + '/'));
-        
+
         if (isBarrelExport && dirHasPlannedFiles) continue; // 允許 barrel export
-        
+
         extraFiles.push(file);
       }
     }
   }
-  
+
   return extraFiles;
 }
 

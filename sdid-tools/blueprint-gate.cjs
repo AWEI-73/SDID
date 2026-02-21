@@ -724,6 +724,69 @@ function checkAPISignatureCompleteness(draft, targetIter) {
   return issues;
 }
 
+/**
+ * 18. 垂直切片完整性 (VSC) v1.0
+ * 
+ * 每個非 Foundation 的模組 (Story X.1+) 必須同時包含完整的垂直層次。
+ * 不能只有技術零件卻沒有路由 — 否則 MVP 跑完使用者看不到東西。
+ * 
+ * Foundation (X.0) 規則：建議有 ROUTE (App 骨架路由殼)
+ * Feature (X.1+) 規則：
+ *   - 必須有 ROUTE (使用者如何進入)
+ *   - 必須有 SVC 或 API (業務邏輯)
+ *   - 如果有 HOOK/UI，必須有 UI (前端展示)
+ */
+function checkVerticalSliceCompleteness(draft, targetIter) {
+  const issues = [];
+
+  const isFoundationModule = (name) => {
+    const lower = name.toLowerCase();
+    return lower === 'shared' || lower.includes('foundation') || lower.includes('infra') || lower.includes('config');
+  };
+
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+    if (mod.iter !== targetIter) continue;
+
+    const items = mod.items || [];
+    const types = new Set(items.map(i => (i.type || '').toUpperCase()));
+    const prefix = `[${modName}]`;
+
+    if (isFoundationModule(modName)) {
+      // Foundation 模組：建議有 App 骨架路由殼 (WARN 不是 BLOCKER)
+      if (!types.has('ROUTE') && !types.has('APP') && items.length > 0) {
+        issues.push({
+          level: 'WARN', code: 'VSC-001',
+          msg: `${prefix} Foundation 模組建議加入 ROUTE 類型的 App 骨架動作，確保路由殼可啟動`
+        });
+      }
+    } else {
+      // 功能模組 (X.1+)：必須有完整垂直切片層
+      const missingLayers = [];
+
+      if (!types.has('ROUTE')) {
+        missingLayers.push('ROUTE (使用者進入點，如 /timer 路徑或 AppRoute)');
+      }
+      if (!types.has('SVC') && !types.has('API')) {
+        missingLayers.push('SVC 或 API (業務邏輯層)');
+      }
+      const hasFrontend = types.has('HOOK') || types.has('UI') || types.has('ROUTE');
+      if (hasFrontend && !types.has('UI')) {
+        missingLayers.push('UI (前端展示層)');
+      }
+
+      if (missingLayers.length > 0) {
+        issues.push({
+          level: 'BLOCKER', code: 'VSC-002',
+          msg: `${prefix} 功能模組缺少垂直切片層次: ${missingLayers.join(' | ')} — 每個 Story 必須可被使用者實際使用`
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
 // ============================================
 // 報告生成
 // ============================================
@@ -943,6 +1006,7 @@ Blueprint Gate v1.1 - 活藍圖品質門控
     ...checkEvolutionLayers(draft),
     ...checkDepsConsistency(draft, args.iter),
     ...checkIterModuleLoad(draft),
+    ...checkVerticalSliceCompleteness(draft, args.iter),
   ];
 
   // 生成報告
@@ -971,6 +1035,7 @@ module.exports = {
   checkEvolutionLayers,
   checkDepsConsistency,
   checkIterModuleLoad,
+  checkVerticalSliceCompleteness,
   getFixGuidance,
 };
 

@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEMS Spec Visualizer V3 | Premium</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&family=Inter:wght@300;400;600&family=Fira+Code:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0B0F19', // Deepest background
+                            800: '#151b2b', // Sidebar
+                            700: '#1f2937', // Card bg
+                        },
+                        glass: {
+                            100: 'rgba(255, 255, 255, 0.03)',
+                            200: 'rgba(255, 255, 255, 0.07)',
+                            border: 'rgba(255, 255, 255, 0.08)'
+                        },
+                        brand: {
+                            cyan: '#06b6d4',
+                            purple: '#8b5cf6',
+                            glow: 'rgba(6, 182, 212, 0.5)'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+                        'slide-up': 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0B0F19;
+            background-image:
+                radial-gradient(circle at 0% 0%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(6, 182, 212, 0.1) 0%, transparent 50%);
+            color: #e2e8f0;
+        }
+
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: var(--glass-100);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .glass-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.4) 0%, rgba(30, 41, 59, 0.1) 100%);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(6, 182, 212, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px -10px rgba(6, 182, 212, 0.2);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 99px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Navigation Active State */
+        .nav-link.active {
+            background: linear-gradient(90deg, rgba(6, 182, 212, 0.15) 0%, transparent 100%);
+            border-left: 3px solid #06b6d4;
+            color: #fff;
+        }
+
+        /* Mermaid Overrides */
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Typography Highlights */
+        .text-gradient {
+            background: linear-gradient(to right, #22d3ee, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+
+<body class="h-screen flex text-sm overflow-hidden font-sans selection:bg-brand-cyan selection:text-white">
+
+    <!-- Sidebar -->
+    <aside class="w-72 bg-dark-900 border-r border-glass-border flex flex-col z-20">
+        <div class="p-8 pb-4">
+            <h1 class="font-display font-bold text-2xl tracking-tight text-white flex items-center gap-3">
+                <div
+                    class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-cyan to-brand-purple flex items-center justify-center shadow-lg shadow-brand-glow/20">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
+                        </path>
+                    </svg>
+                </div>
+                GEMS Spec
+            </h1>
+            <p class="text-xs text-gray-500 mt-2 font-mono ml-11">v2.1 Visualizer</p>
+        </div>
+
+        <nav class="flex-1 px-4 py-6 space-y-8 overflow-y-auto">
+            <!-- Group 1 -->
+            <div class="space-y-2">
+                <div class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider font-display">
+                    Foundation
+                </div>
+                <a href="#" onclick="switchTab('dashboard')"
+                    class="nav-link active group flex items-center px-4 py-3 text-gray-400 hover:text-white rounded-lg transition-all duration-200">
+                    <span
+                        class="mr-3 opacity-70 group-hover:opacity-100 group-hover:text-brand-cyan transition-colors">🏠</span>
+                    <span class="font-medium">總覽儀表板 (Dashboard)</span>
+                </a>
+                <a href="#" onclick="switchTab('data')"
+                    class="nav-link group flex items-center px-4 py-3 text-gray-400 hover:text-white rounded-lg transition-all duration-200">
+                    <span
+                        class="mr-3 opacity-70 group-hover:opacity-100 group-hover:text-brand-purple transition-colors">🗄️</span>
+                    <span class="font-medium">資料結構 (Data Model)</span>
+                </a>
+            </div>
+
+            <!-- Group 2 -->
+            <div class="space-y-2">
+                <div class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider font-display">
+                    Blueprint
+                </div>
+                <a href="#" onclick="switchTab('modules')"
+                    class="nav-link group flex items-center px-4 py-3 text-gray-400 hover:text-white rounded-lg transition-all duration-200">
+                    <span
+                        class="mr-3 opacity-70 group-hover:opacity-100 group-hover:text-brand-cyan transition-colors">🧩</span>
+                    <span class="font-medium">模組詳情 (Modules)</span>
+                </a>
+                <a href="#" onclick="switchTab('stories')"
+                    class="nav-link group flex items-center px-4 py-3 text-gray-400 hover:text-white rounded-lg transition-all duration-200">
+                    <span
+                        class="mr-3 opacity-70 group-hover:opacity-100 group-hover:text-brand-purple transition-colors">🔗</span>
+                    <span class="font-medium">故事動線 (Story Flow)</span>
+                </a>
+            </div>
+        </nav>
+
+        <div class="p-4 border-t border-glass-border">
+            <div class="glass-card p-4 rounded-xl flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs">👤</div>
+                <div>
+                    <div class="text-xs font-bold text-white">Guest User</div>
+                    <div class="text-[10px] text-brand-cyan">Viewing Mode</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto relative scroll-smooth bg-dark-900/50">
+        <!-- Floating Header Effect -->
+        <div
+            class="sticky top-0 z-10 backdrop-blur-md bg-dark-900/80 border-b border-glass-border px-8 py-4 flex justify-between items-center">
+            <h2 id="page-title" class="text-lg font-display font-semibold text-white">總覽儀表板</h2>
+            <div class="flex gap-3">
+                <span
+                    class="px-3 py-1 rounded-full text-xs font-medium bg-brand-cyan/10 text-brand-cyan border border-brand-cyan/20">Latest
+                    Scan: Just now</span>
+            </div>
+        </div>
+
+        <div class="p-8 max-w-7xl mx-auto space-y-12 pb-20">
+
+            <!-- SECTION: Dashboard -->
+            <div id="tab-dashboard" class="content-tab animate-fade-in space-y-8">
+                <!-- Hero Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="glass-card p-6 rounded-2xl relative overflow-hidden group">
+                        <div
+                            class="absolute -right-4 -top-4 w-24 h-24 bg-brand-cyan/10 rounded-full blur-2xl group-hover:bg-brand-cyan/20 transition-all">
+                        </div>
+                        <div class="text-gray-400 text-xs font-bold tracking-wider uppercase mb-1">Total Functions</div>
+                        <div class="text-4xl font-display font-bold text-white mb-2">114</div>
+                        <div class="text-xs text-brand-cyan flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-brand-cyan animate-pulse"></span>
+                            100% GEMS Covered
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-6 rounded-2xl relative overflow-hidden group">
+                        <div
+                            class="absolute -right-4 -top-4 w-24 h-24 bg-brand-purple/10 rounded-full blur-2xl group-hover:bg-brand-purple/20 transition-all">
+                        </div>
+                        <div class="text-gray-400 text-xs font-bold tracking-wider uppercase mb-1">Core Modules</div>
+                        <div class="text-4xl font-display font-bold text-white mb-2">4</div>
+                        <div class="text-xs text-brand-purple">Core, Scan, Viz, Shared</div>
+                    </div>
+
+                    <div
+                        class="glass-card p-6 rounded-2xl relative overflow-hidden group col-span-2 flex flex-col justify-center">
+                        <div class="text-gray-400 text-xs font-bold tracking-wider uppercase mb-3">Project Tech Stack
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <span
+                                class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs hover:bg-white/10 transition-colors cursor-default">Next.js
+                                14</span>
+                            <span
+                                class="px-3 py-1.5 rounded-lg bg-[#3178c6]/10 border border-[#3178c6]/30 text-[#3178c6] text-xs hover:bg-[#3178c6]/20 transition-colors cursor-default">TypeScript</span>
+                            <span
+                                class="px-3 py-1.5 rounded-lg bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 text-[#3ecf8e] text-xs hover:bg-[#3ecf8e]/20 transition-colors cursor-default">Supabase</span>
+                            <span
+                                class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs hover:bg-white/10 transition-colors cursor-default">Tailwind</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Visualization Block -->
+                <div class="glass-card rounded-2xl p-8 border-t-4 border-brand-cyan">
+                    <h3 class="text-xl font-display font-bold text-white mb-6 flex items-center gap-2">
+                        <span>🏗️</span>
+                        <span class="text-gradient">Architectural Overview</span>
+                    </h3>
+                    <div class="mermaid text-center">
+                        graph TD
+                        Client([💻 Client UI])
+                        subgraph "Control Tower"
+                        API[Gateway API]
+                        Core[🧠 Core Engine]
+                        Scan[🔍 Scanner]
+                        Viz[🎨 Visualizer]
+                        end
+                        DB[(🗄️ Database)]
+
+                        Client --> API
+                        API --> Core
+                        Core --> Scan
+                        Core --> Viz
+                        Scan --> DB
+                        Viz --> DB
+
+                        classDef default fill:#1e293b,stroke:#334155,stroke-width:2px,color:#fff;
+                        classDef accent fill:#0e7490,stroke:#22d3ee,stroke-width:2px,color:#fff;
+                        class Core,Scan,Viz accent
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Modules -->
+            <div id="tab-modules" class="content-tab hidden animate-slide-up space-y-8">
+                <!-- Core Module -->
+                <div class="space-y-6">
+                    <div class="flex items-center gap-4">
+                        <h3 class="text-2xl font-display font-bold text-white">Core Module</h3>
+                        <div class="h-px flex-1 bg-gradient-to-r from-white/20 to-transparent"></div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- File Card -->
+                        <div class="glass-card p-6 rounded-2xl group hover:border-brand-cyan/50">
+                            <div class="flex justify-between items-start mb-6">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 rounded-lg bg-blue-500/10 text-blue-400 font-mono text-lg">TS</div>
+                                    <div>
+                                        <div
+                                            class="font-mono text-base text-white font-bold group-hover:text-brand-cyan transition-colors">
+                                            report-reader.ts</div>
+                                        <div class="text-xs text-gray-500">src/modules/core</div>
+                                    </div>
+                                </div>
+                                <span
+                                    class="px-2 py-1 rounded text-[10px] font-bold bg-white/5 text-gray-400 border border-white/10">UTILITY</span>
+                            </div>
+
+                            <div class="space-y-4">
+                                <!-- Function Item -->
+                                <div
+                                    class="p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="font-bold text-white text-sm">readReportFile</span>
+                                        <span
+                                            class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">P0
+                                            • CRITICAL</span>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mb-3 line-clamp-2">Reads and parses the JSON report
+                                        file from the specified directory with error handling.</p>
+                                    <div class="flex items-center gap-2 text-[10px] text-gray-500 font-mono">
+                                        <span class="text-brand-cyan">FLOW:</span>
+                                        <span>Read</span>
+                                        <span class="text-gray-700">→</span>
+                                        <span>Parse</span>
+                                        <span class="text-gray-700">→</span>
+                                        <span>Validate</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- File Card -->
+                        <div class="glass-card p-6 rounded-2xl group hover:border-brand-purple/50">
+                            <div class="flex justify-between items-start mb-6">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 rounded-lg bg-purple-500/10 text-purple-400 font-mono text-lg">TS
+                                    </div>
+                                    <div>
+                                        <div
+                                            class="font-mono text-base text-white font-bold group-hover:text-brand-purple transition-colors">
+                                            status-detector.ts</div>
+                                        <div class="text-xs text-gray-500">src/modules/core</div>
+                                    </div>
+                                </div>
+                                <span
+                                    class="px-2 py-1 rounded text-[10px] font-bold bg-white/5 text-gray-400 border border-white/10">LOGIC</span>
+                            </div>
+
+                            <div class="space-y-4">
+                                <!-- Function Item -->
+                                <div
+                                    class="p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="font-bold text-white text-sm">checkNodeStatus</span>
+                                        <span
+                                            class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30">P2
+                                            • NORMAL</span>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mb-3">Determines the current status of a node based
+                                        on report data.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Data Model -->
+            <div id="tab-data" class="content-tab hidden animate-fade-in space-y-8">
+                <div class="glass-card rounded-2xl p-8">
+                    <h3 class="text-xl font-display font-bold text-white mb-6">Database Schema (ERD)</h3>
+                    <div class="mermaid text-center">
+                        erDiagram
+                        PROJECT ||--|{ ITERATION : contains
+                        ITERATION ||--o{ TASK : has
+
+                        PROJECT {
+                        string id PK
+                        string name
+                        string status
+                        }
+                        ITERATION {
+                        string id PK
+                        string project_id FK
+                        int number
+                        string start_date
+                        }
+                        TASK {
+                        string id PK
+                        string iter_id FK
+                        string title
+                        string priority
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Story Flow -->
+            <div id="tab-stories" class="content-tab hidden animate-fade-in space-y-8">
+                <!-- Explanation Card -->
+                <div class="glass-card p-8 rounded-2xl">
+                    <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <span>🔗</span> 什麼是故事動線 (Story Flow)?
+                    </h3>
+                    <p class="text-gray-400 mb-6 leading-relaxed">
+                        一般的專案瀏覽是「檔案式」(File-based) 的，你只看到檔案樹。
+                        <br>
+                        <strong>Story Flow</strong> 則是「業務式」(Feature-based) 的。掃描器會根據 <code>@GEMS-STORY</code>
+                        標籤，將散落在不同資料夾的前端、後端、資料庫自動串聯起來。
+                    </p>
+
+                    <!-- Story Demo Visualization -->
+                    <div class="p-6 bg-dark-900/50 rounded-xl border border-white/5">
+                        <div class="text-xs font-bold text-brand-cyan mb-4 uppercase tracking-wider">Demo: Story-2.0
+                            (庫存盤點)</div>
+                        <div class="mermaid">
+                            graph LR
+                            User((盤點人員)) --> UI[📱 前端 UI<br />(InventoryPOC.tsx)]
+
+                            subgraph "Story-2.0 Inventory Context"
+                            UI -- "@Contract" --> Contract{📃 介面契約<br />(InventoryItem)}
+                            Contract -- "API Call" --> Svc[⚙️ 後端邏輯<br />(InventoryService.ts)]
+                            Svc -- "CRUD" --> DB[(🗄️ 資料表<br />tbl_inventory)]
+                            end
+
+                            style UI fill:#1e293b,stroke:#22d3ee,stroke-width:2px,color:#fff
+                            style Contract fill:#1e293b,stroke:#a855f7,stroke-dasharray: 5 5,color:#fff
+                            style Svc fill:#1e293b,stroke:#22d3ee,stroke-width:2px,color:#fff
+                            style DB fill:#1e293b,stroke:#fff,stroke-width:2px,color:#fff
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metric Card -->
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="glass-card p-6 rounded-2xl">
+                        <div class="text-gray-500 text-xs font-bold uppercase mb-2">涵蓋的故事 (Active Stories)</div>
+                        <div class="text-3xl font-display font-bold text-white">12</div>
+                        <div class="text-xs text-green-400 mt-1">Found in codebase</div>
+                    </div>
+                    <div class="glass-card p-6 rounded-2xl">
+                        <div class="text-gray-500 text-xs font-bold uppercase mb-2">孤兒檔案 (Orphan Files)</div>
+                        <div class="text-3xl font-display font-bold text-white">3</div>
+                        <div class="text-xs text-red-400 mt-1">No Story Tag detected</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // Mermaid Init
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            fontFamily: 'Inter',
+            themeVariables: {
+                darkMode: true,
+                background: '#1e293b',
+                primaryColor: '#0e7490',
+                secondaryColor: '#7c3aed',
+                primaryTextColor: '#fff',
+                lineColor: '#94a3b8'
+            }
+        });
+
+        // Tab Switching Logic
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.content-tab').forEach(el => {
+                el.classList.add('hidden');
+            });
+
+            // Remove active state from nav
+            document.querySelectorAll('.nav-link').forEach(el => {
+                el.classList.remove('active', 'border-l-3', 'border-[#06b6d4]');
+                el.classList.add('text-gray-400');
+                el.querySelector('span:first-child')?.classList.remove('opacity-100');
+            });
+
+            // Show selected tab
+            const target = document.getElementById('tab-' + tabName);
+            if (target) {
+                target.classList.remove('hidden');
+                target.classList.add('animate-fade-in');
+            }
+
+            // Set active nav
+            // (Simple logic for demo, usually by ID or dataset)
+            // This just finds the click event target's closest 'a'
+            const activeLink = event.currentTarget;
+            activeLink.classList.add('active');
+            activeLink.classList.remove('text-gray-400');
+
+            // Update Title
+            const titles = {
+                'dashboard': '總覽儀表板',
+                'data': '資料結構',
+                'modules': '模組詳情',
+                'stories': '故事動線'
+            };
+            document.getElementById('page-title').innerText = titles[tabName] || 'GEMS Spec';
+        }
+    </script>
+</body>
+
+</html>

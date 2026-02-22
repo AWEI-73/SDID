@@ -1,0 +1,45 @@
+{
+  "modules": [],
+  "routes": [
+    "modules\\flow-tools\\api\\buildRoutes.ts",
+    "modules\\flow-tools\\api\\planRoutes.ts",
+    "modules\\flow-tools\\api\\pocRoutes.ts"
+  ],
+  "services": [
+    "modules\\dashboard\\services\\backupService.ts",
+    "modules\\dashboard\\services\\fileService.ts",
+    "modules\\dashboard\\services\\projectService.ts",
+    "modules\\dashboard\\services\\promptService.ts",
+    "modules\\dashboard\\services\\toolService.ts",
+    "modules\\flow-tools\\services\\buildService.ts",
+    "modules\\flow-tools\\services\\planService.ts",
+    "modules\\flow-tools\\services\\pocService.ts"
+  ],
+  "tests": [
+    "modules\\core\\__tests__\\fillback-scanner.test.ts",
+    "modules\\core\\__tests__\\report-reader.test.ts",
+    "modules\\core\\__tests__\\runner.test.ts",
+    "modules\\core\\__tests__\\server.test.ts",
+    "modules\\core\\__tests__\\status-detector.test.ts",
+    "modules\\dashboard\\services\\__tests__\\backupService.test.ts",
+    "modules\\dashboard\\services\\__tests__\\projectService.test.ts",
+    "modules\\dashboard\\services\\__tests__\\promptService.test.ts",
+    "modules\\dashboard\\__tests__\\backupService.test.ts",
+    "modules\\dashboard\\__tests__\\fileService.test.ts",
+    "modules\\dashboard\\__tests__\\toolService.test.ts"
+  ],
+  "other": [
+    "main.ts",
+    "modules\\core\\config.ts",
+    "modules\\core\\fillback-scanner.ts",
+    "modules\\core\\index.ts",
+    "modules\\core\\report-reader.ts",
+    "modules\\core\\runner.ts",
+    "modules\\core\\server.ts",
+    "modules\\core\\status-detector.ts",
+    "modules\\dashboard\\api\\routes.ts",
+    "modules\\dashboard\\index.ts",
+    "modules\\flow-tools\\index.ts",
+    "shared\\types\\contract.ts"
+  ]
+}

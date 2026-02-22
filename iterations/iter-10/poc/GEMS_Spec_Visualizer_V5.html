@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEMS Spec V5 | Minimal</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --code-bg: #161b22;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            display: flex;
+        }
+
+        /* Minimal Sidebar */
+        aside {
+            width: 200px;
+            height: 100vh;
+            border-right: 1px solid var(--border);
+            padding: 2rem;
+            position: sticky;
+            top: 0;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin: 0 0 2rem 0;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        nav a {
+            display: block;
+            color: var(--text-dim);
+            text-decoration: none;
+            margin-bottom: 0.8rem;
+            font-size: 0.9rem;
+        }
+
+        nav a:hover,
+        nav a.active {
+            color: var(--accent);
+        }
+
+        /* Main Content - Doc Style */
+        main {
+            flex: 1;
+            max-width: 900px;
+            padding: 3rem 4rem;
+        }
+
+        section {
+            margin-bottom: 4rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            color: #fff;
+        }
+
+        /* 1. Project Header - Extreme Minimal */
+        .meta-line {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 0.5rem;
+        }
+
+        .meta-val {
+            color: var(--accent);
+            margin-left: 8px;
+        }
+
+        /* 2. Architecture - Clean SVG Line Art */
+        .arch-diagram {
+            margin: 2rem 0;
+            text-align: center;
+        }
+
+        /* 3. Module List - No Cards, Just Lines */
+        .module-block {
+            margin-left: 1rem;
+            border-left: 2px solid var(--border);
+            padding-left: 1.5rem;
+        }
+
+        .func-item {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px dashed #21262d;
+        }
+
+        .func-item:last-child {
+            border-bottom: none;
+        }
+
+        .func-name {
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #e6edf3;
+        }
+
+        .func-meta {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        .tag {
+            font-size: 0.7rem;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+        }
+    </style>
+</head>
+
+<body>
+
+    <aside>
+        <h1>GEMS Spec</h1>
+        <nav>
+            <a href="#overview" class="active">Overview</a>
+            <a href="#structure">Structure</a>
+            <a href="#modules">Modules</a>
+            <a href="#schema">Schema</a>
+        </nav>
+    </aside>
+
+    <main>
+        <!-- 1. OVERVIEW -->
+        <section id="overview">
+            <h2>Project Overview</h2>
+            <div class="meta-line">Path: <span class="meta-val">~/gems-flow-test/control-tower</span></div>
+
+            <h3 style="font-size: 1rem; color: var(--text-dim); margin-bottom: 1rem;">Tech Stack (技術架構)</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+
+                <!-- Helper for Tech Items -->
+                <div
+                    style="background: var(--code-bg); padding: 1rem; border-radius: 6px; border: 1px solid var(--border);">
+                    <div
+                        style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">
+                        核心框架 (Core Framework)</div>
+                    <div style="color: #fff; font-weight: 600; margin-bottom: 0.25rem;">Next.js 14</div>
+                    <div style="font-size: 0.85rem; color: var(--text-dim);">React 框架，負責伺服器渲染 (SSR) 與路由管理，提供最佳效能。</div>
+                </div>
+
+                <div
+                    style="background: var(--code-bg); padding: 1rem; border-radius: 6px; border: 1px solid var(--border);">
+                    <div
+                        style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">
+                        程式語言 (Language)</div>
+                    <div style="color: #3178c6; font-weight: 600; margin-bottom: 0.25rem;">TypeScript 5.0</div>
+                    <div style="font-size: 0.85rem; color: var(--text-dim);">強型別 JavaScript，在編譯期捕捉錯誤，提升代碼可維護性。</div>
+                </div>
+
+                <div
+                    style="background: var(--code-bg); padding: 1rem; border-radius: 6px; border: 1px solid var(--border);">
+                    <div
+                        style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">
+                        資料庫 (Database)</div>
+                    <div style="color: #3ecf8e; font-weight: 600; margin-bottom: 0.25rem;">Supabase</div>
+                    <div style="font-size: 0.85rem; color: var(--text-dim);">基於 PostgreSQL 的後端服務，提供即時 API 與身份驗證。</div>
+                </div>
+
+                <div
+                    style="background: var(--code-bg); padding: 1rem; border-radius: 6px; border: 1px solid var(--border);">
+                    <div
+                        style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">
+                        單元測試 (Testing)</div>
+                    <div style="color: #c026d3; font-weight: 600; margin-bottom: 0.25rem;">Jest</div>
+                    <div style="font-size: 0.85rem; color: var(--text-dim);">測試運行器，確保每個邏輯單元 (Unit) 的正確性與穩定性。</div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 2. STRUCTURE -->
+        <section id="structure">
+            <h2>System Architecture</h2>
+            <div class="arch-diagram">
+                <!-- Extremely minimal SVG -->
+                <svg width="600" height="120" viewBox="0 0 600 120" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Lines -->
+                    <line x1="100" y1="60" x2="500" y2="60" stroke="#30363d" stroke-width="2" />
+                    <line x1="300" y1="60" x2="300" y2="90" stroke="#30363d" stroke-width="2" />
+
+                    <!-- Nodes -->
+                    <!-- Dashboard -->
+                    <rect x="20" y="40" width="80" height="40" fill="#0d1117" stroke="#58a6ff" stroke-width="2"
+                        rx="4" />
+                    <text x="60" y="65" text-anchor="middle" fill="#fff" font-size="12"
+                        font-family="sans-serif">Dashboard</text>
+
+                    <!-- Core -->
+                    <rect x="260" y="40" width="80" height="40" fill="#0d1117" stroke="#58a6ff" stroke-width="2"
+                        rx="4" />
+                    <text x="300" y="65" text-anchor="middle" fill="#fff" font-size="12"
+                        font-family="sans-serif">Core</text>
+
+                    <!-- Modules -->
+                    <rect x="500" y="40" width="80" height="40" fill="#0d1117" stroke="#58a6ff" stroke-width="2"
+                        rx="4" />
+                    <text x="540" y="65" text-anchor="middle" fill="#fff" font-size="12"
+                        font-family="sans-serif">Modules</text>
+
+                    <!-- DB -->
+                    <rect x="260" y="90" width="80" height="30" fill="#0d1117" stroke="#8b949e" stroke-width="1"
+                        rx="4" />
+                    <text x="300" y="110" text-anchor="middle" fill="#8b949e" font-size="11"
+                        font-family="sans-serif">Database</text>
+                </svg>
+            </div>
+            <p style="color: var(--text-dim); font-size: 0.9rem;">
+                The system follows a linear data flow: Dashboard triggers Core, which orchestrates Modules (Scan/Viz) to
+                process data and sync with the Database.
+            </p>
+        </section>
+
+        <!-- 3. MODULES -->
+        <section id="modules">
+            <h2>Module Specifications</h2>
+
+            <!-- Core Module -->
+            <h3 style="display:flex; align-items:center; gap: 0.5rem;">
+                <span
+                    style="display:inline-block; width:8px; height:8px; background:#58a6ff; border-radius:50%;"></span>
+                Core Module
+            </h3>
+            <div class="module-block">
+                <div class="func-item" style="display:block; padding: 1rem 0;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem;">
+                        <span class="func-name">report-reader.ts <span class="tag"
+                                style="color:#f85149">P0</span></span>
+                    </div>
+                    <p style="margin:0 0 0.5rem 0; font-size: 0.9rem; color: var(--text-main);">負責讀取並驗證掃描報告 (Report
+                        JSON)，作為資料來源的入口。</p>
+                    <!-- LOGIC FLOW ITEM -->
+                    <div
+                        style="font-family: monospace; font-size: 0.8rem; color: var(--accent); background: #1f2428; padding: 0.3rem 0.6rem; border-radius: 4px; display: inline-block;">
+                        <span style="color: #8b949e;">FLOW:</span> Read File ➝ Parse JSON ➝ Validate Schema ➝ Return
+                        Data
+                    </div>
+                </div>
+
+                <div class="func-item" style="display:block; padding: 1rem 0;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem;">
+                        <span class="func-name">status-detector.ts <span class="tag"
+                                style="color:#3fb950">P2</span></span>
+                    </div>
+                    <p style="margin:0 0 0.5rem 0; font-size: 0.9rem; color: var(--text-main);">偵測各節點 (Node)
+                        的當前執行狀態與健康度。</p>
+                    <div
+                        style="font-family: monospace; font-size: 0.8rem; color: var(--accent); background: #1f2428; padding: 0.3rem 0.6rem; border-radius: 4px; display: inline-block;">
+                        <span style="color: #8b949e;">FLOW:</span> Scan Dir ➝ Match Rules ➝ Calc Status ➝ Update State
+                    </div>
+                </div>
+
+                <div class="func-item" style="display:block; padding: 1rem 0;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem;">
+                        <span class="func-name">server.ts <span class="tag" style="color:#f85149">P0</span></span>
+                    </div>
+                    <p style="margin:0 0 0.5rem 0; font-size: 0.9rem; color: var(--text-main);">API 服務入口點，處理所有前端請求。</p>
+                    <div
+                        style="font-family: monospace; font-size: 0.8rem; color: var(--accent); background: #1f2428; padding: 0.3rem 0.6rem; border-radius: 4px; display: inline-block;">
+                        <span style="color: #8b949e;">FLOW:</span> Receive Req ➝ Route Match ➝ Execute Service ➝
+                        Response
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scan Module -->
+            <h3 style="display:flex; align-items:center; gap: 0.5rem;">
+                <span
+                    style="display:inline-block; width:8px; height:8px; background:#58a6ff; border-radius:50%;"></span>
+                Scan Module
+            </h3>
+            <div class="module-block">
+                <div class="func-item" style="display:block; padding: 1rem 0;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem;">
+                        <span class="func-name">scan-gate.cjs <span class="tag" style="color:#f85149">P0</span></span>
+                    </div>
+                    <p style="margin:0 0 0.5rem 0; font-size: 0.9rem; color: var(--text-main);">專案的品質守門員，執行所有的 Regex 掃描與
+                        Tag 驗證規則。</p>
+                    <div
+                        style="font-family: monospace; font-size: 0.8rem; color: var(--accent); background: #1f2428; padding: 0.3rem 0.6rem; border-radius: 4px; display: inline-block;">
+                        <span style="color: #8b949e;">FLOW:</span> Glob Files ➝ Extract Tags ➝ Run Assertions ➝ Generate
+                        Report
+                    </div>
+                </div>
+                <div class="func-item" style="display:block; padding: 1rem 0;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem;">
+                        <span class="func-name">backup-manager.ts <span class="tag"
+                                style="color:#3fb950">P2</span></span>
+                    </div>
+                    <p style="margin:0 0 0.5rem 0; font-size: 0.9rem; color: var(--text-main);">負責檔案系統的備份與還原操作。</p>
+                    <div
+                        style="font-family: monospace; font-size: 0.8rem; color: var(--accent); background: #1f2428; padding: 0.3rem 0.6rem; border-radius: 4px; display: inline-block;">
+                        <span style="color: #8b949e;">FLOW:</span> Check Path ➝ Create Zip ➝ Calculate Checksum ➝ Store
+                        Artifact
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. SCHEMA -->
+        <section id="schema">
+            <h2>Schema Definitions</h2>
+            <div style="font-family: inherit; color: var(--text-main);">
+
+                <h4 style="color: #fff; margin-bottom: 0.5rem;">tbl_profiles (用戶資料表)</h4>
+                <p style="font-size: 0.9rem; color: var(--text-dim); margin-top: 0;">與 Supabase Auth 連動，儲存用戶的基本權限與設定。
+                </p>
+                <ul
+                    style="font-family: monospace; font-size: 0.85rem; color: var(--accent); list-style: none; padding-left: 1rem; border-left: 2px solid var(--border);">
+                    <li><span style="color: #e6edf3">id</span> : UUID (主鍵)</li>
+                    <li><span style="color: #e6edf3">role</span> : varchar (RBAC 角色權限)</li>
+                    <li><span style="color: #e6edf3">avatar_url</span> : text (頭像連結)</li>
+                </ul>
+
+                <h4 style="color: #fff; margin-bottom: 0.5rem; margin-top: 2rem;">tbl_projects (專案設定表)</h4>
+                <p style="font-size: 0.9rem; color: var(--text-dim); margin-top: 0;">核心主表，記錄所有受控管專案的根目錄位置與狀態。</p>
+                <ul
+                    style="font-family: monospace; font-size: 0.85rem; color: var(--accent); list-style: none; padding-left: 1rem; border-left: 2px solid var(--border);">
+                    <li><span style="color: #e6edf3">id</span> : UUID (專案唯一識別)</li>
+                    <li><span style="color: #e6edf3">settings</span> : jsonb (掃描器與路徑設定)</li>
+                    <li><span style="color: #e6edf3">last_scan</span> : timestamp (最後掃描時間)</li>
+                </ul>
+
+            </div>
+        </section>
+
+    </main>
+</body>
+
+</html>

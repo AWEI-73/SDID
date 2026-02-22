@@ -1,0 +1,94 @@
+{
+    "version": "1.0",
+    "iteration": 3,
+    "generated": "2024-12-10",
+    "source": "Fillback_Story-3.0.md",
+    "storyId": "Story-3.0",
+    "moduleId": "control-tower",
+    "status": "Completed",
+    "completedItems": [
+        "Item 1: 資源移動與整合 - Flow/Guides/Templates/Tools 複製到 control-tower",
+        "Item 2: Prompt 模板系統 - 16 個模板 + generator.js",
+        "Item 3: 節點狀態偵測系統 - report-reader/fillback-scanner/status-detector",
+        "Item 4: UI 節點展開功能 - 展開/收合動畫、步驟狀態顯示",
+        "Item 5: Prompt 產生與複製 - 預覽面板、一鍵複製",
+        "Item 6: Fillback 模板增強 - Phase 狀態標記",
+        "Item 7: 後端 API 整合 - 更新 routes/services"
+    ],
+    "technicalHighlights": [
+        "實作報告 > Fillback > 檔案的優先級狀態偵測邏輯",
+        "建立完整的 Prompt 模板系統，支援 16 個大小節點模板",
+        "使用 CSS transition 實現平滑的節點展開動畫",
+        "TypeScript 契約擴展：NodeStatus、StepStatus、PromptTemplate",
+        "API 向後相容：同時支援新舊版參數格式"
+    ],
+    "technicalDebt": [
+        {
+            "id": "TD-3.1",
+            "description": "核心模組缺少單元測試",
+            "source": "report-reader.ts、fillback-scanner.ts、status-detector.ts",
+            "impact": "無法確保重構時不破壞功能",
+            "priority": "high",
+            "effort": "4-6 hours",
+            "relatedModules": [
+                "core"
+            ],
+            "relatedFunctions": [
+                "readReportFile",
+                "scanFillback",
+                "detectNodeStatus"
+            ]
+        },
+        {
+            "id": "TD-3.2",
+            "description": "promptService 測試需要更新",
+            "source": "promptService.ts 重寫後測試未更新",
+            "impact": "測試覆蓋不足",
+            "priority": "medium",
+            "effort": "2-3 hours",
+            "relatedModules": [
+                "dashboard"
+            ],
+            "relatedFunctions": [
+                "generatePrompt"
+            ]
+        },
+        {
+            "id": "TD-3.3",
+            "description": "前端 app.js 無測試",
+            "source": "public/app.js",
+            "impact": "UI 變更無法自動驗證",
+            "priority": "low",
+            "effort": "3-4 hours",
+            "relatedModules": [
+                "public"
+            ],
+            "relatedFunctions": [
+                "toggleNode",
+                "generateStepPrompt",
+                "copyPrompt"
+            ]
+        }
+    ],
+    "nextIteration": {
+        "suggestedGoal": "iter-4: 多專案管理與備份系統",
+        "suggestedItems": [
+            "CAND-4.1: 多專案列表管理 - 同時監控多個 GEMS 專案",
+            "CAND-4.2: 專案切換功能 - 快速切換不同專案",
+            "CAND-4.3: 備份管理系統 - 定期備份重要文件",
+            "CAND-4.4: 部署功能 - 一鍵部署 GEMS Flow 到新專案",
+            "CAND-4.5: 測試補充 - 補齊 TD-3.1, TD-3.2, TD-3.3 的測試"
+        ]
+    },
+    "metrics": {
+        "linesOfCode": {
+            "added": 2500,
+            "modified": 300
+        },
+        "filesChanged": {
+            "created": 25,
+            "modified": 8
+        },
+        "testCoverage": "待補充"
+    }
+}

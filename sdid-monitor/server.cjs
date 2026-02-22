@@ -123,10 +123,13 @@ function parseBuildPhases(logs) {
 
 // ─── Parse gate phases ────────────────────────────────────────
 function parseGatePhases(logs) {
-  const gates = { check: null, plan: null, shrink: null, expand: null, verify: null, scan: null };
+  const gates = { check: null, cynefinCheck: null, plan: null, shrink: null, expand: null, verify: null, scan: null };
   for (const log of logs) {
     const gm = log.match(/^gate-(check|plan|shrink|expand|verify)-(pass|error|fail)-/);
     if (gm) { gates[gm[1]] = gm[2] === 'pass' ? 'pass' : 'error'; continue; }
+    // cynefin-check-pass-*.log / cynefin-check-fail-*.log
+    const cm = log.match(/^cynefin-check-(pass|fail)-/);
+    if (cm) { gates.cynefinCheck = cm[1] === 'pass' ? 'pass' : 'error'; continue; }
     const sm = log.match(/^scan-scan-(pass|error|fail|info)-/);
     if (sm) { gates.scan = sm[1] === 'pass' ? 'pass' : sm[1] === 'info' ? 'info' : 'error'; }
   }
@@ -229,6 +232,10 @@ function deriveStatus(logs, gemsRoot) {
     currentPhase = `POC-${pocLastStep}`; badge = '@PASS'; badgeClass = 'pass';
   } else if (gatePhases.plan === 'pass') {
     currentPhase = 'BUILD'; badge = null; badgeClass = 'idle';
+  } else if (gatePhases.check === 'pass' && gatePhases.cynefinCheck === 'error') {
+    currentPhase = 'CYNEFIN-CHECK'; badge = '@BLOCK'; badgeClass = 'block';
+  } else if (gatePhases.check === 'pass' && !gatePhases.cynefinCheck) {
+    currentPhase = 'CYNEFIN-CHECK'; badge = null; badgeClass = 'idle';
   } else if (gatePhases.check === 'pass') {
     currentPhase = 'PLAN'; badge = null; badgeClass = 'idle';
   } else if (gatePhases.check === 'error') {

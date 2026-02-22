@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iter-6 UI POC - GEMS Control Tower</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #1c1c1c;
+            --bg-tertiary: #2a2a2a;
+            --border-color: #404040;
+            --border-hover: #505050;
+            --text-primary: #f5f5f5;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        body {
+            background: var(--bg-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--text-secondary);
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+        }
+
+        .card:hover {
+            border-color: var(--border-hover);
+        }
+
+        .node-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .node-card:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--border-hover);
+            transform: translateY(-1px);
+        }
+
+        .node-card.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+
+        /* Status Indicators */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-done .status-dot {
+            background: var(--success);
+        }
+
+        .status-in-progress .status-dot {
+            background: var(--warning);
+            animation: pulse 2s infinite;
+        }
+
+        .status-pending .status-dot {
+            background: var(--text-muted);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Connection Lines */
+        .connection-line {
+            height: 2px;
+            background: linear-gradient(90deg, var(--border-color) 0%, var(--border-hover) 100%);
+            position: relative;
+        }
+
+        .connection-arrow {
+            position: absolute;
+            right: -4px;
+            top: -3px;
+            width: 0;
+            height: 0;
+            border-left: 5px solid var(--border-hover);
+            border-top: 4px solid transparent;
+            border-bottom: 4px solid transparent;
+        }
+
+        /* Action Buttons in Card */
+        .node-action-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .node-action-btn:hover {
+            background: #333;
+            border-color: var(--border-hover);
+            color: var(--text-primary);
+        }
+
+        .node-action-btn.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .node-action-btn.primary:hover {
+            background: #2563eb;
+        }
+
+        /* Backup Item */
+        .backup-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.15s ease;
+        }
+
+        .backup-item:hover {
+            border-color: var(--border-hover);
+        }
+
+        /* Steps Panel */
+        .steps-panel {
+            background: #151515;
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 0.5rem 0.5rem;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .steps-panel.open {
+            max-height: 500px;
+        }
+
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #1f1f1f;
+        }
+
+        .step-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-hover);
+        }
+    </style>
+</head>
+
+<body class="min-h-screen p-8">
+    <div class="max-w-6xl mx-auto">
+
+        <!-- Header -->
+        <div class="mb-10">
+            <h1 class="text-2xl font-semibold text-gray-100 mb-1">iter-6 UI POC</h1>
+            <p class="text-sm text-gray-500">節點按鈕設計 • 備份管理區塊</p>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 流程狀態區域 -->
+        <!-- ========================================== -->
+        <div class="mb-12">
+            <h2 class="text-sm text-gray-400 mb-6 uppercase tracking-wider font-medium flex items-center gap-2">
+                <span>流程狀態</span>
+                <span class="text-xs text-gray-600">（點擊節點展開詳情）</span>
+                <span class="text-xs text-blue-400 ml-2">目前位於 iter-5</span>
+            </h2>
+
+            <!-- Flow Nodes -->
+            <div class="flex flex-col md:flex-row items-stretch gap-0">
+
+                <!-- Node: POC -->
+                <div class="flex-1" id="node-container-POC">
+                    <div class="node-card rounded-lg overflow-hidden" id="node-POC">
+                        <!-- Action Button Area (卡片內上方) -->
+                        <div class="flex items-center gap-2 p-3 border-b border-[#2a2a2a] bg-[#151515]">
+                            <button class="node-action-btn primary"
+                                onclick="event.stopPropagation(); alert('開始 POC: 建立 iter-X 資料夾 + 樣板')">
+                                🚀 開始 POC
+                            </button>
+                        </div>
+                        <!-- Node Content -->
+                        <div class="p-5" onclick="toggleNode('POC')">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-gray-400 uppercase tracking-wider font-semibold">POC</span>
+                                <div class="flex items-center gap-3">
+                                    <div class="status-done flex items-center gap-2">
+                                        <div class="status-dot"></div>
+                                        <span class="text-sm text-green-400 font-medium">已完成</span>
+                                    </div>
+                                    <svg class="expand-icon w-4 h-4 text-gray-500" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="text-base text-gray-300 font-medium">概念驗證</div>
+                            <div class="text-xs text-gray-600 mt-1">Step 0-3</div>
+                        </div>
+                    </div>
+                    <!-- Steps Panel (展開後) -->
+                    <div class="steps-panel" id="steps-POC">
+                        <div class="step-item">
+                            <div class="status-done">
+                                <div class="status-dot"></div>
+                            </div>
+                            <span class="text-sm text-gray-400">Step 0: Contract 定義</span>
+                        </div>
+                        <div class="step-item">
+                            <div class="status-done">
+                                <div class="status-dot"></div>
+                            </div>
+                            <span class="text-sm text-gray-400">Step 1: UI 原型</span>
+                        </div>
+                        <div class="step-item">
+                            <div class="status-done">
+                                <div class="status-dot"></div>
+                            </div>
+                            <span class="text-sm text-gray-400">Step 2: 可行性驗證</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection -->
+                <div class="hidden md:flex items-center">
+                    <div class="w-10 connection-line mx-2">
+                        <div class="connection-arrow"></div>
+                    </div>
+                </div>
+
+                <!-- Node: PLAN -->
+                <div class="flex-1 mt-4 md:mt-0" id="node-container-PLAN">
+                    <div class="node-card rounded-lg overflow-hidden" id="node-PLAN">
+                        <!-- Action Button Area -->
+                        <div class="flex items-center gap-2 p-3 border-b border-[#2a2a2a] bg-[#151515]">
+                            <button class="node-action-btn primary"
+                                onclick="event.stopPropagation(); alert('產生樣板: implementation_plan + todo_checklist')">
+                                📋 產生樣板
+                            </button>
+                        </div>
+                        <!-- Node Content -->
+                        <div class="p-5" onclick="toggleNode('PLAN')">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-gray-400 uppercase tracking-wider font-semibold">PLAN</span>
+                                <div class="flex items-center gap-3">
+                                    <div class="status-in-progress flex items-center gap-2">
+                                        <div class="status-dot"></div>
+                                        <span class="text-sm text-yellow-400 font-medium">進行中</span>
+                                    </div>
+                                    <svg class="expand-icon w-4 h-4 text-gray-500" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="text-base text-gray-300 font-medium">實作規劃</div>
+                            <div class="text-xs text-gray-600 mt-1">Plan Items</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection -->
+                <div class="hidden md:flex items-center">
+                    <div class="w-10 connection-line mx-2">
+                        <div class="connection-arrow"></div>
+                    </div>
+                </div>
+
+                <!-- Node: BUILD -->
+                <div class="flex-1 mt-4 md:mt-0" id="node-container-BUILD">
+                    <div class="node-card rounded-lg overflow-hidden" id="node-BUILD">
+                        <!-- Action Button Area -->
+                        <div class="flex items-center gap-2 p-3 border-b border-[#2a2a2a] bg-[#151515]">
+                            <button class="node-action-btn"
+                                onclick="event.stopPropagation(); alert('Scaffold: 從 implementation_plan 產生檔案骨架')">
+                                📁 Scaffold
+                            </button>
+                        </div>
+                        <!-- Node Content -->
+                        <div class="p-5" onclick="toggleNode('BUILD')">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-gray-400 uppercase tracking-wider font-semibold">BUILD</span>
+                                <div class="flex items-center gap-3">
+                                    <div class="status-pending flex items-center gap-2">
+                                        <div class="status-dot"></div>
+                                        <span class="text-sm text-gray-600 font-medium">待執行</span>
+                                    </div>
+                                    <svg class="expand-icon w-4 h-4 text-gray-500" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="text-base text-gray-300 font-medium">程式實作</div>
+                            <div class="text-xs text-gray-600 mt-1">Phase 1-7</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection -->
+                <div class="hidden md:flex items-center">
+                    <div class="w-10 connection-line mx-2">
+                        <div class="connection-arrow"></div>
+                    </div>
+                </div>
+
+                <!-- Node: SCAN -->
+                <div class="flex-1 mt-4 md:mt-0" id="node-container-SCAN">
+                    <div class="node-card rounded-lg overflow-hidden" id="node-SCAN">
+                        <!-- Action Button Area (兩個按鈕) -->
+                        <div class="flex items-center gap-2 p-3 border-b border-[#2a2a2a] bg-[#151515]">
+                            <button class="node-action-btn"
+                                onclick="event.stopPropagation(); alert('Scan: 執行 GEMS Scanner + Test Gate')">
+                                🔍 Scan
+                            </button>
+                            <button class="node-action-btn" onclick="event.stopPropagation(); alert('Backup: 備份當前迭代')">
+                                💾 Backup
+                            </button>
+                        </div>
+                        <!-- Node Content -->
+                        <div class="p-5" onclick="toggleNode('SCAN')">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm text-gray-400 uppercase tracking-wider font-semibold">SCAN</span>
+                                <div class="flex items-center gap-3">
+                                    <div class="status-pending flex items-center gap-2">
+                                        <div class="status-dot"></div>
+                                        <span class="text-sm text-gray-600 font-medium">待執行</span>
+                                    </div>
+                                    <svg class="expand-icon w-4 h-4 text-gray-500" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="text-base text-gray-300 font-medium">規格產出</div>
+                            <div class="text-xs text-gray-600 mt-1">Full Spec</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 備份管理區塊 -->
+        <!-- ========================================== -->
+        <div class="card rounded-xl p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-semibold text-gray-200 flex items-center gap-2">
+                    💾 備份管理
+                </h2>
+                <button class="node-action-btn" onclick="alert('開啟備份資料夾')">
+                    📁 開啟資料夾
+                </button>
+            </div>
+
+            <!-- 總覽 -->
+            <div class="flex items-center gap-6 mb-6 text-sm">
+                <div class="flex items-center gap-2">
+                    <span class="text-gray-500">備份數量:</span>
+                    <span class="text-gray-200 font-medium">3 個</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-gray-500">總大小:</span>
+                    <span class="text-gray-200 font-medium">45.2 MB</span>
+                </div>
+            </div>
+
+            <!-- 備份列表 -->
+            <div class="space-y-3">
+
+                <!-- Backup Item 1 -->
+                <div class="backup-item">
+                    <div class="flex items-center gap-4">
+                        <div class="text-2xl">📦</div>
+                        <div>
+                            <div class="text-sm text-gray-200 font-medium">iter-5 / 2025-12-11_071800</div>
+                            <div class="text-xs text-gray-500 mt-0.5">包含: src/, docs/, iterations/iter-5/</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm text-gray-400">25.1 MB</span>
+                        <div class="flex items-center gap-2">
+                            <button class="node-action-btn" onclick="alert('預覽備份內容')">👁️ 查看</button>
+                            <button class="node-action-btn" onclick="alert('確定要刪除此備份?')">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backup Item 2 -->
+                <div class="backup-item">
+                    <div class="flex items-center gap-4">
+                        <div class="text-2xl">📦</div>
+                        <div>
+                            <div class="text-sm text-gray-200 font-medium">iter-4 / 2025-12-10_153000</div>
+                            <div class="text-xs text-gray-500 mt-0.5">包含: src/, docs/, iterations/iter-4/</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm text-gray-400">12.3 MB</span>
+                        <div class="flex items-center gap-2">
+                            <button class="node-action-btn" onclick="alert('預覽備份內容')">👁️ 查看</button>
+                            <button class="node-action-btn" onclick="alert('確定要刪除此備份?')">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backup Item 3 -->
+                <div class="backup-item">
+                    <div class="flex items-center gap-4">
+                        <div class="text-2xl">📦</div>
+                        <div>
+                            <div class="text-sm text-gray-200 font-medium">iter-3 / 2025-12-09_120000</div>
+                            <div class="text-xs text-gray-500 mt-0.5">包含: src/, docs/, iterations/iter-3/</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm text-gray-400">7.8 MB</span>
+                        <div class="flex items-center gap-2">
+                            <button class="node-action-btn" onclick="alert('預覽備份內容')">👁️ 查看</button>
+                            <button class="node-action-btn" onclick="alert('確定要刪除此備份?')">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 提示 -->
+            <div class="mt-6 pt-4 border-t border-[#2a2a2a]">
+                <div class="flex items-center gap-2 text-xs text-gray-500">
+                    <span>⚠️</span>
+                    <span>備份不會自動清理，請手動管理</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 設計說明 -->
+        <!-- ========================================== -->
+        <div class="mt-12 card rounded-xl p-6">
+            <h2 class="text-lg font-semibold text-gray-200 mb-4">📐 設計說明</h2>
+            <div class="space-y-4 text-sm text-gray-400">
+                <div>
+                    <strong class="text-gray-200">1. 節點按鈕位置</strong>
+                    <p class="mt-1">按鈕放在每個節點卡片內的上方，用深色背景區分。點擊按鈕不會觸發卡片展開。</p>
+                </div>
+                <div>
+                    <strong class="text-gray-200">2. 迭代顯示</strong>
+                    <p class="mt-1">「流程狀態」標題旁簡單顯示「目前位於 iter-5」文字即可，不需要樹狀選擇器。</p>
+                </div>
+                <div>
+                    <strong class="text-gray-200">3. 備份管理</strong>
+                    <p class="mt-1">獨立區塊顯示備份列表，支援查看和手動刪除。不自動清理。</p>
+                </div>
+                <div>
+                    <strong class="text-gray-200">4. 按鈕樣式</strong>
+                    <p class="mt-1">當前可執行的步驟使用藍色 primary 按鈕，其他使用灰色按鈕。</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Toggle node expansion
+        function toggleNode(nodeId) {
+            const stepsPanel = document.getElementById(`steps-${nodeId}`);
+            const expandIcon = document.getElementById(`expand-${nodeId}`);
+            const nodeCard = document.getElementById(`node-${nodeId}`);
+
+            if (stepsPanel) {
+                stepsPanel.classList.toggle('open');
+            }
+            if (expandIcon) {
+                expandIcon.classList.toggle('open');
+            }
+            if (nodeCard) {
+                nodeCard.classList.toggle('expanded');
+            }
+        }
+    </script>
+
+</body>
+
+</html>

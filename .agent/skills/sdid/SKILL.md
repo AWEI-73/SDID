@@ -24,11 +24,26 @@ description: SDID 統一開發框架 — 從需求設計到程式碼交付的完
 
 ```
 draft 有 Enhanced Draft 格式標記（模組動作表、迭代規劃表）→ Blueprint 路線
-  → 執行 node .agent/skills/sdid/scripts/blueprint-loop.cjs --project=[path]
+  → 執行 CYNEFIN-CHECK（見下方）→ @PASS 後執行 blueprint-loop.cjs
 
 draft 是簡單 requirement_draft → Task-Pipe 路線
-  → 執行 node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
+  → 執行 CYNEFIN-CHECK（見下方）→ @PASS 後執行 taskpipe-loop.cjs
 ```
+
+### CYNEFIN-CHECK（進 PLAN 前強制執行）
+
+兩條路線在進入 PLAN 前都必須執行 CYNEFIN-CHECK：
+
+```
+Blueprint:  Enhanced Draft 完成 → [CYNEFIN-CHECK] → @PASS → draft-to-plan → BUILD
+Task-Pipe:  POC Step 5 完成    → [CYNEFIN-CHECK] → @PASS → PLAN Step 1 → BUILD
+```
+
+執行方式：讀 [references/cynefin-check.md](references/cynefin-check.md)，按規則對輸入文件做語意域分析。
+
+- `@PASS` → 在文件末尾加 `CYNEFIN-CHECK: PASS` 標記，繼續進 PLAN
+- `@NEEDS-FIX` → 根據 log 建議直接修改 draft/spec，重跑 CYNEFIN-CHECK，直到 @PASS
+- log 存到 `.gems/iterations/iter-X/logs/cynefin-check-<pass|fail>-<timestamp>.log`
 
 ### 模糊意圖處理
 
@@ -115,6 +130,7 @@ draft 是簡單 requirement_draft → Task-Pipe 路線
 | [build-execution.md](references/build-execution.md) | BUILD Phase 1-8 + 錯誤處理 | 進入 BUILD-AUTO 時 |
 | [architecture-rules.md](references/architecture-rules.md) | 模組化架構規則 | Blueprint Round 3 或 PLAN Step 2 時 |
 | [action-type-mapping.md](references/action-type-mapping.md) | 動作類型映射 | Blueprint Round 5 或 PLAN Step 4 時 |
+| [cynefin-check.md](references/cynefin-check.md) | 進 PLAN 前語意域分析 | 兩條路線進 PLAN 前強制執行 |
 
 ## Prohibited Actions
 

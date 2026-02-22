@@ -238,7 +238,15 @@ function detectState(projectPath, iterNum) {
     return { phase: 'GATE', draftPath, reason: '尚未通過 Gate 門控' };
   }
 
-  // 3. 沒有 plan pass log 或沒有 plan 檔案 → 需要跑 draft-to-plan
+  // 3. Gate pass 但沒有 cynefin-check pass → 需要跑 CYNEFIN-CHECK
+  // cynefin-log-writer 存的是 cynefin-check-pass-*.log（無 gate- 前綴）
+  const hasCynefinPass = fs.existsSync(logsDir) &&
+    fs.readdirSync(logsDir).some(f => f.startsWith('cynefin-check-pass-'));
+  if (!hasCynefinPass) {
+    return { phase: 'CYNEFIN_CHECK', draftPath, reason: 'Gate 通過，需要 Cynefin 語意域分析後才能進 PLAN' };
+  }
+
+  // 4. 沒有 plan pass log 或沒有 plan 檔案 → 需要跑 draft-to-plan
   if (!hasGateLog(logsDir, 'plan', 'pass') || plannedStories.length === 0) {
     return { phase: 'PLAN', draftPath, reason: '尚未產出 implementation_plan' };
   }
@@ -500,6 +508,15 @@ function executePhase(state, projectPath, iterNum, args) {
         [`--draft=${draftPath}`, `--target=${projectPath}`, `--iter=${iterNum}`],
         WORKSPACE_ROOT, args.dryRun
       );
+
+    case 'CYNEFIN_CHECK':
+      log(`\n🔍 CYNEFIN-CHECK: 語意域分析`, 'cyan');
+      log(`\n@TASK`, 'yellow');
+      log(`ACTION: 讀 [cynefin-check.md](.agent/skills/sdid/references/cynefin-check.md) 對以下文件做語意域分析`, 'yellow');
+      log(`FILE: ${draftPath}`, 'yellow');
+      log(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectPath} --iter=${iterNum}`, 'yellow');
+      log(`\n@REMINDER: 分析完成後必須執行 cynefin-log-writer.cjs 存 log，@PASS 才能進 PLAN`, 'yellow');
+      return { success: true, waitForAI: true };
 
     case 'PLAN':
       return runCommand(

@@ -1,0 +1,24 @@
+{
+    "iterationId": "iter-9",
+    "storyId": "Story-9.1",
+    "moduleId": "viz",
+    "status": "Partial",
+    "completedItems": [
+        "Item 1: 建立 Spec Aggregator 工具 (tools/spec-aggregator.cjs)"
+    ],
+    "technicalHighlights": [
+        "實作完整的 GEMS v2.1 標籤系統，所有函式都有 FLOW 與 [STEP] 錨點對應",
+        "建立遞迴 SystemNode 結構，支援無限層級的系統藍圖",
+        "整合 4 個 Scanner 產出（structure, config, spec, schema）為統一 JSON",
+        "支援 Database Schema 可選，若不存在不報錯",
+        "100% 測試覆蓋率，20/20 Unit 測試通過"
+    ],
+    "technicalDebt": [],
+    "nextIteration": {
+        "suggestedGoal": "完成 Story-9.1 的 Item 2 和 Item 3",
+        "suggestedItems": [
+            "Item 2: 實作 Blueprint API (Backend)",
+            "Item 3: 前端整合 Blueprint UI"
+        ]
+    }
+}

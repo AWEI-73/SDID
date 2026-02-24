@@ -71,20 +71,16 @@ node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
 BUILD Phase 8 完成後，**忽略 output 的「下一步: SCAN」**。
 重新執行 `blueprint-loop.cjs`，它會自動偵測下一步（SHRINK 或下一個 Story）。
 
-**活藍圖狀態更新（Blueprint 路線專屬）：**
-
-若專案是從主藍圖（iter-1 的 ACTIVE Living Blueprint）衍生的 BLUEPRINT-CONTINUE，
-BUILD Phase 8 完成後，**必須更新主藍圖的迭代規劃表**：
+**活藍圖狀態由 blueprint-shrink 自動維護，不需要手動更新：**
 
 ```
-1. 讀 {project}/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md
-2. 找到剛完成的 iter-N 行，將狀態 [CURRENT] → [DONE]
-3. 若下一個 iter 是 [STUB]，保持 [STUB]（等下個 session BLUEPRINT-CONTINUE 展開）
-4. 存回主藍圖
-5. 告知使用者：「Iter-N 已標記為 [DONE]。下一個 STUB 是 iter-(N+1): {模組名}。執行 BLUEPRINT-CONTINUE 展開嗎？」
+blueprint-loop.cjs 在 Phase 8 後自動執行 blueprint-shrink：
+  → 主藍圖 iter-N: [CURRENT] → [DONE]
+  → 主藍圖 iter-N+1: [STUB] → [CURRENT]（升格，帶 Fillback suggestions）
 ```
 
-> 若只有一個 iter 的小型 Blueprint（非 CONTINUE 模式），跳過此步驟。
+shrink 完成後，告知使用者：
+「Iter-N 已完成並折疊。下一個 iter-(N+1) [{模組名}] 已升格為 [CURRENT]，可執行 BLUEPRINT-CONTINUE 展開。」
 
 ### Task-Pipe 路線
 BUILD Phase 8 完成後，重新執行 `taskpipe-loop.cjs`，它會自動進入 SCAN。

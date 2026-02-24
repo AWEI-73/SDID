@@ -47,21 +47,37 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 - ALLOWED-READ: [action-type-mapping.md](action-type-mapping.md)
 - shared 模組永遠在 Iter 1
 
-**兩條硬規則（侧除就不能進 Round 5）：**
+**四條硬規則（不通過就不能進 Round 5）：**
 
-**規則 1 — 每個功能性 iter 必含 SVC/API + ROUTE + UI**
-- Foundation iter（1 shared）豊免
-- 其餘所有 iter：迭代規劃表的「必含類型」欄必須同時含 `SVC 或 API`、`ROUTE`、`UI`
-- 脏延前後端分儲不同 iter（如 iter-2 只有邏輯， iter-3 才有 UI）是 ❌ BLOCKER
+**規則 1 — 每個功能性 iter 必含 SVC/API + ROUTE + UI（前後端一套）**
+- Foundation iter（shared/infra）豁免
+- 其餘所有 iter：迭代規劃表的「交付」欄必須為 `FULL`，不可寫 `BACKEND` 或 `FRONTEND`
+- 動作清單必須同時含 `SVC 或 API`、`ROUTE`、`UI` 三種類型
+- 禁止前後端分離不同 iter（如 iter-2 只有邏輯，iter-3 才有 UI）是 ❌ BLOCKER
+- 每個 iter 交付後，使用者必須能操作完整功能，不是只看到 API 或只看到空 UI
 
-**規則 2 — 每個功能性 iter 所展示標準必備注**
-- 迭代規劃表必須包含「可展示標準」一行：「操作者 + 操作步驟 + 預期面畫反應」
+**規則 2 — 每個功能性 iter 可展示標準必備注**
+- 迭代規劃表必須包含「可展示標準」一行：「操作者 + 操作步驟 + 預期畫面反應」
 - Iter 1 允許寫 `npm run dev → 首頁不報錯`
 - 不容許寫「系統完成初始化」之類無法親眼驗證的描述
 
+**規則 3 — Complicated 模組拆分規則（CYNEFIN Budget 對齊）**
+- CYNEFIN-CHECK 標記為 Complicated + q3_costly 的模組：每 iter 最多 4 個動作
+- 如果模組有 N 個動作（N > 4），至少需要 ceil(N/4) 個 iter
+- Blueprint Gate 會機械檢查 BUDGET-001，超標 = ❌ BLOCKER
+- 拆分策略：P0 動作優先進第一個 iter，P1/P2 依序排入後續 iter
+- 拆分後每個 iter 仍須滿足規則 1（前後端一套）
+
+**規則 4 — Action Budget（動作預算上限）**
+- Level S: 每 iter 最多 3 個動作
+- Level M: 每 iter 最多 4 個動作
+- Level L: 每 iter 最多 5 個動作
+- Foundation iter（只有 CONST/LIB/SCRIPT）豁免
+- 超標 = ❌ BLOCKER，必須拆 iter 才能過 Gate
+
 > 注：迭代規劃表用樣板里的格式：`| Iter | 範圍 | 目標 | 模組 | 依賴 | Story 數 | 必含類型 | 可展示標準 |`
 
-- EXIT: 兩條硬規則檢查通過 → 使用者確認
+- EXIT: 四條硬規則檢查通過 → 使用者確認
 
 ---
 
@@ -110,7 +126,9 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 | 每個功能性 iter 有 SVC/API | 至少一個邏輯層動作 |
 | 每個功能性 iter 有 ROUTE | 至少一個頁面入口 |
 | 每個功能性 iter 有 UI | 至少一個畫面元件 |
+| 每個功能性 iter 交付類型 = FULL | 前後端一套，不可分離 |
 | 每個功能性 iter 有 Demo Checkpoint | 使用者操作後可親眼看到畫面 |
+| 每 iter 動作數 ≤ Budget 上限 | S:3 / M:4 / L:5（Foundation 豁免） |
 | P0 動作的 AC 不為空 | Given/When/Then 格式 |
 | AC 的 Then 含效益指標 | 使用者因此能做什麼或看到什麼 |
 

@@ -148,7 +148,7 @@ mkdir -p ${planPath}
   if (!isFoundation) {
     // 從 manifest 的函式清單中，取得所有動作類型
     const allTypes = new Set(
-      (manifest || []).map(fn => (fn.type || fn.actionType || '').toUpperCase())
+      (manifest?.functions || []).map(fn => (fn.type || fn.actionType || '').toUpperCase())
     );
 
     // 也從 Plan 內容掃描 GEMS-FLOW 或 type 欄位

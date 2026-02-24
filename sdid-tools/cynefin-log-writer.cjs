@@ -280,6 +280,14 @@ Report JSON 格式:
 
   // 終端輸出
   if (result.pass) {
+    // v2.0: Single Source of Truth，自動將狀態推入 PLAN
+    try {
+      const stateManager = require('../task-pipe/lib/shared/state-manager-v3.cjs');
+      stateManager.advanceState(args.target, `iter-${args.iter}`, 'CYNEFIN_CHECK', 'run');
+    } catch (e) {
+      console.log(`[Warn] 無法推進 state.json: ${e.message}`);
+    }
+
     console.log(`@PASS | cynefin-check | ${report.modules.length} 個模組全部通過`);
     if (result.warnings.length > 0) {
       console.log(`  ⚠ ${result.warnings.length} 個 WARNING（不阻擋流程）`);

@@ -725,6 +725,65 @@ function checkAPISignatureCompleteness(draft, targetIter) {
 }
 
 /**
+ * 19. AC 完整性 (v2.2) — P0/P1 動作的 AC 欄位不能空白
+ * Gate 規則 ACC-001
+ */
+function checkACIntegrity(draft, targetIter) {
+  const issues = [];
+
+  // 收集 AC 定義區塊（從 rawContent 解析，但這裡用 draft 的 ac 欄位）
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.iter !== targetIter) continue;
+    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+
+    for (const item of (mod.items || [])) {
+      const p = (item.priority || '').toUpperCase();
+      if (p !== 'P0' && p !== 'P1') continue;
+
+      const ac = (item.ac || item['AC'] || item['ac'] || '').trim();
+      if (!ac || ac === '-' || ac === '無') {
+        issues.push({
+          level: 'BLOCKER',
+          code: 'ACC-001',
+          msg: `[${modName}/${item.techName}] P0/P1 動作缺少 AC 欄位。請在動作清單加入 AC 編號（如 AC-1.0），並在「驗收條件」區塊定義 Given/When/Then`
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * 19. AC 完整性 (v2.2) — P0/P1 動作的 AC 欄位不能空白
+ * Gate 規則 ACC-001
+ */
+function checkACIntegrity(draft, targetIter) {
+  const issues = [];
+
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.iter !== targetIter) continue;
+    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+
+    for (const item of (mod.items || [])) {
+      const p = (item.priority || '').toUpperCase();
+      if (p !== 'P0' && p !== 'P1') continue;
+
+      const ac = (item.ac || item['AC'] || '').trim();
+      if (!ac || ac === '-' || ac === '無') {
+        issues.push({
+          level: 'BLOCKER',
+          code: 'ACC-001',
+          msg: `[${modName}/${item.techName}] P0/P1 動作缺少 AC 欄位。請在動作清單加入 AC 編號（如 AC-1.0），並在「驗收條件」區塊定義 Given/When/Then`
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+/**
  * 18. 垂直切片完整性 (VSC) v1.0
  * 
  * 每個非 Foundation 的模組 (Story X.1+) 必須同時包含完整的垂直層次。
@@ -920,6 +979,7 @@ function getFixGuidance(code) {
     'SIG-001': '公開 API 應寫成完整簽名: functionName(param: Type): ReturnType',
     'SIG-002': '公開 API 簽名應包含回傳型別，例如 ): Bookmark[] 或 ): ImportResult',
     'SIG-003': '公開 API 參數應標註型別，例如 (data: string, format: string)',
+    'ACC-001': 'P0/P1 動作必須有 AC 欄位。在動作清單的 AC 欄填入編號（如 AC-1.0），並在「## ✅ 驗收條件」區塊定義 Given/When/Then',
   };
   return guidance[code] || '參考 enhanced-draft-golden.template.v2.md 修正格式';
 }
@@ -963,6 +1023,7 @@ Blueprint Gate v1.1 - 活藍圖品質門控
   EVO-001~002  演化層依賴
   DEPCON-001~002 依賴一致性 (v1.1)
   LOAD-001     迭代模組負載 (v1.1)
+  ACC-001      AC 驗收條件完整性 (v2.2, P0/P1 必填)
 
 輸出:
   @PASS     — 品質合格 (log 存檔到 .gems/iterations/iter-X/logs/)
@@ -1007,6 +1068,7 @@ Blueprint Gate v1.1 - 活藍圖品質門控
     ...checkDepsConsistency(draft, args.iter),
     ...checkIterModuleLoad(draft),
     ...checkVerticalSliceCompleteness(draft, args.iter),
+    ...checkACIntegrity(draft, args.iter),
   ];
 
   // 生成報告
@@ -1036,6 +1098,7 @@ module.exports = {
   checkDepsConsistency,
   checkIterModuleLoad,
   checkVerticalSliceCompleteness,
+  checkACIntegrity,
   getFixGuidance,
 };
 

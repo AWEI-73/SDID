@@ -98,81 +98,94 @@
 | Clear 同步等待 Complex | 任何一個 | 標記時間耦合，建議非同步隔離 |
 | 隱含複雜度倍數 | > 3x | 標記為 BLOCKER，需要在文件中明確展開 |
 
-### Step 5: 產出分析報告並存 log
+### Step 5: 產出 Report JSON 並呼叫驗證腳本
 
-**終端輸出格式（精簡版）：**
+**5-A: 將分析結果寫成 report JSON**
+
+將上方所有模組的分析結果（Step 2-4）寫成一個 JSON 檔並存檔：
 
 ```
-@CYNEFIN-CHECK | <Blueprint|TaskPipe> | <@PASS|@NEEDS-FIX>
+存檔位置: .gems/iterations/iter-X/logs/cynefin-report-<timestamp>.json
+```
+
+JSON 格式（必須完全符合 cynefin-log-writer.cjs 所需的 schema）：
+
+```json
+{
+  "route": "Blueprint",
+  "inputFile": "輸入文件路徑",
+  "modules": [
+    {
+      "name": "模組名",
+      "domain": "Clear|Complicated|Complex",
+      "threeQuestions": {
+        "q1_clear": true,
+        "q2_reference": true,
+        "q3_costly": false
+      },
+      "flowSteps": 4,
+      "depsCount": 2,
+      "timeCoupling": false,
+      "implicitExpansion": ["Step 2 展開的隱含步驟（若展開後無明顯增加可省略）"],
+      "issues": [
+        {
+          "level": "BLOCKER",
+          "description": "問題具體描述",
+          "suggestions": ["具體修改建議"],
+          "fixTarget": "需要修改的文件路徑"
+        }
+      ]
+    }
+  ]
+}
+```
+
+> **Issues 分級規則**：
+> - `BLOCKER`：需要修改才能進 PLAN（FLOW 超標、deps 超標、隱含複雜度 >3x）
+> - `WARNING`：提醒但不阻擋（輕度超標、非同步警告）
+> - 無問題模組：`"issues": []`
+
+**5-B: 執行結果驗證腳本**
+
+呼叫腳本，讓腳本客觀判定是否送進 PLAN：
+
+```bash
+node sdid-tools/cynefin-log-writer.cjs \
+  --report-file=.gems/iterations/iter-X/logs/cynefin-report-<timestamp>.json \
+  --target=<project 根目錄> \
+  --iter=<N>
+```
+
+**5-C: 終端輸出摘要**（腳本執行前，AI 先輸出简潔表格）：
+
+```
+@CYNEFIN-CHECK | <Blueprint|TaskPipe> | 待腳本判定...
 
 模組: <模組名>
   域: <Clear|Complicated|Complex>  [三問推導]
   FLOW: <N> 步驟 <✓|⚠ 超標>
   deps: <N> <✓|⚠ 超標>
-  隱含複雜度: <無|⚠ 展開後 Nx 原始描述>
-  <如有問題> → <具體建議>
+  隱含複雜度展開: <無|展開後 Nx 原始描述>
+  待腳本確認...
 
 ...（所有模組）
-
-結論: <通過 N 個模組 / 發現 N 個問題>
-<如有問題> Log: .gems/iterations/iter-X/logs/cynefin-check-fail-<timestamp>.log
-<如通過>   Log: .gems/iterations/iter-X/logs/cynefin-check-pass-<timestamp>.log
 ```
 
-**Log 檔案格式（完整版，存檔用）：**
 
-```
-=== CYNEFIN CHECK LOG ===
-時間: <ISO timestamp>
-路線: <Blueprint|TaskPipe>
-迭代: iter-X
-輸入文件: <檔案路徑>
-結果: <PASS|NEEDS-FIX>
 
---- 模組分析 ---
+### Step 6: 根據腳本輸出決定下一步
 
-模組: <模組名>
-  三問域識別:
-    Q1 做法清楚？ → <是/否>
-    Q2 有參考？   → <是/否>
-    Q3 代價大？   → <是/否>
-  推導域: <域名>
-  FLOW 步驟: <N>  <✓|⚠ 超標(閾值7)>
-  deps 數量: <N>  <✓|⚠ 超標(閾值5)>
-  時間耦合: <無|⚠ Clear 等待 Complex>
-  隱含複雜度: <無|⚠ 展開後 Nx 原始描述，需明確化>
-  
-  <如有問題>
-  問題: <具體描述>
-  建議:
-    - <拆分建議，例如：協調層 validateAndProcess + 子函式 dataTransformer>
-    - <或：抽中間層 ServiceFacade 包裝 deps>
-    - <或：非同步隔離，Clear 不等 Complex 結果>
-    - <或：在文件中明確展開隱含步驟>
-  需修改: <文件路徑> → <具體修改方向>
+> **判定權在腳本，不在 AI。** AI 的分析是投票，腳本才是裁判。
 
-...（所有模組）
-
---- 總結 ---
-通過模組: N
-問題模組: N
-<如有問題>
-下一步: 修改 <文件> 後重跑 CYNEFIN-CHECK
-<如通過>
-下一步: 進入 PLAN
-=========================
-```
-
-### Step 6: 根據結果決定下一步
-
-**@PASS（所有模組通過）：**
-- 在輸入文件末尾加上 `CYNEFIN-CHECK: PASS | iter-X | <timestamp>` 標記
+**腳本輸出 `@PASS`：**
+- AI 在輸入文件末尾加上 `CYNEFIN-CHECK: PASS | iter-X | <timestamp>` 標記
 - 繼續進入 PLAN
 
-**@NEEDS-FIX（有問題模組）：**
-- 根據 log 裡的「需修改」指示，直接修改 draft 或 spec 文件
-- 修改完成後重跑 CYNEFIN-CHECK（重新從 Step 1 開始）
-- 不進入 PLAN，直到 @PASS
+**腳本輸出 `@NEEDS-FIX`：**
+- 讀腳本輸出的 BLOCKER 清單（腳本已格式化好）
+- 直接修改 draft 或 spec 中對應的模組描述（根據 `fixTarget` 和 `suggestions`）
+- 修改完成後重跑（從 Step 1 開始），產出新的 report JSON，重新呼叫腳本
+- 不進入 PLAN，直到腳本說 @PASS
 
 ---
 

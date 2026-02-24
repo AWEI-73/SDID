@@ -136,10 +136,14 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
     const depsStr = (!a.deps || a.deps === '無') ? '無' : a.deps;
     const stepAnchors = generateStepAnchors(a.flow);
     const filePath = inferFilePath(cleanName, a.type, moduleName);
+    const acRef = (a.ac || a['AC'] || '').trim();
+    const acBlock = acRef && acRef !== '-'
+      ? `\n**驗收條件**: ${acRef} (見藍圖「驗收條件」區塊)`
+      : '';
 
     return `### Item ${i + 1}: ${cleanName}
 
-**Type**: ${actionType} | **Priority**: ${a.priority}${evolution !== 'BASE' ? ` | **Evolution**: ${evolution}` : ''}
+**Type**: ${actionType} | **Priority**: ${a.priority}${evolution !== 'BASE' ? ` | **Evolution**: ${evolution}` : ''}${acBlock}
 
 \`\`\`typescript
 // @GEMS-FUNCTION: ${cleanName}

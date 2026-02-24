@@ -113,12 +113,12 @@ function detectComponentEndLine(lines, startLine) {
  * @returns {{ comment: string, startLine: number, endLine: number } | null}
  */
 function findGEMSComment(lines, funcLine) {
-  // 往上找，最多 30 行
+  // 往上找，最多 100 行
   let commentEndLine = funcLine - 1;
   let commentStartLine = null;
   let inMultiLineComment = false;
 
-  for (let i = funcLine - 2; i >= Math.max(0, funcLine - 30); i--) {
+  for (let i = funcLine - 2; i >= Math.max(0, funcLine - 100); i--) {
     const line = lines[i];
     const trimmed = line.trim();
 
@@ -149,13 +149,13 @@ function findGEMSComment(lines, funcLine) {
       continue;
     }
 
-    // v1.1: 跳過 import/const/let/var/type 語句，繼續往上找 GEMS 標籤
-    // 這處理 GEMS 標籤在檔案頂部、中間隔著 import/const 的情況
-    if (!inMultiLineComment && /^(?:import\s|export\s(?:type\s)?{|const\s|let\s|var\s|type\s)/.test(trimmed)) {
+    // v1.1.1: 跳過 import/const/let/var/type/interface/export 語句，繼續往上找 GEMS 標籤
+    // 這處理 GEMS 標籤在檔案頂部、中間隔著很多 export const 的情況
+    if (!inMultiLineComment && /^(?:import\s|(?:export\s+)?(?:type\s|interface\s|const\s|let\s|var\s|default\s|enum\s|class\s|function\s)|export\s(?:\{|\*))/.test(trimmed)) {
       continue;
     }
 
-    // 遇到非註解非空行，停止
+    // 遇到非註解非空行，且不是被跳過的語句，停止
     if (!inMultiLineComment) {
       break;
     }

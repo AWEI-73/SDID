@@ -8,6 +8,8 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 
 > **迭代號規則**: 存檔前先掃描 `{project}/.gems/iterations/` 找到最大的 iter-N，新建 iter-(N+1)。若無任何迭代目錄則從 iter-1 開始。
 
+---
+
 ## 5 輪對話流程
 
 | 輪次 | 焦點 | 產出 |
@@ -15,8 +17,10 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 | 1 | 目標釐清 | 一句話目標 + 族群識別表 |
 | 2 | 實體識別 | 實體定義表格 (欄位/型別/約束) |
 | 3 | 模組拆分 | 共用模組 + 獨立模組 + 路由結構 |
-| 4 | 迭代規劃 | 迭代規劃表 + 不做什麼 |
-| 5 | 動作細化 | 模組動作清單 (業務語意→技術名稱) |
+| 4 | 迭代規劃 | 迭代規劃表 + Demo Checkpoint + 不做什麼 |
+| 5 | 動作細化 | 模組動作清單 (業務語意→技術名稱)，強制垂直切片 |
+
+---
 
 ## 每輪規則
 
@@ -38,19 +42,51 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 - EXIT: 使用者確認模組結構
 
 ### Round 4: 迭代規劃
+
 - MUST: 提出 MVP 範圍建議，問「第一版要做到什麼程度？」
 - ALLOWED-READ: [action-type-mapping.md](action-type-mapping.md)
 - shared 模組永遠在 Iter 1
-- 明確列出「不做什麼」
-- EXIT: 使用者確認迭代規劃表
+
+**兩條硬規則（侧除就不能進 Round 5）：**
+
+**規則 1 — 每個功能性 iter 必含 SVC/API + ROUTE + UI**
+- Foundation iter（1 shared）豊免
+- 其餘所有 iter：迭代規劃表的「必含類型」欄必須同時含 `SVC 或 API`、`ROUTE`、`UI`
+- 脏延前後端分儲不同 iter（如 iter-2 只有邏輯， iter-3 才有 UI）是 ❌ BLOCKER
+
+**規則 2 — 每個功能性 iter 所展示標準必備注**
+- 迭代規劃表必須包含「可展示標準」一行：「操作者 + 操作步驟 + 預期面畫反應」
+- Iter 1 允許寫 `npm run dev → 首頁不報錯`
+- 不容許寫「系統完成初始化」之類無法親眼驗證的描述
+
+> 注：迭代規劃表用樣板里的格式：`| Iter | 範圍 | 目標 | 模組 | 依賴 | Story 數 | 必含類型 | 可展示標準 |`
+
+- EXIT: 兩條硬規則檢查通過 → 使用者確認
+
+---
 
 ### Round 5: 動作細化
+
 - MUST: 列出每個模組的具體動作，問使用者確認
 - ALLOWED-READ: [action-type-mapping.md](action-type-mapping.md)
-- ⚠️ 關鍵體驗規則: 如果專案包含前端 UI，**必須**在適當的模組中加入至少一個 `ROUTE` (頁面) 類型的動作（例如 `AppRoute`、`MainPage`）。這樣後續的 BUILD Phase 7 整合檢查才能自動觸發「自動路由串接」與「畫面整合」驗證，避免使用者最後看不到畫面。
-- 用 P0-P3 標記優先級
-- 用 `→` 描述資料流向
+- 每個功能性 iter 最少 2 個 Story（iter 1 豁免）
+
+**AC 兩條規則（不達標必須重寫）：**
+
+1. **P0 動作 AC 不可為空**，格式：Given / When / Then
+2. **Then 必須含效益指標**：描述使用者因此能做什麼或看到什麼
+
+```
+❌ 無效: Then 解析完成 / Then 回傳結果 / Then 寫入成功
+✅ 有效: Then 題目清單顯示 N 筆，老師可立即進行組卷
+✅ 有效: Then 成績頁顯示百分比與錯題清單，學生可知道哪些需加強
+✅ 有效(純邏輯): Then 回傳 2 題無重複，確保每次考試題目多樣性
+```
+
+- 用 P0-P3 標記優先級，用 `→` 描述資料流向
 - EXIT: 使用者確認 → 組裝 Enhanced Draft
+
+---
 
 ## 組裝 Enhanced Draft
 
@@ -61,16 +97,33 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 4. 存到 `{project}/.gems/iterations/iter-{X}/poc/requirement_draft_iter-{X}.md`
 5. 提示使用者：「Draft 已完成（iter-{X}），接下來執行 BUILD 嗎？」
 
+---
+
 ## 全授權模式差異
 
 內部推演 5 輪（每輪 AI 自己做決策，不問使用者）。
-每步內部自我檢查：「如果我是使用者，這個回答夠具體嗎？」
+**每輪結束前必須自我對照以下 checklist，全部 ✅ 才能進入下一輪：**
+
+| 檢查項目 | 完成標準 |
+|---------|----------|
+| Iter 1 有 ROUTE （AppRoot） | 從瀏覽器可看到首頁 |
+| 每個功能性 iter 有 SVC/API | 至少一個邏輯層動作 |
+| 每個功能性 iter 有 ROUTE | 至少一個頁面入口 |
+| 每個功能性 iter 有 UI | 至少一個畫面元件 |
+| 每個功能性 iter 有 Demo Checkpoint | 使用者操作後可親眼看到畫面 |
+| P0 動作的 AC 不為空 | Given/When/Then 格式 |
+| AC 的 Then 含效益指標 | 使用者因此能做什麼或看到什麼 |
+
 不中斷、不分批展示，最終一次性輸出組裝好的完整 Enhanced Draft + 「下一步：啟動 BUILD」結論。
+
+---
 
 ## 模板與範例
 
 - Golden template: `task-pipe/templates/enhanced-draft-golden.template.md`
 - EcoTrack example: `task-pipe/templates/examples/enhanced-draft-ecotrack.example.md`
+
+---
 
 ## 通用規則
 

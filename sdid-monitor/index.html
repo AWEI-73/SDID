@@ -942,6 +942,11 @@
         `<div class="log-head">${escHtml(filename)}</div><div class="log-body">${hl}</div>`;
     }
 
+    async function loadCode(project, file, lines) {
+      const text = await fetch(`/api/code?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}&lines=${encodeURIComponent(lines)}`).then(r => r.text());
+      renderLog(`${file} (${lines})`, text);
+    }
+
     // ── Layer 3b: SCAN viz ────────────────────────────────────────
     function renderScan(data) {
       const el = document.getElementById('right-panel');
@@ -956,9 +961,13 @@
     <div class="stat-box"><div class="stat-val p2">${byRisk.P2 || 0}</div><div class="stat-lbl">P2</div></div>
     <div class="stat-box"><div class="stat-val">${avgFunctionLines || '—'}</div><div class="stat-lbl">avg lines</div></div>
   </div>`;
+
+      const pname = selProject;
       const fnItems = functions.map(f => {
         const flow = f.flow ? `<div class="fn-flow">${escHtml(f.flow)}</div>` : '';
-        return `<div class="fn-item">
+        const clickEvent = f.file && f.lines ? `onclick="loadCode('${escAttr(pname)}', '${escAttr(f.file)}', '${escAttr(f.lines)}')"` : '';
+
+        return `<div class="fn-item" ${clickEvent} title="${f.file ? escHtml(f.file) : ''}">
       <span class="fn-risk ${f.risk}">${f.risk}</span>
       <div>
         <div class="fn-name">${escHtml(f.name)}</div>
@@ -967,14 +976,14 @@
       <span class="fn-story">${escHtml(f.storyId || '')}</span>
     </div>`;
       }).join('');
-      el.innerHTML = `<div class="log-head">SCAN Report — functions.json</div>
+      el.innerHTML = `<div class="log-head">SCAN Report — function-index.json</div>
     <div class="scan-sec">${stats}<div class="fn-list">${fnItems}</div></div>`;
     }
 
     function escHtml(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
-    function escAttr(s) { return String(s).replace(/'/g, "\\'"); }
+    function escAttr(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 
     connectSSE();
   </script>

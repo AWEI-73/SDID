@@ -148,6 +148,9 @@ function getFlowSequence() {
 
   // Fallback 硬編碼
   return [
+    { phase: 'GATE', step: 'check' },
+    { phase: 'CYNEFIN_CHECK', step: 'run' },
+    { phase: 'PLAN', step: 'draft-to-plan' },
     { phase: 'POC', step: '1' },
     { phase: 'POC', step: '2' },
     { phase: 'POC', step: '3' },
@@ -166,7 +169,10 @@ function getFlowSequence() {
     { phase: 'BUILD', step: '6' },
     { phase: 'BUILD', step: '7' },
     { phase: 'BUILD', step: '8' },
-    { phase: 'SCAN', step: 'scan' }
+    { phase: 'SHRINK', step: 'run' },
+    { phase: 'SCAN', step: 'scan' },
+    { phase: 'VERIFY', step: 'run' },
+    { phase: 'NEXT_ITER', step: 'run' }
   ];
 }
 

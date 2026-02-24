@@ -150,144 +150,72 @@ function hasGateLog(logsDir, step, type = 'pass') {
 // 狀態偵測
 // ============================================
 
-/**
- * P0 State Ledger: 從 .state.json 讀取 BUILD 進度（快速路徑）
- * Blueprint flow 的 GATE/PLAN/SHRINK/VERIFY 由 gate logs 驅動，
- * 但 BUILD Phase 1-8 可以從 state.json 加速偵測。
- * 返回 null 表示 fallback 到檔案系統掃描。
- */
-function detectFromStateLedger(projectPath, iterNum) {
+function detectState(projectPath, iterNum) {
   let stateManager;
   try {
     stateManager = require(path.join(WORKSPACE_ROOT, 'task-pipe', 'lib', 'shared', 'state-manager-v3.cjs'));
   } catch (e) {
-    return null;
+    return { phase: 'ERROR', reason: '找不到 state-manager-v3.cjs' };
   }
 
   const iteration = `iter-${iterNum}`;
-  const state = stateManager.readState(projectPath, iteration);
-  if (!state || !state.flow || !state.flow.currentNode) return null;
-
-  // 只信任 ACTIVE 狀態
-  if (state.status && state.status !== 'active') {
-    if (state.status === 'completed') {
-      return { phase: 'COMPLETE', reason: `State Ledger: ${iteration} 已完成`, source: 'state_ledger' };
-    }
-    return null;
-  }
-
-  const { phase, step } = stateManager.parseNode(state.flow.currentNode);
-  if (!phase) {
-    return { phase: 'COMPLETE', reason: 'State Ledger: COMPLETE', source: 'state_ledger' };
-  }
-
-  // State Ledger 只加速 BUILD 偵測（Blueprint 的 GATE/SHRINK/VERIFY 靠 gate logs 更準確）
-  if (phase === 'BUILD' && step) {
-    const draftPath = findDraft(projectPath, iterNum);
-    const plannedStories = findPlannedStories(projectPath, iterNum);
-    const completedStories = findCompletedStories(projectPath, iterNum);
-
-    // 從 state.stories 找當前 story
-    let currentStory = null;
-    if (state.stories) {
-      currentStory = Object.keys(state.stories).find(
-        s => state.stories[s].status === 'in-progress'
-      ) || Object.keys(state.stories).find(
-        s => state.stories[s].status === 'pending'
-      );
-    }
-    // fallback: 從 plannedStories 找未完成的
-    if (!currentStory) {
-      currentStory = plannedStories.find(s => !completedStories.includes(s));
-    }
-
-    if (currentStory) {
-      return {
-        phase: 'BUILD', step: parseInt(step), story: currentStory, draftPath,
-        plannedStories, completedStories,
-        reason: `State Ledger: ${currentStory} BUILD Phase ${step}`,
-        source: 'state_ledger'
-      };
-    }
-  }
-
-  // 非 BUILD 階段 → fallback 到檔案系統（Blueprint 特有的 GATE/SHRINK/VERIFY 邏輯）
-  return null;
-}
-
-function detectState(projectPath, iterNum) {
-  // === P0 State Ledger: BUILD 快速路徑 ===
-  const ledgerResult = detectFromStateLedger(projectPath, iterNum);
-  if (ledgerResult) {
-    return ledgerResult;
-  }
-
-  // === Fallback: 檔案系統掃描（原始邏輯） ===
-  const logsDir = path.join(projectPath, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+  let state = stateManager.readState(projectPath, iteration);
   const draftPath = findDraft(projectPath, iterNum);
   const plannedStories = findPlannedStories(projectPath, iterNum);
   const completedStories = findCompletedStories(projectPath, iterNum);
 
-  // 1. 沒有 draft → 需要先產出藍圖
-  if (!draftPath) {
-    return { phase: 'NO_DRAFT', reason: `iter-${iterNum} 沒有 requirement_draft，請先用 blueprint-architect 產出藍圖` };
+  if (!state || !state.flow || !state.flow.currentNode) {
+    if (!draftPath) {
+      return { phase: 'NO_DRAFT', reason: `iter-${iterNum} 沒有 requirement_draft，請先用 blueprint-architect 產出藍圖` };
+    }
+    // Initialize state as Blueprint flow starting at GATE
+    state = stateManager.getCurrentState(projectPath, iteration, { entryPoint: 'GATE-check', mode: 'blueprint' });
   }
 
-  // 2. 沒有 gate pass log → 需要跑 Gate
-  if (!hasGateLog(logsDir, 'check', 'pass')) {
-    return { phase: 'GATE', draftPath, reason: '尚未通過 Gate 門控' };
+  // Already completed or abandoned
+  if (state.status === 'completed' || state.status === 'abandoned') {
+    return { phase: 'COMPLETE', reason: `State Ledger: ${iteration} ${state.status}`, source: 'state_ledger' };
   }
 
-  // 3. Gate pass 但沒有 cynefin-check pass → 需要跑 CYNEFIN-CHECK
-  // cynefin-log-writer 存的是 cynefin-check-pass-*.log（無 gate- 前綴）
-  const hasCynefinPass = fs.existsSync(logsDir) &&
-    fs.readdirSync(logsDir).some(f => f.startsWith('cynefin-check-pass-'));
-  if (!hasCynefinPass) {
-    return { phase: 'CYNEFIN_CHECK', draftPath, reason: 'Gate 通過，需要 Cynefin 語意域分析後才能進 PLAN' };
+  let { phase, step } = stateManager.parseNode(state.flow.currentNode);
+
+  if (!phase) {
+    return { phase: 'COMPLETE', reason: '流程已結束 (COMPLETE)', source: 'state_ledger' };
   }
 
-  // 4. 沒有 plan pass log 或沒有 plan 檔案 → 需要跑 draft-to-plan
-  if (!hasGateLog(logsDir, 'plan', 'pass') || plannedStories.length === 0) {
-    return { phase: 'PLAN', draftPath, reason: '尚未產出 implementation_plan' };
+  let currentStory = null;
+  if (phase === 'BUILD' && step) {
+    if (state.stories) {
+      currentStory = Object.keys(state.stories).find(s => state.stories[s].status === 'in-progress') ||
+        Object.keys(state.stories).find(s => state.stories[s].status === 'pending');
+    }
+    if (!currentStory) {
+      currentStory = plannedStories.find(s => !completedStories.includes(s));
+    }
   }
 
-  // 4. 有 plan，檢查 BUILD 進度
-  const nextStory = plannedStories.find(s => !completedStories.includes(s));
-  if (nextStory) {
-    const latestPhase = getLatestPassedStep(logsDir, 'build-phase', nextStory);
-    const nextPhase = latestPhase ? Math.min(latestPhase + 1, 8) : 1;
-    return {
-      phase: 'BUILD', step: nextPhase, story: nextStory, draftPath,
-      plannedStories, completedStories,
-      reason: `${nextStory} BUILD Phase ${nextPhase}`,
-    };
+  // Handle NEXT_ITER transition
+  if (phase === 'NEXT_ITER') {
+    const nextIterNum = iterNum + 1;
+    const nextDraft = findDraft(projectPath, nextIterNum);
+    if (nextDraft) {
+      return { phase: 'NEXT_ITER', nextIter: nextIterNum, plannedStories, completedStories, reason: `iter-${iterNum} 完成，自動進入下一迭代` };
+    } else {
+      return { phase: 'COMPLETE', reason: `iter-${iterNum} Blueprint Flow 全部完成` };
+    }
   }
 
-  // 5. 所有 Story BUILD 完成 → 需要 Shrink
-  if (!hasGateLog(logsDir, 'shrink', 'pass')) {
-    return { phase: 'SHRINK', draftPath, plannedStories, completedStories, reason: '所有 Story BUILD 完成，需要收縮藍圖' };
-  }
-
-  // 6. Shrink 完成 → 跑 SCAN 產出 functions.json (VERIFY 需要)
-  const functionsJson = path.join(projectPath, '.gems', 'docs', 'functions.json');
-  if (!fs.existsSync(functionsJson)) {
-    return { phase: 'SCAN', draftPath, plannedStories, completedStories, reason: 'SHRINK 完成，需要 SCAN 產出 functions.json (VERIFY 前置)' };
-  }
-
-  // 7. Shrink + SCAN 完成 → 檢查是否有下一個 iter 需要 Expand
-  const nextIterNum = iterNum + 1;
-  const nextDraft = findDraft(projectPath, nextIterNum);
-  if (nextDraft) {
-    return { phase: 'NEXT_ITER', nextIter: nextIterNum, plannedStories, completedStories, reason: `iter-${iterNum} 完成，iter-${nextIterNum} 已有 draft` };
-  }
-
-  // 8. 可選: Verify
-  if (!hasGateLog(logsDir, 'verify', 'pass')) {
-    return { phase: 'VERIFY', draftPath, plannedStories, completedStories, reason: '驗證藍圖↔源碼一致性' };
-  }
-
-  // 9. 全部完成
-  return { phase: 'COMPLETE', plannedStories, completedStories, reason: `iter-${iterNum} Blueprint Flow 全部完成` };
+  return {
+    phase,
+    step: step ? (isNaN(step) ? step : parseInt(step)) : null,
+    story: currentStory,
+    draftPath,
+    plannedStories,
+    completedStories,
+    nextIter: iterNum + 1,
+    reason: `State Ledger: Phase ${phase}${step ? '-' + step : ''}`,
+    source: 'state_ledger'
+  };
 }
 
 
@@ -649,6 +577,23 @@ function main() {
   log(`📍 狀態: ${state.phase}${state.step ? ' Phase ' + state.step : ''}${state.story ? ' ' + state.story : ''} (iter-${iterNum})`, 'cyan');
   log(`   原因: ${state.reason}`, 'cyan');
 
+  // 進入 SHRINK 前檢查是否還有未完成的 Story
+  if (state.phase === 'SHRINK') {
+    const nextStory = state.plannedStories.find(s => !state.completedStories.includes(s));
+    if (nextStory) {
+      log(`\n⏳ 尚有未完成 Story (${nextStory})，跳回 BUILD Phase 1`, 'yellow');
+      try {
+        const stateManager = require(path.join(WORKSPACE_ROOT, 'task-pipe', 'lib', 'shared', 'state-manager-v3.cjs'));
+        stateManager.forceStartFrom(args.project, `iter-${iterNum}`, 'BUILD-1');
+        state.phase = 'BUILD';
+        state.step = 1;
+        state.story = nextStory;
+      } catch (e) {
+        log(`[Warn] 無法重置狀態: ${e.message}`, 'red');
+      }
+    }
+  }
+
   // 顯示 Story 進度
   displayProgress(state, iterNum);
 
@@ -691,6 +636,23 @@ function main() {
 
   // 輸出結果
   if (result.success) {
+    if (result.waitForAI) {
+      log('\n@NEXT_ACTION', 'yellow');
+      log('請完成上述任務，並確認執行規定工具（如 cynefin-log-writer.cjs）', 'yellow');
+      return;
+    }
+
+    // v2.0自動推進狀態 (僅限由 loop 呼叫的同步階段，BUILD/SCAN 由 runner 自己管理)
+    if (['GATE', 'PLAN', 'SHRINK', 'VERIFY'].includes(state.phase)) {
+      try {
+        const stateManager = require(path.join(WORKSPACE_ROOT, 'task-pipe', 'lib', 'shared', 'state-manager-v3.cjs'));
+        let step = 'run';
+        if (state.phase === 'GATE') step = 'check';
+        if (state.phase === 'PLAN') step = 'draft-to-plan';
+        stateManager.advanceState(args.project, `iter-${iterNum}`, state.phase, step);
+      } catch (e) { /* ignore */ }
+    }
+
     log('\n✅ 執行完成', 'green');
 
     // P3: 記錄成功到 project-memory

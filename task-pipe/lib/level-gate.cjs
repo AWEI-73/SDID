@@ -21,13 +21,13 @@ try {
 const DEFAULT_LEVELS = {
   S: {
     description: '小專案，只檢查核心',
-    phases: ['1', '2', '8'],
+    phases: ['1', '2', '7', '8'],
     testRequired: false,
     tagsRequired: ['GEMS']
   },
   M: {
     description: '中專案，加測試',
-    phases: ['1', '2', '3', '4', '5', '8'],
+    phases: ['1', '2', '3', '4', '5', '7', '8'],
     testRequired: true,
     tagsRequired: ['GEMS', 'GEMS-TEST', 'GEMS-TEST-FILE']
   },

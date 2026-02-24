@@ -2,9 +2,12 @@
   "name": "sdid-monitor",
   "version": "1.0.0",
   "description": "SDID Task-Pipe Monitor",
-  "main": "server.cjs",
+  "main": "main.cjs",
   "scripts": {
-    "start": "node server.cjs"
+    "start": "node server.cjs",
+    "start:electron": "electron .",
+    "build:exe": "npx electron-packager . sdid-monitor --platform=win32 --arch=x64 --out=dist_packager --overwrite",
+    "dist": "electron-builder -w"
   },
   "keywords": [],
   "author": "",
@@ -12,5 +15,15 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^4.18.2"
+  },
+  "build": {
+    "appId": "com.sdid.monitor",
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "devDependencies": {
+    "electron": "^40.6.0",
+    "electron-builder": "^26.8.1"
   }
 }

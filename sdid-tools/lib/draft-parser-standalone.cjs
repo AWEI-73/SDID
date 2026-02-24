@@ -276,6 +276,7 @@ function parseModuleActions(content) {
         deps: item['依賴'] || item['deps'] || '無',
         status: item['狀態'] || item['status'] || '○○',
         evolution: item['演化'] || item['evolution'] || 'BASE',
+        ac: item['ac'] || item['AC'] || '',
       });
     }
 

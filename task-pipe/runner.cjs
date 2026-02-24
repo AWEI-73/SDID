@@ -326,6 +326,19 @@ function runPhase(phase, step, options, config) {
         log(`  → node task-pipe/runner.cjs --phase=BUILD --step=${nextQuickPhase} --story=${options.story} --quick`, 'dim');
       }
       log('');
+
+      if (projectMemory) {
+        try {
+          projectMemory.recordEntry(options.target, {
+            phase, step, story: options.story,
+            iteration: options.iteration,
+            verdict: 'PASS', signal: '@SKIP',
+            summary: `Skipped phase ${step} (Quick Mode)`
+          });
+        } catch (e) { }
+      }
+      advanceState(options.target, options.iteration, phase, step, options.story);
+
       process.exit(0);
     }
   }
@@ -340,6 +353,19 @@ function runPhase(phase, step, options, config) {
         log(`  → node task-pipe/runner.cjs --phase=BUILD --step=${nextPhase} --story=${options.story}`, 'dim');
       }
       log('');
+
+      if (projectMemory) {
+        try {
+          projectMemory.recordEntry(options.target, {
+            phase, step, story: options.story,
+            iteration: options.iteration,
+            verdict: 'PASS', signal: '@SKIP',
+            summary: `Skipped phase ${step} (Level ${options.level})`
+          });
+        } catch (e) { }
+      }
+      advanceState(options.target, options.iteration, phase, step, options.story);
+
       process.exit(0);
     }
   }
@@ -552,7 +578,7 @@ function runPhase(phase, step, options, config) {
         });
       } catch (e) { /* 忽略 */ }
     }
-    
+
     // v3.0: 記錄重試
     const retryInfo = recordRetry(options.target, options.iteration, phase, step, err.message);
     if (retryInfo.needsHuman) {
@@ -560,7 +586,7 @@ function runPhase(phase, step, options, config) {
     } else if (retryInfo.count > 0) {
       log(`  🔄 重試次數: ${retryInfo.count}/3`, 'yellow');
     }
-    
+
     if (err.stack && !plainMode) {
       log('');
       log(err.stack, 'dim');
@@ -779,11 +805,11 @@ function handleForceCommands(options) {
     const currentIter = stateManagerV3.detectActiveIteration(target);
     log(`\n🔄 強制跳到下一個迭代`, 'cyan');
     log(`   當前: ${currentIter}`, 'dim');
-    
+
     const result = stateManagerV3.forceNextIteration(target, currentIter, {
       reason: 'Force via CLI --force-next-iteration'
     });
-    
+
     log(`   ✅ 已跳轉到 ${result.newIteration}`, 'green');
     log(`   ${currentIter} 已標記為 ABANDONED`, 'dim');
     log(`\n下一步:`, 'cyan');
@@ -794,12 +820,12 @@ function handleForceCommands(options) {
   if (options.forceStartFrom) {
     const iteration = options.iteration || stateManagerV3.detectActiveIteration(target);
     const startNode = options.forceStartFrom.toUpperCase();
-    
+
     log(`\n🔄 強制從 ${startNode} 開始`, 'cyan');
     log(`   迭代: ${iteration}`, 'dim');
-    
+
     stateManagerV3.forceStartFrom(target, iteration, startNode);
-    
+
     const { phase, step } = stateManagerV3.parseNode(startNode);
     log(`   ✅ 已設定入口點`, 'green');
     log(`\n下一步:`, 'cyan');
@@ -809,11 +835,11 @@ function handleForceCommands(options) {
 
   if (options.forceAbandon) {
     const iteration = options.iteration || stateManagerV3.detectActiveIteration(target);
-    
+
     log(`\n🔄 標記 ${iteration} 為 ABANDONED`, 'cyan');
-    
+
     stateManagerV3.abandonIteration(target, iteration, 'Force via CLI --force-abandon');
-    
+
     log(`   ✅ 已標記`, 'green');
     return;
   }

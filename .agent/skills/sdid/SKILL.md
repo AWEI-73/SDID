@@ -32,18 +32,64 @@ draft 是簡單 requirement_draft → Task-Pipe 路線
 
 ### CYNEFIN-CHECK（進 PLAN 前強制執行）
 
+> ⚠️ **強制規則：不詢問使用者、不等待確認、不解釋「我將要執行」，直接執行。**
+
 兩條路線在進入 PLAN 前都必須執行 CYNEFIN-CHECK：
 
 ```
-Blueprint:  Enhanced Draft 完成 → [CYNEFIN-CHECK] → @PASS → draft-to-plan → BUILD
-Task-Pipe:  POC Step 5 完成    → [CYNEFIN-CHECK] → @PASS → PLAN Step 1 → BUILD
+Blueprint:  Enhanced Draft 完成 → [CYNEFIN-CHECK 立即執行] → @PASS → draft-to-plan → BUILD
+Task-Pipe:  POC Step 5 完成    → [CYNEFIN-CHECK 立即執行] → @PASS → PLAN Step 1 → BUILD
 ```
 
-執行方式：讀 [references/cynefin-check.md](references/cynefin-check.md)，按規則對輸入文件做語意域分析。
+**執行流程（三步，不可跳過）：**
 
-- `@PASS` → 在文件末尾加 `CYNEFIN-CHECK: PASS` 標記，繼續進 PLAN
-- `@NEEDS-FIX` → 根據 log 建議直接修改 draft/spec，重跑 CYNEFIN-CHECK，直到 @PASS
-- log 存到 `.gems/iterations/iter-X/logs/cynefin-check-<pass|fail>-<timestamp>.log`
+```
+Step A: 讀 references/cynefin-check.md，對輸入文件做語意域分析
+Step B: 將分析結果寫成 report JSON 檔 → 存到 .gems/iterations/iter-X/logs/cynefin-report-<timestamp>.json
+Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
+        node sdid-tools/cynefin-log-writer.cjs \
+          --report-file=<Step B 存的 json 路徑> \
+          --target=<project 根目錄> \
+          --iter=<N>
+```
+
+腳本輸出決定下一步：
+- `@PASS` → 在輸入文件末尾加 `CYNEFIN-CHECK: PASS | iter-X | <timestamp>` 標記，繼續進 PLAN
+- `@NEEDS-FIX` → 根據腳本輸出的 BLOCKER 建議直接修改 draft/spec，重跑（從 Step A）
+
+**Report JSON 格式**（Step B 寫的檔案，需符合 cynefin-log-writer.cjs schema）：
+
+```json
+{
+  "route": "Blueprint",
+  "inputFile": "smart-note/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md",
+  "modules": [
+    {
+      "name": "模組名",
+      "domain": "Clear|Complicated|Complex",
+      "threeQuestions": {
+        "q1_clear": true,
+        "q2_reference": true,
+        "q3_costly": false
+      },
+      "flowSteps": 4,
+      "depsCount": 2,
+      "timeCoupling": false,
+      "implicitExpansion": ["展開後的隱含步驟（若無則省略此欄）"],
+      "issues": [
+        {
+          "level": "BLOCKER",
+          "description": "問題描述",
+          "suggestions": ["具體修改建議"],
+          "fixTarget": "需修改的文件路徑"
+        }
+      ]
+    }
+  ]
+}
+```
+
+> `issues` 為空陣列 `[]` 表示該模組無問題。`level` 只有 `BLOCKER`（阻擋）、`WARNING`（警告不阻擋）兩種。
 
 ### 模糊意圖處理
 

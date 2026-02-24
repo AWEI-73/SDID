@@ -148,19 +148,49 @@ src/
 ## 📅 迭代規劃表 (Iteration Planning)
 
 <!--
-  規則:
-  - 同 Iter 內、依賴不互相引用的模組 → 可並行 (Multi-Agent Ready)
-  - 依賴欄位填「無」表示無依賴
+  強制規則:
+  - 每個功能性 Iter (非 Foundation) 至少包含 2~3 個 Story
+  - 每個 Story 必須有 Demo Checkpoint（使用者能做什麼、看到什麼）
+  - 功能性 Iter 必須同時含 SVC + ROUTE + UI（垂直切片）
   - shared 永遠在 Iter 1
+  - 同 Iter 內、依賴不互相引用的模組 → 可並行 (Multi-Agent Ready)
 -->
 
 | Iter | 範圍 | 目標 | 模組 | 依賴 |
 |------|------|------|------|------|
-| 1 | Foundation | 型別 + 配置 + 儲存層 | shared | 無 |
-| 2 | Core MVP | {核心業務功能} | {moduleA} | shared |
-| 3 | Extension | {擴展功能} | {moduleB} | shared, {moduleA} |
+<!--
+  強制規則:
+  - 每個功能性 Iter (非 Foundation) 至少包含 2~3 個 Story
+  - 每個功能性 Iter 必須同時含 SVC/API + ROUTE + UI（垂直切片）
+  - shared 永遠在 Iter 1
+  - 同 Iter 內、依賴不互相引用的模組 → 可並行 (Multi-Agent Ready)
+-->
+
+| Iter | 範圍 | 目標 | 模組 | 依賴 | Story 數 | 必含類型 |
+|------|------|------|------|------|---------|----------|
+| 1 | Foundation | 型別 + 配置 + 儲存層 | shared | 無 | 1 | CONST, LIB, ROUTE |
+| 2 | Core MVP | {核心業務功能} | {moduleA} | shared | ≥2 | SVC, ROUTE, UI |
+| 3 | Extension | {擴展功能} | {moduleB} | shared, {moduleA} | ≥2 | SVC, ROUTE, UI |
 
 > deps=[] 的模組可並行開發 (Multi-Agent Ready)
+
+---
+
+## 🎯 可展示標準 (Demo Checkpoint)
+
+<!--
+  強制規則:
+  - 每個 Iter 必須有至少一個「使用者可親眼看見/操作」的終點
+  - 格式: 操作者 | 操作步驟 | 預期結果（看到/能做什麼）
+  - 不可寫「系統完成初始化」之類無法親眼驗證的描述
+  - Iter 1 可以是 npm run dev 看到首頁不報錯
+-->
+
+| Iter | 操作者 | 操作步驟 | 預期結果 |
+|------|--------|---------|----------|
+| 1 | 開發者 | `npm run dev` → 開瀏覽器 | 首頁路由渲染，無 console error |
+| 2 | {角色} | {操作步驟，如「點選 XX 按鈕」} | {畫面反應，如「XX 列表顯示，數量 > 0」} |
+| 3 | {角色} | {操作步驟} | {預期結果} |
 
 ---
 
@@ -195,24 +225,71 @@ src/
 
 ### Iter 1: shared
 
-| 業務語意 | 類型 | 技術名稱 | 優先級 | 流向 |
-|---------|------|---------|--------|------|
-| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE → FREEZE → EXPORT |
-| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD → VALIDATE → EXPORT |
-| 儲存層封裝 | LIB | storage | P1 | INIT → CRUD_OPS → EXPORT |
+| 業務語意 | 類型 | 技術名稱 | 優先級 | 流向 | AC |
+|---------|------|---------|--------|------|----|
+| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE → FREEZE → EXPORT | AC-1.1 |
+| 環境變數管理 | CONST | EnvConfig | P2 | LOAD → VALIDATE → EXPORT | - |
+| 儲存層封裝 | LIB | StorageService | P1 | INIT → CRUD_OPS → EXPORT | AC-1.2 |
+| App 路由殼 | ROUTE | AppRoot | P0 | INIT_THEME → MOUNT_ROUTER → RENDER | AC-1.3 |
 
-### Iter 2: {moduleA}
+<!--
+  Iter 1 AC 範例（效益導向）:
+  AC-1.1: Given app 啟動，When import CoreTypes，
+           Then TypeScript 無型別錯誤，開發者可信心引用型別而不担心渽讀
+  AC-1.2: Given StorageService，When 呼叫 write('key', data)，
+           Then read('key') 回傳相同 data，重新整理後資料仍存在
+  AC-1.3: Given npm run dev，When 開啟瀏覽器，
+           Then 首頁路由渲染且無 console error，可進行後續路由接線
+-->
 
-| 業務語意 | 類型 | 技術名稱 | 優先級 | 流向 |
-|---------|------|---------|--------|------|
-| {業務動作描述} | API | {techName} | P0 | {STEP1 → STEP2 → STEP3} |
-| {資料轉換描述} | SVC | {techName} | P1 | RECV_DTO → MAP_MODEL → EXPORT |
-| {互動邏輯描述} | HOOK | {useSomething} | P1 | CALL_API → UPDATE_STATE → RENDER |
-| {介面元件描述} | UI | {ComponentName} | P0 | LOAD_DATA → RENDER → BIND_EVENTS |
+### Iter 2: {moduleA}（垂直切片 — 含 SVC + ROUTE + UI）
 
-### Iter 3: {moduleB} (Stub)
+<!--
+  強制垂直切片: 同一 iter 必須同時含 SVC/API、ROUTE、UI
+  禁止留下只有邏輯沒有畫面的 iter
+-->
 
-> {模組描述}，具體動作待 Iter 2 完成後細化
+#### Story-2.1: {核心業務邏輯 + 資料存取}
+| 業務語意 | 類型 | 技術名稱 | 優先級 | 流向 | AC |
+|---------|------|---------|--------|------|----|
+| {業務動作描述} | SVC | {techName} | P0 | RECV_INPUT → PROCESS → RETURN_RESULT | AC-2.1 |
+| {資料存取描述} | API | {techName} | P0 | CALL_API → MAP_DTO → CACHE | AC-2.2 |
+
+#### Story-2.2: {UI 整合 + 路由接線}
+| 業務語意 | 類型 | 技術名稱 | 優先級 | 流向 | AC |
+|---------|------|---------|--------|------|----|
+| {互動邏輯描述} | HOOK | {useSomething} | P1 | CALL_SVC → UPDATE_STATE → RETURN | AC-2.3 |
+| {介面元件描述} | UI | {ComponentName} | P0 | FETCH_DATA → RENDER → BIND_EVENTS | AC-2.4 |
+| {頁面路由描述} | ROUTE | {PageName} | P0 | CHECK_AUTH → RENDER_LAYOUT → MOUNT | AC-2.5 |
+
+<!--
+  AC 格式規則（Given/When/Then + 效益結果）：
+  
+  ✅ 有效 AC（Then 描述效益，使用者因此能做什麼）：
+  AC-2.1: Given 一組 {輸入資料}，When 呼叫 {techName}，
+           Then 回傳 {預期結果}，使用者因此能夠 {?????}
+  AC-2.4: Given 頁面已載入，When 使用者 {操作}，
+           Then {畫面反應}，且使用者可立即進行 {?下一步行為?}
+  AC-2.5: Given 使用者已登入，When 導航至 /{route}，
+           Then 頁面正確渲染且無 console error，不需手動 refresh
+  
+  ❌ 無效 AC（只描述動作，沒有效益）：
+  AC-2.4: 頁面渲染成功
+  AC-2.5: 路由接線完成
+-->
+
+### Iter 3: {moduleB}（垂直切片 — 含 SVC + ROUTE + UI）
+
+#### Story-3.1: {核心業務邏輯}
+| 業務語意 | 類型 | 技術名稱 | 優先級 | 流向 | AC |
+|---------|------|---------|--------|------|----|
+| {業務動作描述} | SVC | {techName} | P0 | {STEP1 → STEP2 → STEP3} | AC-3.1 |
+
+#### Story-3.2: {UI 整合 + 路由接線}
+| 業務語意 | 類型 | 技術名稱 | 優先級 | 流向 | AC |
+|---------|------|---------|--------|------|----|
+| {介面元件描述} | UI | {ComponentName} | P0 | FETCH_DATA → RENDER → BIND_EVENTS | AC-3.2 |
+| {頁面路由描述} | ROUTE | {PageName} | P0 | MOUNT → RENDER → INTERACT | AC-3.3 |
 
 ---
 

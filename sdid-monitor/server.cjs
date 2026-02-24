@@ -4,7 +4,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3737;
-const WORKSPACE_ROOT = path.resolve(__dirname, '..');
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || path.resolve(__dirname, '..');
 const sseClients = new Set();
 
 app.use(express.json());
@@ -28,6 +28,34 @@ app.post('/api/notify', (req, res) => {
   broadcast({ type: 'refresh' });
   res.json({ ok: true });
 });
+
+// ─── Auto-detect new / removed projects ──────────────────────
+// Watch WORKSPACE_ROOT for directory-level changes (new project created, etc.)
+let watchDebounce = null;
+try {
+  fs.watch(WORKSPACE_ROOT, { persistent: false }, (eventType, filename) => {
+    if (!filename) return;
+    // Debounce rapid file-system events (e.g. multiple files written at once)
+    clearTimeout(watchDebounce);
+    watchDebounce = setTimeout(() => {
+      projectsCache = { data: null, time: 0 }; // invalidate cache
+      broadcast({ type: 'refresh' });
+    }, 800);
+  });
+  console.log(`👁  Watching workspace for changes: ${WORKSPACE_ROOT}`);
+} catch (e) {
+  console.warn('⚠  fs.watch unavailable, falling back to polling:', e.message);
+}
+
+// Fallback: poll every 10 s regardless (catches deep changes fs.watch might miss)
+setInterval(() => {
+  const prev = projectsCache.data ? JSON.stringify(projectsCache.data.map(p => p.name + p.phase)) : null;
+  projectsCache = { data: null, time: 0 };
+  try {
+    const next = scanProjects ? JSON.stringify(scanProjects().map(p => p.name + p.phase)) : null;
+    if (prev !== next) broadcast({ type: 'refresh' });
+  } catch (_) { }
+}, 10000);
 
 // ─── Helpers ─────────────────────────────────────────────────
 function normalizeStatus(raw) {
@@ -340,10 +368,84 @@ app.get('/api/log', (req, res) => {
 app.get('/api/scan/:project', (req, res) => {
   try {
     const { project } = req.params;
+
+    // Support new function-index.json
+    const newIdxPath = path.resolve(WORKSPACE_ROOT, project, '.gems', 'docs', 'function-index.json');
+    if (fs.existsSync(newIdxPath)) {
+      const data = JSON.parse(fs.readFileSync(newIdxPath, 'utf8'));
+      const functions = [];
+      let totalLines = 0;
+      let totalCount = 0;
+      const byRisk = { P0: 0, P1: 0, P2: 0, P3: 0 };
+
+      for (const [file, items] of Object.entries(data.byFile || {})) {
+        for (const item of items) {
+          const risk = item.priority || 'P3';
+          byRisk[risk] = (byRisk[risk] || 0) + 1;
+
+          let lineDiff = 0;
+          if (item.lines) {
+            const [start, end] = item.lines.split('-');
+            lineDiff = Math.max(0, parseInt(end) - parseInt(start) + 1);
+            totalLines += lineDiff;
+          }
+
+          functions.push({
+            name: item.name,
+            risk: risk,
+            file: file,
+            lines: item.lines,
+            description: item.lines ? `Lines: ${item.lines}` : '',
+            storyId: Object.keys(data.byStory || {}).find(s => data.byStory[s].includes(item.name)) || ''
+          });
+          totalCount++;
+        }
+      }
+      return res.json({
+        totalCount,
+        byRisk,
+        avgFunctionLines: totalCount > 0 ? Math.round(totalLines / totalCount) : 0,
+        functions
+      });
+    }
+
+    // Fallback old format
     const p = path.resolve(WORKSPACE_ROOT, project, '.gems', 'docs', 'functions.json');
     if (!p.startsWith(WORKSPACE_ROOT)) return res.status(403).json({ error: 'forbidden' });
     if (!fs.existsSync(p)) return res.status(404).json({ error: 'not found' });
     res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/code', (req, res) => {
+  try {
+    const { project, file, lines } = req.query;
+    if (!project || !file || !lines) return res.status(400).json({ error: 'missing params' });
+
+    // Prevent directory traversal
+    let safeFile = file.replace(/^(\.\.?[\\/])+/, '');
+
+    // The JSON output records paths like `time-echo\\src\\shared\\...`
+    // If the path starts with project name, slice it off so `resolve` doesn't double it.
+    if (safeFile.startsWith(project + '\\')) {
+      safeFile = safeFile.substring(project.length + 1);
+    } else if (safeFile.startsWith(project + '/')) {
+      safeFile = safeFile.substring(project.length + 1);
+    }
+
+    const p = path.resolve(WORKSPACE_ROOT, project, safeFile);
+
+    if (!p.startsWith(WORKSPACE_ROOT)) return res.status(403).json({ error: 'forbidden' });
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'not found: ' + p });
+
+    const content = fs.readFileSync(p, 'utf8');
+    const [start, end] = lines.split('-').map(Number);
+    const codeLines = content.split('\n');
+
+    // Extract snippet (1-based index)
+    const snippet = codeLines.slice(Math.max(0, start - 1), end).join('\n');
+
+    res.type('text/plain').send(`// File: ${safeFile}\n// Lines: ${lines}\n\n${snippet}`);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

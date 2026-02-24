@@ -17,12 +17,39 @@ SDID（Script-Driven Iterative Development）是一套**以 Gate 為核心的迭
 
 ---
 
-## 二、兩條設計路線
+## 二、進入判斷與路線
+
+### 2.1 全局架構圖
 
 ```
-Blueprint 路線（大型專案，需求模糊）      Task-Pipe 路線（小型專案，需求明確）
+使用者意圖
+  ├─ 「小修」「fix」「改一下」
+  │     ↓
+  │   MICRO-FIX（旁路）
+  │   直接改 → micro-fix-gate → 完成
+  │   不經過 CYNEFIN / Gate / BUILD
+  │
+  └─ 需求開發（新功能、新專案、繼續開發）
+        │
+        ├─ 有主藍圖 + 有 [STUB]/[CURRENT]
+        │     ↓
+        │   BLUEPRINT-CONTINUE（續跑，見第三章）
+        │
+        ├─ 需求模糊
+        │     ↓
+        │   Blueprint 路線（5 輪對話）
+        │
+        └─ 需求明確
+              ↓
+            Task-Pipe 路線（POC Step 1-5）
+```
+
+### 2.2 兩條正式路線
+
+```
+Blueprint 路線                             Task-Pipe 路線
         ↓                                          ↓
-  5 輪對話設計                               POC Step 1-5
+  5 輪對話 / CONTINUE                        POC Step 1-5
         ↓                                          ↓
   Enhanced Draft                            requirement_draft
         ↓                                          ↓
@@ -41,6 +68,24 @@ Blueprint 路線（大型專案，需求模糊）      Task-Pipe 路線（小型
         ↓                                          ↓
   SHRINK → VERIFY                               SCAN
 ```
+
+### 2.3 MICRO-FIX（旁路，不算路線）
+
+**觸發詞**：「小修」「fix」「改一下」「quick fix」「micro fix」
+
+**Escalation Check**（先判斷，再決定走哪條路）：
+```
+單一檔案/函式、"just fix" → MICRO-FIX
+多模組、架構調整、新功能 → 升級到正常 SDID 流程
+```
+
+**步驟**：
+1. 確認要改什麼（一句話）
+2. 直接修改
+3. `node sdid-tools/micro-fix-gate.cjs --changed=<file> --target=<project>`
+4. @PASS → 完成；@BLOCKER → 修復重跑
+
+**不做的事**：不寫測試、不跑完整 BUILD、不需要 story/plan、不經過 CYNEFIN。
 
 ---
 
@@ -241,25 +286,9 @@ Layer 2（確認）：原始碼內容含以下任一：
 
 ---
 
-## 八、MICRO-FIX 模式
-
-**觸發詞**：「小修」「fix」「改一下」「quick fix」「micro fix」
-
-**Escalation Check**：
-```
-單一檔案/函式、"just fix" → MICRO-FIX
-多模組、架構調整、新功能 → 升級到正常 SDID 流程
-```
-
-**步驟**：
-1. 確認要改什麼（一句話）
-2. 直接修改
-3. `node sdid-tools/micro-fix-gate.cjs --changed=<file> --target=<project>`
-4. @PASS → 完成；@BLOCKER → 修復重跑
-
 ---
 
-## 九、Gate 全覽（通過條件速查）
+## 八、Gate 全覽（通過條件速查）
 
 | Gate | 位置 | 主要規則 | 工具 |
 |------|------|---------|------|
@@ -274,7 +303,7 @@ Layer 2（確認）：原始碼內容含以下任一：
 
 ---
 
-## 十、檔案結構（專案根目錄）
+## 九、檔案結構（專案根目錄）
 
 ```
 {project}/
@@ -306,7 +335,7 @@ Layer 2（確認）：原始碼內容含以下任一：
 
 ---
 
-## 十一、已知設計限制與後續補充空間
+## 十、已知設計限制與後續補充空間
 
 | 項目 | 狀態 | 說明 |
 |------|------|------|

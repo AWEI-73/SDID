@@ -1,10 +1,21 @@
 # 📋 {專案名稱} - 活藍圖 (Living Blueprint)
 
-**迭代**: iter-1  
-**日期**: {YYYY-MM-DD}  
-**藍圖狀態**: [~] ACTIVE  
-**規模**: {S/M/L}  
+**迭代**: iter-1
+**日期**: {YYYY-MM-DD}
+**藍圖狀態**: [~] ACTIVE
+**規模**: {S/M/L}
 **方法論**: SDID v2.1
+
+<!--
+  活藍圖 (Living Blueprint) 說明：
+  - 本文件是「主藍圖」，記錄所有 iter 的全局規劃
+  - 每次 BUILD 完成後，更新迭代規劃表的狀態標記
+  - 新 session 執行 BLUEPRINT-CONTINUE 時，直接讀此文件展開下一個 [STUB]
+  - 不要在 iter-N (N>1) 的 draft 重複定義實體或共用模組
+
+  狀態流轉：
+    [STUB] → (BLUEPRINT-CONTINUE 展開) → [CURRENT] → (BUILD 完成) → [DONE]
+-->
 
 ---
 

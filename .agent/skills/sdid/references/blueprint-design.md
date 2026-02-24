@@ -10,6 +10,88 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 
 ---
 
+## BLUEPRINT-CONTINUE 模式（活藍圖續跑）
+
+### 觸發條件
+
+進入 DESIGN-BLUEPRINT 時，**先掃描專案是否存在「活藍圖」**：
+
+```
+活藍圖 = iter-1/poc/requirement_draft_iter-1.md 存在
+         且 草稿狀態 = [~] ACTIVE（或有未完成的 STUB）
+         且 迭代規劃表有 [STUB] 狀態的 iter
+```
+
+若符合，**不需要 5 輪對話**，直接進入 BLUEPRINT-CONTINUE 模式展開下一個 STUB。
+
+### BLUEPRINT-CONTINUE 執行步驟
+
+```
+Step 1: 讀主藍圖（iter-1 的 requirement_draft_iter-1.md）
+Step 2: 掃描迭代規劃表，找出第一個狀態為 [STUB] 的 iter-N 和其模組
+Step 3: 從主藍圖的「模組動作清單」找到對應模組的動作（若已有詳細清單）
+Step 4: 產出 Stub 展開 Draft，格式同 Enhanced Draft，但：
+         - 只包含該 iter 的模組動作、驗收條件
+         - 開頭加入「承接主藍圖 iter-X，展開 [模組名]」說明
+         - 繼承主藍圖的實體定義、共用模組（不重複定義）
+Step 5: Blueprint Gate 驗證（同正常流程）
+Step 6: 存到 {project}/.gems/iterations/iter-N/poc/requirement_draft_iter-N.md
+Step 7: 更新主藍圖（iter-1 的 draft）：
+         - 將剛展開的 iter-N 狀態從 [STUB] 改為 [CURRENT]
+         - 下一個 STUB 保持不變
+Step 8: 提示使用者：「Iter-N ({模組名}) 已展開，接下來執行 BUILD 嗎？」
+```
+
+### 主藍圖 vs Stub Draft 的職責區分
+
+| 文件 | 職責 | 更新時機 |
+|------|------|---------|
+| `iter-1/poc/requirement_draft_iter-1.md` (主藍圖) | 全局模組設計、迭代規劃表（所有 iter）、實體定義 | BUILD 完成後，更新對應 iter 狀態 |
+| `iter-N/poc/requirement_draft_iter-N.md` (Stub Draft) | 單一 iter 的動作細節、AC、可展示標準 | 一次性寫入，不再修改 |
+
+### 主藍圖迭代狀態標記規則
+
+在迭代規劃表中，每個 iter 必須有明確狀態標記：
+
+| 狀態 | 含義 |
+|------|------|
+| `[CURRENT]` | 正在進行中（建立 Stub Draft 之後，BUILD 完成之前） |
+| `[DONE]` | BUILD 已完成，通過 Gate |
+| `[STUB]` | 規劃好但尚未展開，等待下一個 session |
+
+> 主藍圖狀態更新由 BUILD 完成後的收尾步驟執行（見 `build-execution.md`）
+
+### BLUEPRINT-CONTINUE 條件判斷流程
+
+```
+新 session 進入 DESIGN-BLUEPRINT
+  ↓
+Q1: iter-1 draft 存在？
+  → No: 正常 5 輪對話
+  → Yes: ↓
+
+Q2: 迭代規劃表有 [STUB]？
+  → No: 全部完成，告知使用者「主藍圖所有 iter 已完成」
+  → Yes: ↓
+
+Q3: 第一個 [STUB] 的模組動作清單是否完整（有 items）？
+  → Yes: 直接 BLUEPRINT-CONTINUE Step 4（展開 Draft）
+  → No: 執行 BLUEPRINT-CONTINUE Step 1-8（補充動作清單後展開）
+```
+
+### 全授權模式下的 BLUEPRINT-CONTINUE
+
+使用者說「全部授權」時：
+
+```
+自動讀主藍圖 → 找第一個 [STUB] → 展開 Draft → Gate 驗證 → 存檔 → 更新主藍圖狀態
+不問使用者，最終輸出：「Iter-N ({模組名}) 已展開 + 準備 BUILD」
+```
+
+---
+
+---
+
 ## 5 輪對話流程
 
 | 輪次 | 焦點 | 產出 |

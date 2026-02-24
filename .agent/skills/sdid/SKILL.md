@@ -14,6 +14,7 @@ description: SDID 統一開發框架 — 從需求設計到程式碼交付的完
 | 使用者說「小修」「fix」「改一下」「quick fix」「micro fix」 | MICRO-FIX | escalation check → 直接改 → micro-fix-gate（見下方） |
 | 無專案 + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話 |
 | 無專案 + 使用者需求明確 | DESIGN-TASKPIPE | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --new --project=[name]` |
+| 有專案 + 存在主藍圖（iter-1 ACTIVE）+ 迭代規劃表有 [STUB] | **BLUEPRINT-CONTINUE** | 讀 [references/blueprint-design.md](references/blueprint-design.md) → BLUEPRINT-CONTINUE 模式（展開下一個 STUB） |
 | 有專案但無 draft + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話（迭代號自動遞增） |
 | 有專案但無 draft + 使用者需求明確 | DESIGN-TASKPIPE | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]`（進入新迭代） |
 | 有 draft，無 plan | BUILD-AUTO | 看 draft 類型自動選路線（見下方） |
@@ -136,8 +137,10 @@ Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
 
 ### DESIGN-BLUEPRINT 模式
 - 讀 [references/blueprint-design.md](references/blueprint-design.md) 取得完整規則
-- 第一步必須是問使用者問題，不是讀檔案
-- 禁止讀取 src/*、.gems/*（設計階段不需要看程式碼）
+- **進入前先檢查主藍圖**：掃描 `{project}/.gems/iterations/iter-1/poc/` 是否有 requirement_draft_iter-1.md
+  - 若存在且有 `[STUB]`：改走 BLUEPRINT-CONTINUE 模式（不執行 5 輪對話）
+  - 若不存在：第一步必須是問使用者問題，不是讀檔案
+- 禁止讀取 src/*（設計階段不看程式碼）
 
 ### DESIGN-TASKPIPE 模式
 - 讀 [references/taskpipe-design.md](references/taskpipe-design.md) 取得 POC-PLAN 規則

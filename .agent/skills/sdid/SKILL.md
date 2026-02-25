@@ -28,6 +28,16 @@ Enhanced Draft 格式（模組動作表、迭代規劃表）→ Blueprint 路線
 簡單 requirement_draft → Task-Pipe 路線 → taskpipe-loop.cjs
 ```
 
+### 路線選擇優先問題
+
+新專案且無現有程式碼時，**先問這一個問題**：
+> 「UI 版面和操作流程確認了嗎？還是需要先跑出來看看？」
+
+- 未確認 → **Task-Pipe 優先**（POC 先建 UI 骨架讓使用者確認，再進 PLAN/BUILD）
+- 已確認 → 依需求模糊度選路線（見路由表）
+
+> ⚠️ 直接走 Blueprint 路線不驗證 UI，版面由 AI 自行決定，跑完才發現不對成本很高。
+
 ### 模糊意圖處理
 
 使用者意圖不明時，問一個問題：

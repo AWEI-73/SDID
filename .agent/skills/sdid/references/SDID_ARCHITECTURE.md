@@ -1,6 +1,6 @@
 # SDID 框架完整架構說明書
 
-**版本**: v2.2
+**版本**: v2.3
 **最後更新**: 2026-02-25
 **維護者**: 透過對話補充，有新機制就加進來
 
@@ -19,7 +19,29 @@ SDID（Script-Driven Iterative Development）是一套**以 Gate 為核心的迭
 
 ## 二、進入判斷與路線
 
-### 2.1 全局架構圖
+### 2.1 路線選擇指引（先問這個）
+
+**開始任何專案前，先問一個問題：**
+
+> **「UI 版面和操作流程確認了嗎？」**
+
+```
+No（版面未確認）→ Task-Pipe 優先
+  → POC Step 1-4 快速建 UI 骨架（可點擊、可看版面）
+  → 使用者確認版面和流程
+  → Step 5 收斂 SPEC → PLAN → BUILD
+  → MVP 確認後，後續擴充改走 BLUEPRINT-CONTINUE
+
+Yes（版面已確認）→ 看需求複雜度
+  → 需求模糊 → Blueprint 路線（5 輪對話）
+  → 需求明確 → Task-Pipe 路線
+```
+
+**為什麼這個問題最重要：**
+
+Blueprint 路線不驗證 UI，AI 根據描述自己決定版面。跑完才發現不對，Plan 和 Build 都已建好，改起來成本很高。Task-Pipe 的 POC 步驟天然就是 UI 驗證機制——先看到再決定。
+
+### 2.2 全局架構圖
 
 ```
 使用者意圖
@@ -35,11 +57,16 @@ SDID（Script-Driven Iterative Development）是一套**以 Gate 為核心的迭
         │     ↓
         │   BLUEPRINT-CONTINUE（續跑，見第三章）
         │
-        ├─ 需求模糊
+        ├─ UI 版面未確認（新專案初期）
+        │     ↓
+        │   Task-Pipe 優先（POC 先確認版面）
+        │   → MVP 確認後 → BLUEPRINT-CONTINUE 接手擴充
+        │
+        ├─ 需求模糊（版面已確認）
         │     ↓
         │   Blueprint 路線（5 輪對話）
         │
-        └─ 需求明確
+        └─ 需求明確（版面已確認）
               ↓
             Task-Pipe 路線（POC Step 1-5）
 ```

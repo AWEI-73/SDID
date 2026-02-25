@@ -222,6 +222,8 @@ function parseArgs() {
     diagnose: args.includes('--diagnose'),
     // P5: Quick Mode
     quick: args.includes('--quick'),
+    // Auto Mode: Phase 通過後自動串接下一個 Phase，直到 BLOCKER 或全部完成
+    auto: args.includes('--auto'),
   };
 }
 
@@ -259,6 +261,7 @@ ${c('強制指令 (v2.0):', 'yellow')}
   --force-abandon                 標記當前迭代為 ABANDONED
   --diagnose                      診斷專案狀態
   --quick                         Quick Mode: BUILD 只跑 Phase [1,2,5,7]
+  --auto                          Auto Mode: @PASS 後自動串接下一個 Phase，@BLOCKER 停止等待修復
 
 ${c('範例:', 'cyan')}
   # 自動偵測下一步
@@ -498,6 +501,27 @@ function runPhase(phase, step, options, config) {
         log(`→ Next: ${next.phase} step ${next.step}`, 'cyan');
         const storyArg = options.story ? ` --story=${options.story}` : '';
         log(`  node task-pipe/runner.cjs --phase=${next.phase} --step=${next.step}${storyArg}`, 'dim');
+
+        // --auto 模式：直接 spawn 下一個 phase，不需 AI 介入
+        if (options.auto) {
+          log('');
+          log(`⚡ [AUTO] 自動串接 ${next.phase} step ${next.step}...`, 'cyan');
+          const { spawnSync } = require('child_process');
+          const autoArgs = [
+            __filename,
+            `--phase=${next.phase}`,
+            `--step=${next.step}`,
+            `--target=${options.target}`,
+            `--level=${options.level}`,
+            `--iteration=${options.iteration}`,
+            '--auto',
+          ];
+          if (options.story) autoArgs.push(`--story=${options.story}`);
+          if (options.plain) autoArgs.push('--plain');
+          if (options.quick) autoArgs.push('--quick');
+          const result2 = spawnSync(process.execPath, autoArgs, { stdio: 'inherit' });
+          process.exit(result2.status ?? 0);
+        }
       }
     } else if (result.verdict === 'BLOCKER' || result.verdict === 'PENDING' || result.verdict === 'READY_TO_PASS') {
       // v3.1: 記錄非 PASS 到 project-memory

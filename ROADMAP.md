@@ -1,7 +1,7 @@
 # SDID Framework Roadmap
 
 > 每次 session 開始前看這裡，挑一個 milestone 繼續。
-> 最後更新：2026-02-25
+> 最後更新：2026-02-25 (session 2)
 
 ---
 
@@ -69,14 +69,50 @@ Blueprint Route (模糊需求)        Task-Pipe Route (清晰需求)
 
 ---
 
-### M5 — 框架文件收斂 ⬜ 未開始
+### M5 — SKILL.md routing 完整性 ✅ 進行中
+> 目標：routing table 覆蓋所有實際使用場景
+
+| 項目 | 狀態 | 優先 | 說明 |
+|------|------|------|------|
+| POC-FIX 快速路徑 | ✅ 完成 | P1 | SKILL.md 加入 POC-FIX 模式：POC 已驗證 + 目標明確 → 跳過 PLAN，直接移植 + micro-fix-gate |
+| SKILL.md routing table 完整性確認 | ⬜ 待確認 | P1 | bc70dcb 的其他 mode 邏輯是否正確 |
+
+---
+
+### M6 — Task-Pipe PLAN 全 Story 分片 ⬜ 未開始
+> 目標：runner 自動走完 spec 裡所有 story，不靠手動逐一餵 --story
+
+**背景**：ExamForge iter-11 有 3 個 story，PLAN log 只跑了 11.0 和 11.1，11.2 從未被 BUILD。
+根本原因：step-2 的 NEXT 指令永遠指向 step-3（往深走），不會橫向提示「還有 Story-X.2 沒跑」。
+
+| 項目 | 狀態 | 優先 | 說明 |
+|------|------|------|------|
+| step-2 生成後印出全 story 指令清單 | ⬜ 待做 | P0 | `generatePlansFromSpec()` 成功後，stdout 印出每個 story 的完整 PLAN Step 2-5 指令，讓 AI 一次看到全部 |
+| plan/step-5 加全局 gate | ⬜ 待做 | P1 | `--all-stories` 模式：掃描 spec 的 story 清單 vs plan/ 目錄，輸出哪些 story 還沒 READY，全部通過才放行進 BUILD |
+| runner story 進度追蹤 | ⬜ 待做 | P2 | state-manager 記錄每個 story 的 PLAN 完成狀態，`--resume` 時自動跳到第一個未完成的 story |
+
+---
+
+### M7 — Story 邊界偵測 ⬜ 未開始
+> 目標：偵測 spec 拆 story 時與 POC 函式邊界不對齊的問題
+
+**背景**：ExamForge iter-11 的 metadata 過濾邏輯在 POC 裡是 `extractImagesFromPage` 的 inline if-continue，
+但 spec 拆成獨立的 Story-11.2 `filterPagingAndCategories`，導致 story-11.1 的 plan 已經做了 story-11.2 的事。
+
+| 項目 | 狀態 | 優先 | 說明 |
+|------|------|------|------|
+| PLAN step-1 跨 story FLOW 重疊偵測 | ⬜ 待做 | P2 | 若兩個 story 的 GEMS-FLOW 有相同 step 名稱，發出 WARN |
+| spec 函式表 vs POC 函式清單對齊檢查 | ⬜ 待做 | P2 | 比對 5.5 函式規格表的函式名稱是否全部能在 POC 產物中找到對應 |
+
+---
+
+### M8 — 框架文件收斂 ⬜ 未開始
 > 目標：對外說明和內部規格文件保持一致
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
 | SDID_FRAMEWORK_OVERVIEW.md | ⬜ 待做 | P2 | 曾在 30f0c45 新增、bc70dcb 刪除。若需對外說明，建議重建並維護在 docs/ 下 |
 | README.md 與實際工具同步 | ⬜ 待確認 | P2 | README 在 bc70dcb 有大量更新，確認 entry point 指令正確 |
-| SKILL.md routing table 完整性 | ⬜ 待確認 | P1 | SKILL.md bc70dcb 有 58 行異動，確認所有 mode 的 routing 邏輯正確 |
 
 ---
 
@@ -84,6 +120,7 @@ Blueprint Route (模糊需求)        Task-Pipe Route (清晰需求)
 
 | 完成時間 | 內容 |
 |---------|------|
+| 2026-02-25 | M5: SKILL.md 加入 POC-FIX 模式（POC 已驗證 → 直接移植，跳過 PLAN） |
 | 2026-02-25 | M1: blueprint-gate 重複函式修復 |
 | 2026-02-25 | M2: spec-parser 5.5 fallback warning |
 | 2026-02-25 | feat: 5.5 函式規格表 → spec-parser → plan-generator E2E |
@@ -96,9 +133,9 @@ Blueprint Route (模糊需求)        Task-Pipe Route (清晰需求)
 
 ## 下一個 Session 建議入口
 
-1. **M1-ACC-002**：在 `blueprint-gate.cjs` 的 `checkACIntegrity` 加入 Then 效益指標的語意掃描
-2. **M3**：讀 `blueprint-loop.cjs` + `task-pipe/skills/sdid-loop/scripts/loop.cjs` 確認 Cynefin 攔截時機
-3. **M5-SKILL.md**：確認 bc70dcb 的 SKILL.md 改動邏輯正確，特別是 BUILD-AUTO 的 mode 判斷
+1. **M6-P0**：改 `task-pipe/phases/plan/step-2.cjs`，`generatePlansFromSpec()` 成功後印出所有 story 的指令清單
+2. **M1-ACC-002**：在 `blueprint-gate.cjs` 的 `checkACIntegrity` 加入 Then 效益指標的語意掃描
+3. **M3**：讀 `blueprint-loop.cjs` + `task-pipe/skills/sdid-loop/scripts/loop.cjs` 確認 Cynefin 攔截時機
 
 ---
 

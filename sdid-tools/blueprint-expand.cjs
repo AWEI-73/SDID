@@ -220,11 +220,25 @@ function expandBlueprint(rawContent, draft, iterNum, projectRoot) {
   // 讀取 Fillback
   const fillbackSuggestions = projectRoot ? loadPreviousFillback(projectRoot, iterNum) : [];
 
+  // 展開 targetModules，支援逗號分隔的多模組欄位（如 "exam_engine, user_grading"）
+  const expandedEntries = [];
   for (const entry of targetModules) {
+    const modNames = entry.module.split(',').map(m => m.trim()).filter(Boolean);
+    if (modNames.length > 1) {
+      // 多模組拆分為獨立條目
+      for (const m of modNames) {
+        expandedEntries.push(Object.assign({}, entry, { module: m }));
+      }
+    } else {
+      expandedEntries.push(entry);
+    }
+  }
+
+  for (const entry of expandedEntries) {
     const modName = entry.module;
     const actionData = draft.moduleActions[modName];
 
-    // 只展開 Stub
+    // 只展開 Stub（若 moduleActions 沒有此模組記錄，視為需要展開）
     if (actionData && actionData.fillLevel !== 'stub') {
       changes.push({ module: modName, status: 'SKIP', reason: `已是 ${actionData.fillLevel}，不需展開` });
       continue;
@@ -299,7 +313,29 @@ function expandBlueprint(rawContent, draft, iterNum, projectRoot) {
     }
 
     if (headerIdx < 0) {
-      changes.push({ module: modName, status: 'SKIP', reason: '找不到 Stub 區塊' });
+      // 沒有 Stub 區塊（常見於 generateNextIteration 產生的簡化 draft）
+      // 直接在 draft 末尾注入展開後的動作清單
+      const lines2 = result.split('\n');
+      // 在文件末尾（最後一個 --- 之後，或文件尾）插入
+      let insertIdx = lines2.length;
+      for (let i = lines2.length - 1; i >= 0; i--) {
+        if (lines2[i].trim() === '---') {
+          insertIdx = i + 1;
+          break;
+        }
+      }
+      const injected = [...lines2.slice(0, insertIdx), '', expandedTable, '', ...lines2.slice(insertIdx)];
+      result = injected.join('\n');
+      changes.push({
+        module: modName,
+        status: 'INJECTED',
+        actionCount: actions.length,
+        sources: {
+          infra: 1,
+          api: publicAPI.length > 0 ? actions.filter(a => !a.source && a.type !== 'CONST').length : 0,
+          fillback: actions.filter(a => a.source === 'fillback').length,
+        },
+      });
       continue;
     }
 
@@ -421,25 +457,54 @@ Blueprint Expand v1.0 - Stub 展開器
   if (args.target) console.log(`   專案: ${path.basename(args.target)}`);
   console.log('');
 
+  // 若目前 draft 的 iterationPlan 找不到目標 iter，往前找最近的完整 draft 補充
+  // 場景：generateNextIteration 生成的簡化 draft 不含 iterationPlan，需從前一個 draft 讀取
+  if (args.target && draft.iterationPlan.filter(e => e.iter === args.iter).length === 0) {
+    for (let prevN = args.iter - 1; prevN >= 1; prevN--) {
+      const prevDraftPath = path.join(
+        args.target, '.gems', 'iterations', `iter-${prevN}`, 'poc',
+        `requirement_draft_iter-${prevN}.md`
+      );
+      if (fs.existsSync(prevDraftPath)) {
+        try {
+          const prevRaw = fs.readFileSync(prevDraftPath, 'utf8');
+          const prevDraft = parser.parse(prevRaw);
+          if (prevDraft.iterationPlan.filter(e => e.iter === args.iter).length > 0) {
+            console.log(`   ℹ️  iterationPlan 從 iter-${prevN} draft 補充（目前 draft 無 iter-${args.iter} 規劃）`);
+            // 合併：用前一 draft 的 iterationPlan + modules 補齊，但保留目前 draft 的 rawContent 用於寫入
+            draft.iterationPlan = prevDraft.iterationPlan;
+            draft.modules = Object.assign({}, prevDraft.modules, draft.modules);
+            break;
+          }
+        } catch (e) { /* ignore parse errors */ }
+      }
+    }
+  }
+
   // 執行展開
   const { content, changes } = expandBlueprint(rawContent, draft, args.iter, args.target);
 
   // 報告
   const expandedCount = changes.filter(c => c.status === 'EXPANDED').length;
+  const injectedCount = changes.filter(c => c.status === 'INJECTED').length;
   const skipCount = changes.filter(c => c.status === 'SKIP').length;
 
   for (const change of changes) {
     if (change.status === 'EXPANDED') {
       const src = change.sources;
       console.log(`   ✅ ${change.module} → ${change.actionCount} 個動作 (infra:${src.infra}, api:${src.api}, fillback:${src.fillback})`);
+    } else if (change.status === 'INJECTED') {
+      const src = change.sources;
+      console.log(`   🆕 ${change.module} → ${change.actionCount} 個動作 [注入] (infra:${src.infra}, api:${src.api}, fillback:${src.fillback})`);
     } else if (change.status === 'SKIP') {
       console.log(`   ⏭️ ${change.module} — ${change.reason}`);
     }
   }
 
-  console.log(`\n📊 結果: ${expandedCount} 模組展開, ${skipCount} 跳過`);
+  const totalExpanded = expandedCount + injectedCount;
+  console.log(`\n📊 結果: ${totalExpanded} 模組展開${injectedCount > 0 ? ` (${injectedCount} 注入)` : ''}, ${skipCount} 跳過`);
 
-  if (expandedCount === 0) {
+  if (totalExpanded === 0) {
     const logProjectRoot = args.target || null;
     if (logProjectRoot) {
       logOutput.anchorError('TACTICAL_FIX',

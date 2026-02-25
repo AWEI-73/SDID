@@ -432,6 +432,21 @@ ${finalModules.map((m, i) => `| ${iterNum}.${i + 1} ${m.name} | P${i === 0 ? 0 :
 
 ---
 
+## 5.5 函式規格表 (供 PLAN 直接讀取，勿刪)
+
+> ⚠️ 此區塊由 AI 填寫後，spec-parser 直接讀取，不再推導。
+> 格式：每行一個函式，欄位用 | 分隔。Type: SVC/ROUTE/UI/LIB/HOOK/CONST。Priority: P0/P1/P2。
+> GEMS-FLOW 格式：來源 → 處理 → 目標（例：UI → SVC → storage）
+
+| Story | 函式名稱 | Type | Priority | GEMS-FLOW | 說明 |
+|-------|---------|------|---------|-----------|------|
+| ${iterNum}.0 | CoreTypes | CONST | P0 | types → shared | 核心型別定義 |
+| ${iterNum}.0 | MemoryStore | LIB | P0 | storage → local | 記憶體儲存層 |
+${finalModules.map((m, i) => `| ${iterNum}.${i + 1} | [函式名稱] | [Type] | P0 | [來源 → 處理 → 目標] | [說明] |
+| ${iterNum}.${i + 1} | [函式名稱] | [Type] | P1 | [來源 → 處理 → 目標] | [說明] |`).join('\n')}
+
+---
+
 ## 6. 可行性評估 (Level ${level.toUpperCase()})
 
 ${finalModules.filter(m => !m.verified).length > 0 ? `### 計畫開發項目風險評估\n${finalModules.filter(m => !m.verified).map(m => `**${m.name}**: 技術風險與時程影響評估...`).join('\n')}` : '✅ 所有功能已在 POC 驗證，可直接進入開發階段。'}

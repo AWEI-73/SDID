@@ -83,8 +83,11 @@ function extractStories(content) {
     // 推導是否為基礎建設
     const isFoundation = storyIndex === 0 || /基礎|infrastructure|shared|config/i.test(storyTitle);
 
-    // 提取函式清單
-    const functions = extractFunctionsFromStory(block, storyId, moduleName, isFoundation);
+    // 提取函式清單：策略 0 優先（函式規格表直讀），fallback 到推導
+    const tableFunctions = extractFunctionsFromTable(content, storyId);
+    const functions = tableFunctions
+      ? tableFunctions.map((fn, i) => enrichFunction(fn, i, tableFunctions.length, storyId, moduleName, isFoundation))
+      : extractFunctionsFromStory(block, storyId, moduleName, isFoundation);
 
     // 提取驗收條件
     const acceptanceCriteria = extractAcceptanceCriteria(block);
@@ -118,6 +121,43 @@ function extractProjectName(content) {
   // Fallback: 找標題中的英文名詞
   const fallback = content.match(/^#\s+.*?([a-zA-Z][\w-]+)/m);
   return fallback ? fallback[1].toLowerCase() : '';
+}
+
+/**
+ * 策略 0: 從「## 5.5 函式規格表」直接讀取指定 Story 的函式（優先於推導）
+ * 格式: | Story | 函式名稱 | Type | Priority | GEMS-FLOW | 說明 |
+ * @param {string} fullContent - 完整 spec 內容
+ * @param {string} storyId - e.g. "Story-1.1"
+ * @returns {Array|null} 函式陣列，若無則回傳 null
+ */
+function extractFunctionsFromTable(fullContent, storyId) {
+  // 找函式規格表區塊
+  const tableSection = fullContent.match(/##\s+5\.5\s+函式規格表[\s\S]*?(?=\n##\s+[^#]|$)/);
+  if (!tableSection) return null;
+
+  const tableText = tableSection[0];
+  const storyNum = storyId.replace('Story-', ''); // "1.1"
+  const functions = [];
+
+  // 解析表格每行: | storyNum | funcName | Type | Priority | GEMS-FLOW | 說明 |
+  const rowPattern = /\|\s*([\d.]+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]*)\s*\|/g;
+  let match;
+  while ((match = rowPattern.exec(tableText)) !== null) {
+    const rowStory = match[1].trim();
+    const funcName = match[2].trim();
+    const type = match[3].trim();
+    const priority = match[4].trim();
+    const flow = match[5].trim();
+    const desc = match[6].trim();
+
+    // 只取對應 Story 的行，且跳過佔位符行
+    if (rowStory !== storyNum) continue;
+    if (funcName.startsWith('[') || funcName === '函式名稱') continue;
+
+    functions.push({ name: funcName, type, priority, flow, description: desc, source: 'spec-table' });
+  }
+
+  return functions.length > 0 ? functions : null;
 }
 
 /**
@@ -203,13 +243,17 @@ function enrichFunction(fn, index, totalCount, storyId, moduleName, isFoundation
   // 推導 type
   const type = fn.type || inferType(fn.name, isFoundation);
 
-  // 推導 priority: 前 1-2 個為 P0，其餘 P1
-  const priority = isFoundation
-    ? (index === 0 ? 'P0' : 'P1')
-    : (index < Math.max(1, Math.ceil(totalCount * 0.3)) ? 'P0' : 'P1');
+  // 推導 priority: 若來自 spec-table 且已有明確值則直接用
+  const priority = (fn.source === 'spec-table' && /^P[012]$/.test(fn.priority || ''))
+    ? fn.priority
+    : isFoundation
+      ? (index === 0 ? 'P0' : 'P1')
+      : (index < Math.max(1, Math.ceil(totalCount * 0.3)) ? 'P0' : 'P1');
 
-  // 推導 flow
-  const flow = inferFlow(fn.name, fn.description, type);
+  // 推導 flow: 若來自 spec-table 且已有值則直接用
+  const flow = (fn.source === 'spec-table' && fn.flow && !fn.flow.startsWith('['))
+    ? fn.flow
+    : inferFlow(fn.name, fn.description, type);
 
   // 推導 deps
   const deps = inferDeps(fn.name, moduleName, isFoundation);

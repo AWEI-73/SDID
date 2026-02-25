@@ -1,7 +1,7 @@
 # SDID Framework Roadmap
 
 > 每次 session 開始前看這裡，挑一個 milestone 繼續。
-> 最後更新：2026-02-25 (session 2)
+> 最後更新：2026-02-25 (session 3)
 
 ---
 
@@ -74,7 +74,8 @@ Blueprint Route (模糊需求)        Task-Pipe Route (清晰需求)
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| POC-FIX 快速路徑 | ✅ 完成 | P1 | SKILL.md 加入 POC-FIX 模式：POC 已驗證 + 目標明確 → 跳過 PLAN，直接移植 + micro-fix-gate |
+| POC-FIX 快速路徑（v1） | ✅ 完成 | P1 | 初版：已驗證 POC → 直接移植 |
+| POC-FIX 完整循環（v2） | ✅ 完成 | P0 | **重寫**：四階段流程（SETUP → VERIFY → CONSOLIDATE → BUILD+TEST）。覆蓋場景：第三方串接、客製化演算法、需反覆驗證的特化模組。與 MICRO-FIX 的差異：必寫測試 |
 | SKILL.md routing table 完整性確認 | ⬜ 待確認 | P1 | bc70dcb 的其他 mode 邏輯是否正確 |
 
 ---
@@ -120,7 +121,7 @@ Blueprint Route (模糊需求)        Task-Pipe Route (清晰需求)
 
 | 完成時間 | 內容 |
 |---------|------|
-| 2026-02-25 | M5: SKILL.md 加入 POC-FIX 模式（POC 已驗證 → 直接移植，跳過 PLAN） |
+| 2026-02-25 | M5: POC-FIX v2 重寫 — 四階段完整循環（SETUP→VERIFY→CONSOLIDATE→BUILD+TEST），必寫測試 |
 | 2026-02-25 | M1: blueprint-gate 重複函式修復 |
 | 2026-02-25 | M2: spec-parser 5.5 fallback warning |
 | 2026-02-25 | feat: 5.5 函式規格表 → spec-parser → plan-generator E2E |

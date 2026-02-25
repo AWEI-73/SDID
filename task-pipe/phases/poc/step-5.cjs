@@ -432,6 +432,20 @@ ${finalModules.map((m, i) => `| ${iterNum}.${i + 1} ${m.name} | P${i === 0 ? 0 :
 
 ---
 
+## 5.5 函式規格表 (供 PLAN 直接讀取，勿刪)
+
+> AI 填寫此表後，PLAN Step 1 可直接讀取，無需推導。
+> 格式: Type = CONST | LIB | SVC | API | HOOK | UI | ROUTE
+> GEMS-FLOW 格式: STEP_A→STEP_B→STEP_C
+
+| Story | 函式名稱 | Type | Priority | GEMS-FLOW | 說明 |
+|-------|---------|------|---------|-----------|------|
+| ${iterNum}.0 | CoreTypes | CONST | P0 | DEFINE→EXPORT | 核心型別定義 |
+| ${iterNum}.0 | MemoryStore | LIB | P0 | INIT→OPERATIONS→EXPORT | 記憶體儲存層 |
+${finalModules.map((m, i) => `| ${iterNum}.${i + 1} | [函式名稱] | [Type] | P0 | [STEP_A→STEP_B→RETURN] | [${m.name}主要功能] |`).join('\n')}
+
+---
+
 ## 6. 可行性評估 (Level ${level.toUpperCase()})
 
 ${finalModules.filter(m => !m.verified).length > 0 ? `### 計畫開發項目風險評估\n${finalModules.filter(m => !m.verified).map(m => `**${m.name}**: 技術風險與時程影響評估...`).join('\n')}` : '✅ 所有功能已在 POC 驗證，可直接進入開發階段。'}

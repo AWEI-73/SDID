@@ -83,8 +83,13 @@ function extractStories(content) {
     // 推導是否為基礎建設
     const isFoundation = storyIndex === 0 || /基礎|infrastructure|shared|config/i.test(storyTitle);
 
+    // Strategy 0: 從 ## 5.5 函式規格表 直接讀取（最高優先）
+    const tableFunctions = extractFunctionsFromTable(content, storyId);
+
     // 提取函式清單
-    const functions = extractFunctionsFromStory(block, storyId, moduleName, isFoundation);
+    const functions = tableFunctions
+      ? tableFunctions.map((fn, i) => enrichFunction(fn, i, tableFunctions.length, storyId, moduleName, isFoundation))
+      : extractFunctionsFromStory(block, storyId, moduleName, isFoundation);
 
     // 提取驗收條件
     const acceptanceCriteria = extractAcceptanceCriteria(block);
@@ -118,6 +123,44 @@ function extractProjectName(content) {
   // Fallback: 找標題中的英文名詞
   const fallback = content.match(/^#\s+.*?([a-zA-Z][\w-]+)/m);
   return fallback ? fallback[1].toLowerCase() : '';
+}
+
+/**
+ * Strategy 0: 從 ## 5.5 函式規格表 直接讀取（最高優先）
+ * 格式: | Story | 函式名稱 | Type | Priority | GEMS-FLOW | 說明 |
+ * @returns {Array|null} 若找到且有有效行則回傳陣列，否則 null
+ */
+function extractFunctionsFromTable(fullContent, storyId) {
+  // 找到 5.5 區塊
+  const tableSection = fullContent.match(/##\s+5\.5\s+函式規格表[\s\S]*?(?=\n##\s+[^#]|$)/);
+  if (!tableSection) return null;
+
+  // storyId 如 "Story-1.1" → storyNum 如 "1.1"
+  const storyNum = storyId.replace('Story-', '');
+  const functions = [];
+
+  // 匹配每一列: | storyNum | 函式名稱 | Type | Priority | GEMS-FLOW | 說明 |
+  const rowPattern = /\|\s*([\d.]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]*)\s*\|/g;
+  let match;
+  while ((match = rowPattern.exec(tableSection[0])) !== null) {
+    const rowStory = match[1].trim();
+    const name = match[2].trim();
+    const type = match[3].trim();
+    const priority = match[4].trim();
+    const flow = match[5].trim();
+    const desc = match[6].trim();
+
+    // 只讀取屬於此 Story 的行（完全匹配 storyNum，如 "10.1"）
+    if (rowStory !== storyNum) continue;
+    // 跳過佔位符列
+    if (name.startsWith('[') || type.startsWith('[') || name === '函式名稱') continue;
+    // 跳過分隔列
+    if (/^[-:]+$/.test(name)) continue;
+
+    functions.push({ name, type, priority, flow, description: desc, source: 'spec-table' });
+  }
+
+  return functions.length > 0 ? functions : null;
 }
 
 /**
@@ -203,13 +246,17 @@ function enrichFunction(fn, index, totalCount, storyId, moduleName, isFoundation
   // 推導 type
   const type = fn.type || inferType(fn.name, isFoundation);
 
-  // 推導 priority: 前 1-2 個為 P0，其餘 P1
-  const priority = isFoundation
-    ? (index === 0 ? 'P0' : 'P1')
-    : (index < Math.max(1, Math.ceil(totalCount * 0.3)) ? 'P0' : 'P1');
+  // 推導 priority: spec-table 明確指定時保留，否則推導
+  const priority = (fn.source === 'spec-table' && /^P[0-3]$/.test(fn.priority || ''))
+    ? fn.priority
+    : isFoundation
+      ? (index === 0 ? 'P0' : 'P1')
+      : (index < Math.max(1, Math.ceil(totalCount * 0.3)) ? 'P0' : 'P1');
 
-  // 推導 flow
-  const flow = inferFlow(fn.name, fn.description, type);
+  // 推導 flow: spec-table 明確填寫時保留，否則推導
+  const flow = (fn.source === 'spec-table' && fn.flow && !fn.flow.startsWith('[') && fn.flow !== 'TODO')
+    ? fn.flow
+    : inferFlow(fn.name, fn.description, type);
 
   // 推導 deps
   const deps = inferDeps(fn.name, moduleName, isFoundation);

@@ -86,6 +86,13 @@ function extractStories(content) {
     // Strategy 0: 從 ## 5.5 函式規格表 直接讀取（最高優先）
     const tableFunctions = extractFunctionsFromTable(content, storyId);
 
+    // 如果 5.5 區塊存在但此 story 沒有 table 行，發出警告
+    const has55Section = /##\s+5\.5\s+函式規格表/.test(content);
+    if (has55Section && !tableFunctions) {
+      const storyNum = storyId.replace('Story-', '');
+      process.stderr.write(`[spec-parser] WARN: ${storyId} 在 5.5 函式規格表找不到有效行（story="${storyNum}"），fallback 至 BDD regex 策略。請確認表格格式是否正確。\n`);
+    }
+
     // 提取函式清單
     const functions = tableFunctions
       ? tableFunctions.map((fn, i) => enrichFunction(fn, i, tableFunctions.length, storyId, moduleName, isFoundation))

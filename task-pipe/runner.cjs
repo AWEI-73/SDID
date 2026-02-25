@@ -302,9 +302,9 @@ function getDefaultConfig() {
     // v2.4: task-pipe 獨立運作，不再依賴外部 control-tower
     hubPath: null,
     levels: {
-      S: { phases: [1, 4, 7], strict: false },
-      M: { phases: [1, 2, 3, 4, 5, 7], strict: false },
-      L: { phases: [1, 2, 3, 4, 5, 6, 7], strict: true },
+      S: { phases: [1, 2, 7, 8], strict: false },
+      M: { phases: [1, 2, 3, 4, 5, 7, 8], strict: false },
+      L: { phases: [1, 2, 3, 4, 5, 6, 7, 8], strict: true },
     },
   };
 }

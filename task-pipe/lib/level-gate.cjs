@@ -21,7 +21,7 @@ try {
 const DEFAULT_LEVELS = {
   S: {
     description: '小專案，只檢查核心',
-    phases: ['1', '2', '7', '8'],
+    phases: ['1', '2', '7', '8'],  // 已與 config.json 同步
     testRequired: false,
     tagsRequired: ['GEMS']
   },

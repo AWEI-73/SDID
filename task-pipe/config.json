@@ -79,6 +79,7 @@
         "phases": [
           1,
           2,
+          7,
           8
         ],
         "testRequired": false,
@@ -105,6 +106,7 @@
           3,
           4,
           5,
+          7,
           8
         ],
         "testRequired": true,

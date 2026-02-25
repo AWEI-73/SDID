@@ -12,6 +12,7 @@ description: SDID 統一開發框架 — 從需求設計到程式碼交付的完
 | 條件 | 模式 | 動作 |
 |------|------|------|
 | 使用者說「小修」「fix」「改一下」「quick fix」「micro fix」 | MICRO-FIX | escalation check → 直接改 → micro-fix-gate（見下方） |
+| **客製化/第三方/特化模組開發**（「跑 POC」「原型驗證」「串接」「調整」「第三方」「客製」+ 非標準 CRUD） | **POC-FIX** | 開 POC 資料夾 → 反覆驗證 → 整合清除 → BUILD + 必寫測試 |
 | 無專案 + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話 |
 | 無專案 + 使用者需求明確 | DESIGN-TASKPIPE | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --new --project=[name]` |
 | 有專案但無 draft + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話（迭代號自動遞增） |
@@ -120,6 +121,7 @@ Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
 | 信號 | 判斷 |
 |------|------|
 | "just", "fix", "改一下", "小改", 單一檔案/函式 | → 直接走 MICRO-FIX |
+| 第三方串接、客製化演算法、需要原型驗證的特化功能 | → 升級到 POC-FIX |
 | 多個模組、架構調整、新功能、"重構" | → 升級到 SDID 正常流程 |
 
 **MICRO-FIX 執行步驟**:
@@ -133,6 +135,13 @@ Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
 5. `@BLOCKER` → 根據輸出修復，重跑 gate
 
 **不做的事**: 不寫測試、不跑完整 BUILD、不需要 story/plan
+
+---
+
+### POC-FIX 模式
+- 讀 [references/poc-fix.md](references/poc-fix.md) 取得四階段執行規則（SETUP → VERIFY → CONSOLIDATE → BUILD+TEST）
+- 適用：第三方串接、客製化演算法、複雜資料處理等特化功能（非標準 CRUD）
+- ⚠️ 與 MICRO-FIX 差異：**必寫測試**、不走 spec/plan
 
 ### DESIGN-BLUEPRINT 模式
 - 讀 [references/blueprint-design.md](references/blueprint-design.md) 取得完整規則
@@ -177,6 +186,7 @@ Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
 | [architecture-rules.md](references/architecture-rules.md) | 模組化架構規則 | Blueprint Round 3 或 PLAN Step 2 時 |
 | [action-type-mapping.md](references/action-type-mapping.md) | 動作類型映射 | Blueprint Round 5 或 PLAN Step 4 時 |
 | [cynefin-check.md](references/cynefin-check.md) | 進 PLAN 前語意域分析 | 兩條路線進 PLAN 前強制執行 |
+| [poc-fix.md](references/poc-fix.md) | POC-FIX 四階段執行規則 | 進入 POC-FIX 模式時 |
 
 ## Prohibited Actions
 

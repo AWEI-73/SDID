@@ -731,36 +731,6 @@ function checkAPISignatureCompleteness(draft, targetIter) {
 function checkACIntegrity(draft, targetIter) {
   const issues = [];
 
-  // 收集 AC 定義區塊（從 rawContent 解析，但這裡用 draft 的 ac 欄位）
-  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.iter !== targetIter) continue;
-    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-
-    for (const item of (mod.items || [])) {
-      const p = (item.priority || '').toUpperCase();
-      if (p !== 'P0' && p !== 'P1') continue;
-
-      const ac = (item.ac || item['AC'] || item['ac'] || '').trim();
-      if (!ac || ac === '-' || ac === '無') {
-        issues.push({
-          level: 'BLOCKER',
-          code: 'ACC-001',
-          msg: `[${modName}/${item.techName}] P0/P1 動作缺少 AC 欄位。請在動作清單加入 AC 編號（如 AC-1.0），並在「驗收條件」區塊定義 Given/When/Then`
-        });
-      }
-    }
-  }
-
-  return issues;
-}
-
-/**
- * 19. AC 完整性 (v2.2) — P0/P1 動作的 AC 欄位不能空白
- * Gate 規則 ACC-001
- */
-function checkACIntegrity(draft, targetIter) {
-  const issues = [];
-
   for (const [modName, mod] of Object.entries(draft.moduleActions)) {
     if (mod.iter !== targetIter) continue;
     if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;

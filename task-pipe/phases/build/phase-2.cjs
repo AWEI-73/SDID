@@ -742,10 +742,10 @@ mkdir -p src/modules src/shared src/config`,
             if (size > 5) continue; // 超過 5 行不是 stub 嫌疑
 
             // 讀原始碼確認
-            const absPath = path.isAbsolute(filePath)
+            // function-index.json 可能是相對路徑（如 "ExamForge\src\..."）或絕對路徑
+            const resolvedPath = path.isAbsolute(filePath)
               ? filePath
-              : path.join(target, filePath.replace(/^[A-Za-z]:\\.*?\\src\\/, 'src/').replace(/\\/g, '/'));
-            const resolvedPath = fs.existsSync(absPath) ? absPath : path.join(target, 'src', path.basename(filePath));
+              : path.resolve(target, filePath.replace(/\\/g, '/'));
 
             if (!fs.existsSync(resolvedPath)) continue;
 

@@ -72,7 +72,27 @@ Phase 4: BUILD + TEST — 落地到正式碼 + 必寫測試
 2. 整合成乾淨的函式/模組清單（一句話確認）：
    > 「整合後的模組：[模組A → targetA.ts], [模組B → targetB.ts]，可以嗎？」
 3. 清除多餘的測試用檔案、暫存檔
-4. 產出 `poc-consolidation-log.md`（記錄哪些原型→哪個正式檔案）
+4. 產出 `poc-consolidation-log.md`，格式如下：
+
+```markdown
+# POC Consolidation Log
+> iter: X | date: YYYY-MM-DD
+
+## 目標檔案清單（Phase 4 gate 用）
+changed: src/lib/moduleA.ts, src/lib/moduleB.ts
+
+## 原型 → 正式檔案映射
+| POC 原型 | 函式 | 目標正式檔案 |
+|----------|------|-------------|
+| poc/test-api.mjs | fetchData() | src/lib/moduleA.ts |
+| poc/transform.html | parseResult() | src/lib/moduleB.ts |
+
+## 清除的暫存檔
+- poc/debug-log.txt
+- poc/temp-test.html
+```
+
+> 📌 Phase 4 的 gate 指令從 `changed:` 行取得檔案清單，不需手動填寫。
 
 ---
 
@@ -83,9 +103,9 @@ Phase 4: BUILD + TEST — 落地到正式碼 + 必寫測試
    - 純函式 / 資料處理 → 單元測試
    - API 串接 / 第三方 → 整合測試（mock external）
    - 完整流程 → E2E 測試
-3. 執行 gate 驗證：
+3. 從 `poc-consolidation-log.md` 的 `changed:` 行讀取目標檔案，執行 gate 驗證：
    ```bash
-   node sdid-tools/micro-fix-gate.cjs --changed=<改動的檔案> --target=<project>
+   node sdid-tools/micro-fix-gate.cjs --changed=<從 consolidation-log 的 changed 行> --target=<project>
    ```
 4. `@PASS` → 完成
 5. `@BLOCKER` → 修復後重跑 gate

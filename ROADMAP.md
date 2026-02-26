@@ -107,6 +107,22 @@ Blueprint Route (模糊需求)        Task-Pipe Route (清晰需求)
 
 ---
 
+### M9 — micro-fix-gate POC-FIX 模式擴充 ⬜ 未開始
+> 目標：POC-FIX / MICRO-FIX 的 gate 能驗證 GEMS 標籤完整性（不依賴 plan）
+
+**背景**：BUILD Phase 2 的標籤掃描硬綁 `implementation_plan`，POC-FIX 和 MICRO-FIX 只跑 `micro-fix-gate.cjs`，
+不會檢查 GEMS 標籤是否完整。POC-FIX 改多個檔案 + 加新函式時，缺乏標籤驗證。
+
+| 項目 | 狀態 | 優先 | 說明 |
+|------|------|------|------|
+| `--mode=poc-fix` flag | ⬜ 待做 | P1 | 對 `--changed` 的檔案掃描：新增/修改的函式是否有 GEMS 基本標籤 + P0/P1 擴充標籤 |
+| `@GEMS-TEST-FILE` 存在性驗證 | ⬜ 待做 | P1 | 檢查 `@GEMS-TEST-FILE` 指向的檔案是否真的存在（POC-FIX 必寫測試） |
+| consolidation-log 自動讀取 | ⬜ 待做 | P2 | gate 可接受 `--log=poc-consolidation-log.md`，自動從 `changed:` 行取得檔案清單 |
+
+> ⏳ 等 POC-FIX 實戰跑過幾次再做，避免過早設計
+
+---
+
 ### M8 — 框架文件收斂 ⬜ 未開始
 > 目標：對外說明和內部規格文件保持一致
 

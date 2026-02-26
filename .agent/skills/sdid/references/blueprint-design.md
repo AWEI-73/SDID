@@ -10,6 +10,122 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 
 ---
 
+## BLUEPRINT-CONTINUE 模式（活藍圖續跑）
+
+### 狀態流轉（完整循環）
+
+```
+主藍圖初始規劃
+  iter-N 欄：[STUB]（只有概要，無 AC）
+       ↓
+  blueprint-shrink 執行（iter-N-1 完成後）
+  → iter-N: [STUB] → [CURRENT]（shrink 自動升格）
+  → 附加上一個 iter 的 Fillback suggestions 到 iter-N 備註
+       ↓
+  新 session BLUEPRINT-CONTINUE 觸發
+  → 讀主藍圖，找到 [CURRENT] iter-N
+  → 補 AC、Demo Checkpoint，產出完整 Stub Draft
+  → 存到 iter-N/poc/requirement_draft_iter-N.md
+       ↓
+  BUILD Phase 1-8
+       ↓
+  blueprint-shrink 執行（iter-N 完成後）
+  → iter-N: [CURRENT] → [DONE]
+  → iter-N+1: [STUB] → [CURRENT]
+       ↓
+  下個 session BLUEPRINT-CONTINUE ...
+```
+
+**職責分工：**
+- `blueprint-shrink`：狀態轉換（[STUB]→[CURRENT]、[CURRENT]→[DONE]）+ 傳遞 Fillback
+- `BLUEPRINT-CONTINUE`：AC 補齊（概要→完整 Stub Draft）+ 產出 iter-N/poc/
+
+---
+
+### 觸發條件
+
+進入 DESIGN-BLUEPRINT 時，**先掃描專案是否存在「活藍圖」**：
+
+```
+活藍圖 = iter-1/poc/requirement_draft_iter-1.md 存在
+         且 藍圖狀態 = [~] ACTIVE
+         且 迭代規劃表有 [CURRENT] 或 [STUB] 狀態的 iter
+         且 該 iter 的 poc/ 下無 requirement_draft_iter-N.md（尚未展開）
+```
+
+若符合，**不需要 5 輪對話**，直接進入 BLUEPRINT-CONTINUE 模式。
+
+### BLUEPRINT-CONTINUE 執行步驟
+
+```
+Step 1: 讀主藍圖（iter-1 的 requirement_draft_iter-1.md）
+Step 2: 找目標 iter
+        優先找 [CURRENT]（shrink 已升格，帶 Fillback suggestions）
+        次找 [STUB]（shrink 尚未跑，需自行從概要展開）
+        確認 iter-N/poc/ 下無既有 draft（避免重複展開）
+Step 3: 從主藍圖的「模組動作清單」讀取 iter-N 的概要動作
+        若 shrink 已附加 Fillback suggestions，一併讀取作為補齊參考
+Step 4: 補齊 AC 與 Demo Checkpoint，產出完整 Stub Draft：
+         - 格式同 Enhanced Draft
+         - 開頭標注「承接主藍圖，展開 iter-N [{模組名}]」
+         - 繼承主藍圖的實體定義、共用模組（不重複定義）
+         - 每個 P0 動作必須有 Given/When/Then AC
+Step 5: Blueprint Gate 驗證（同正常流程）
+Step 6: 存到 {project}/.gems/iterations/iter-N/poc/requirement_draft_iter-N.md
+Step 7: 提示使用者：「Iter-N ({模組名}) 已展開，接下來執行 BUILD 嗎？」
+```
+
+> 注意：Step 7 不再手動更新主藍圖狀態——[CURRENT]→[DONE] 由 blueprint-shrink 在 BUILD 完成後自動處理。
+
+### 主藍圖 vs Stub Draft 的職責區分
+
+| 文件 | 職責 | 更新者 |
+|------|------|--------|
+| `iter-1/poc/requirement_draft_iter-1.md` (主藍圖) | 全局規劃、迭代規劃表、實體定義、概要動作清單 | blueprint-shrink（狀態）/ 人工（規劃調整）|
+| `iter-N/poc/requirement_draft_iter-N.md` (Stub Draft) | 單一 iter 的完整 AC、Demo Checkpoint | BLUEPRINT-CONTINUE（一次性寫入）|
+
+### 主藍圖迭代狀態標記規則
+
+在迭代規劃表中，每個 iter 必須有明確狀態標記：
+
+| 狀態 | 含義 | 由誰轉換 |
+|------|------|---------|
+| `[STUB]` | 概要規劃，尚未升格 | 初始寫入 |
+| `[CURRENT]` | shrink 升格後，等待本 session BLUEPRINT-CONTINUE 展開 | blueprint-shrink |
+| `[DONE]` | BUILD + shrink 完成 | blueprint-shrink |
+
+### BLUEPRINT-CONTINUE 條件判斷流程
+
+```
+新 session 進入 DESIGN-BLUEPRINT
+  ↓
+Q1: iter-1 draft 存在且狀態 = [~] ACTIVE？
+  → No: 正常 5 輪對話
+  → Yes: ↓
+
+Q2: 有 [CURRENT] iter 且 iter-N/poc/ 無既有 draft？
+  → Yes: BLUEPRINT-CONTINUE（Step 1，帶 Fillback suggestions）
+  → No: ↓
+
+Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
+  → Yes: BLUEPRINT-CONTINUE（Step 1，從概要展開）
+  → No: 全部完成或全部已展開，告知使用者狀態
+```
+
+### 全授權模式下的 BLUEPRINT-CONTINUE
+
+使用者說「全部授權」時：
+
+```
+自動讀主藍圖 → 找 [CURRENT] 或 [STUB]（優先 CURRENT）
+→ 補 AC → 產 Stub Draft → Gate 驗證 → 存檔
+不問使用者，最終輸出：「Iter-N ({模組名}) 已展開 + 準備 BUILD」
+```
+
+---
+
+---
+
 ## 5 輪對話流程
 
 | 輪次 | 焦點 | 產出 |
@@ -47,21 +163,37 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 - ALLOWED-READ: [action-type-mapping.md](action-type-mapping.md)
 - shared 模組永遠在 Iter 1
 
-**兩條硬規則（侧除就不能進 Round 5）：**
+**四條硬規則（不通過就不能進 Round 5）：**
 
-**規則 1 — 每個功能性 iter 必含 SVC/API + ROUTE + UI**
-- Foundation iter（1 shared）豊免
-- 其餘所有 iter：迭代規劃表的「必含類型」欄必須同時含 `SVC 或 API`、`ROUTE`、`UI`
-- 脏延前後端分儲不同 iter（如 iter-2 只有邏輯， iter-3 才有 UI）是 ❌ BLOCKER
+**規則 1 — 每個功能性 iter 必含 SVC/API + ROUTE + UI（前後端一套）**
+- Foundation iter（shared/infra）豁免
+- 其餘所有 iter：迭代規劃表的「交付」欄必須為 `FULL`，不可寫 `BACKEND` 或 `FRONTEND`
+- 動作清單必須同時含 `SVC 或 API`、`ROUTE`、`UI` 三種類型
+- 禁止前後端分離不同 iter（如 iter-2 只有邏輯，iter-3 才有 UI）是 ❌ BLOCKER
+- 每個 iter 交付後，使用者必須能操作完整功能，不是只看到 API 或只看到空 UI
 
-**規則 2 — 每個功能性 iter 所展示標準必備注**
-- 迭代規劃表必須包含「可展示標準」一行：「操作者 + 操作步驟 + 預期面畫反應」
+**規則 2 — 每個功能性 iter 可展示標準必備注**
+- 迭代規劃表必須包含「可展示標準」一行：「操作者 + 操作步驟 + 預期畫面反應」
 - Iter 1 允許寫 `npm run dev → 首頁不報錯`
 - 不容許寫「系統完成初始化」之類無法親眼驗證的描述
 
+**規則 3 — Complicated 模組拆分規則（CYNEFIN Budget 對齊）**
+- CYNEFIN-CHECK 標記為 Complicated + q3_costly 的模組：每 iter 最多 4 個動作
+- 如果模組有 N 個動作（N > 4），至少需要 ceil(N/4) 個 iter
+- Blueprint Gate 會機械檢查 BUDGET-001，超標 = ❌ BLOCKER
+- 拆分策略：P0 動作優先進第一個 iter，P1/P2 依序排入後續 iter
+- 拆分後每個 iter 仍須滿足規則 1（前後端一套）
+
+**規則 4 — Action Budget（動作預算上限）**
+- Level S: 每 iter 最多 3 個動作
+- Level M: 每 iter 最多 4 個動作
+- Level L: 每 iter 最多 5 個動作
+- Foundation iter（只有 CONST/LIB/SCRIPT）豁免
+- 超標 = ❌ BLOCKER，必須拆 iter 才能過 Gate
+
 > 注：迭代規劃表用樣板里的格式：`| Iter | 範圍 | 目標 | 模組 | 依賴 | Story 數 | 必含類型 | 可展示標準 |`
 
-- EXIT: 兩條硬規則檢查通過 → 使用者確認
+- EXIT: 四條硬規則檢查通過 → 使用者確認
 
 ---
 
@@ -110,7 +242,9 @@ Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求�
 | 每個功能性 iter 有 SVC/API | 至少一個邏輯層動作 |
 | 每個功能性 iter 有 ROUTE | 至少一個頁面入口 |
 | 每個功能性 iter 有 UI | 至少一個畫面元件 |
+| 每個功能性 iter 交付類型 = FULL | 前後端一套，不可分離 |
 | 每個功能性 iter 有 Demo Checkpoint | 使用者操作後可親眼看到畫面 |
+| 每 iter 動作數 ≤ Budget 上限 | S:3 / M:4 / L:5（Foundation 豁免） |
 | P0 動作的 AC 不為空 | Given/When/Then 格式 |
 | AC 的 Then 含效益指標 | 使用者因此能做什麼或看到什麼 |
 

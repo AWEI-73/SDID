@@ -490,6 +490,67 @@ function checkIterModuleLoad(draft) {
 }
 
 /**
+ * 20. 迭代動作預算檢查 (v1.3) — 每個 iter 的總動作數不可超過 Level 限制
+ * 防止一個 iter 塞太多動作導致 stub code
+ */
+function checkIterActionBudget(draft) {
+  const issues = [];
+  const level = draft.level || 'M';
+
+  // Action budget per iter by level
+  const maxActions = { S: 3, M: 4, L: 5 };
+  const limit = maxActions[level] || 4;
+
+  // Count actions per iter
+  const iterActions = {};
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+    const iter = mod.iter;
+    if (!iter) continue;
+    if (!iterActions[iter]) iterActions[iter] = { count: 0, modules: [] };
+    const actionCount = (mod.items || []).length;
+    iterActions[iter].count += actionCount;
+    if (actionCount > 0) {
+      iterActions[iter].modules.push({ name: modName, count: actionCount });
+    }
+  }
+
+  for (const [iter, data] of Object.entries(iterActions)) {
+    // Foundation iter exemption: if all actions are CONST/LIB/SCRIPT, skip budget check
+    if (parseInt(iter) === 1) {
+      let allInfra = true;
+      for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+        if (mod.iter !== 1 || mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+        for (const item of (mod.items || [])) {
+          const type = (item.type || '').toUpperCase();
+          if (!['CONST', 'LIB', 'SCRIPT'].includes(type)) {
+            allInfra = false;
+            break;
+          }
+        }
+        if (!allInfra) break;
+      }
+      if (allInfra) continue;
+    }
+
+    if (data.count > limit) {
+      const breakdown = data.modules.map(m => `${m.name}(${m.count})`).join(' + ');
+      issues.push({
+        level: 'BLOCKER', code: 'BUDGET-001',
+        msg: `iter-${iter} 總動作數 ${data.count} 超過 Level ${level} 的上限 ${limit} [${breakdown}]。建議拆分至多個 iter，每個 iter 最多 ${limit} 個動作`
+      });
+    } else if (data.count === limit) {
+      issues.push({
+        level: 'WARN', code: 'BUDGET-002',
+        msg: `iter-${iter} 總動作數 ${data.count} 剛好到 Level ${level} 上限 ${limit}，留意開發品質`
+      });
+    }
+  }
+
+  return issues;
+}
+
+/**
  * 11. 演化層依賴驗證 (v2.1) — 確保 L(N) 的動作不依賴 L(N+1) 的動作
  */
 function checkEvolutionLayers(draft) {
@@ -810,6 +871,20 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
           msg: `${prefix} 功能模組缺少垂直切片層次: ${missingLayers.join(' | ')} — 每個 Story 必須可被使用者實際使用`
         });
       }
+
+      // VSC-003: 交付類型必須為 FULL（前後端一套）
+      const planEntry = draft.iterationPlan.find(
+        e => e.module === modName && e.iter === mod.iter
+      );
+      if (planEntry) {
+        const delivery = (planEntry.delivery || 'FULL').toUpperCase();
+        if (delivery === 'BACKEND' || delivery === 'FRONTEND') {
+          issues.push({
+            level: 'BLOCKER', code: 'VSC-003',
+            msg: `${prefix} 功能模組交付類型為 "${delivery}"，必須為 "FULL"（前後端一套）。不可將前後端拆到不同 iter`
+          });
+        }
+      }
     }
   }
 
@@ -950,6 +1025,9 @@ function getFixGuidance(code) {
     'SIG-002': '公開 API 簽名應包含回傳型別，例如 ): Bookmark[] 或 ): ImportResult',
     'SIG-003': '公開 API 參數應標註型別，例如 (data: string, format: string)',
     'ACC-001': 'P0/P1 動作必須有 AC 欄位。在動作清單的 AC 欄填入編號（如 AC-1.0），並在「## ✅ 驗收條件」區塊定義 Given/When/Then',
+    'BUDGET-001': '將動作拆分到多個 iter。Level S 每 iter 最多 3 個、M 最多 4 個、L 最多 5 個。Complicated+costly 模組每 iter 最多 4 個動作，確保前後端一套',
+    'BUDGET-002': '動作數接近上限，建議檢查每個動作的複雜度是否可以再拆',
+    'VSC-003': '功能模組的交付類型必須是 FULL（前後端一套）。將前後端合併到同一個 iter，確保每個 iter 都能展示完整功能',
   };
   return guidance[code] || '參考 enhanced-draft-golden.template.v2.md 修正格式';
 }
@@ -993,6 +1071,8 @@ Blueprint Gate v1.1 - 活藍圖品質門控
   EVO-001~002  演化層依賴
   DEPCON-001~002 依賴一致性 (v1.1)
   LOAD-001     迭代模組負載 (v1.1)
+  BUDGET-001~002 迭代動作預算 (v1.3, S:3/M:4/L:5 per iter)
+  VSC-003      功能模組交付類型必須 FULL (v1.3)
   ACC-001      AC 驗收條件完整性 (v2.2, P0/P1 必填)
 
 輸出:
@@ -1037,6 +1117,7 @@ Blueprint Gate v1.1 - 活藍圖品質門控
     ...checkEvolutionLayers(draft),
     ...checkDepsConsistency(draft, args.iter),
     ...checkIterModuleLoad(draft),
+    ...checkIterActionBudget(draft),
     ...checkVerticalSliceCompleteness(draft, args.iter),
     ...checkACIntegrity(draft, args.iter),
   ];
@@ -1067,6 +1148,7 @@ module.exports = {
   checkEvolutionLayers,
   checkDepsConsistency,
   checkIterModuleLoad,
+  checkIterActionBudget,
   checkVerticalSliceCompleteness,
   checkACIntegrity,
   getFixGuidance,

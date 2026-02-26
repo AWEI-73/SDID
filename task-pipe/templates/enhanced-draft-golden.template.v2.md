@@ -1,10 +1,21 @@
 # 📋 {專案名稱} - 活藍圖 (Living Blueprint)
 
-**迭代**: iter-1  
-**日期**: {YYYY-MM-DD}  
-**藍圖狀態**: [~] ACTIVE  
-**規模**: {S/M/L}  
+**迭代**: iter-1
+**日期**: {YYYY-MM-DD}
+**藍圖狀態**: [~] ACTIVE
+**規模**: {S/M/L}
 **方法論**: SDID v2.1
+
+<!--
+  活藍圖 (Living Blueprint) 說明：
+  - 本文件是「主藍圖」，記錄所有 iter 的全局規劃
+  - 每次 BUILD 完成後，更新迭代規劃表的狀態標記
+  - 新 session 執行 BLUEPRINT-CONTINUE 時，直接讀此文件展開下一個 [STUB]
+  - 不要在 iter-N (N>1) 的 draft 重複定義實體或共用模組
+
+  狀態流轉：
+    [STUB] → (BLUEPRINT-CONTINUE 展開) → [CURRENT] → (BUILD 完成) → [DONE]
+-->
 
 ---
 
@@ -92,8 +103,21 @@ src/
 ## 📅 迭代規劃表 (Iteration Planning)
 
 <!--
-  交付類型: FULL (前後端一體) | BACKEND | FRONTEND | INFRA (純基礎設施)
+  交付類型: FULL (前後端一體) | INFRA (純基礎設施，例如 iter-1 Foundation)
+  ⚠ 禁止使用 BACKEND 或 FRONTEND — 每個功能性 iter 必須前後端一套 (VSC-003)
+
   狀態: [CURRENT] 當前迭代 | [STUB] 待展開 | [DONE] 已完成
+
+  Action Budget 上限 (blueprint-gate BUDGET-001):
+    Level S: 每個功能性 iter 最多 3 個動作
+    Level M: 每個功能性 iter 最多 4 個動作
+    Level L: 每個功能性 iter 最多 5 個動作
+    Foundation iter (全 CONST/LIB/SCRIPT) 豁免
+
+  Complicated + q3_costly 模組 (CYNEFIN Budget):
+    - 每 iter 最多 4 個動作，超出需拆成多個 iter
+    - 例: 6 個動作 → ceil(6/4) = 2 iter 最少
+
   deps=[] 的模組可並行開發 (Multi-Agent Ready)
 -->
 
@@ -182,14 +206,16 @@ src/
 ### Iter 2: {moduleA} [STUB]
 
 > {模組描述}，依賴 shared
-> 預估: {N} 個動作 ({M}×P0, {K}×P1)
+> 預估: {N} 個動作 ({M}×P0, {K}×P1)  ⚠ Level M 上限 4 個動作，超出需拆 iter
 > 公開 API: {functionA}, {functionB}
+> 必含: SVC/API + ROUTE + UI（前後端一套，delivery = FULL）
 
 ### Iter 3: {moduleB} [STUB]
 
 > {模組描述}，依賴 shared + {moduleA}
-> 預估: {N} 個動作
+> 預估: {N} 個動作  ⚠ Level M 上限 4 個動作，超出需拆 iter
 > 公開 API: {functionC}
+> 必含: SVC/API + ROUTE + UI（前後端一套，delivery = FULL）
 
 ---
 

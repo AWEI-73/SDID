@@ -98,6 +98,47 @@
 | Clear 同步等待 Complex | 任何一個 | 標記時間耦合，建議非同步隔離 |
 | 隱含複雜度倍數 | > 3x | 標記為 BLOCKER，需要在文件中明確展開 |
 
+### Step 4.5: 迭代預算檢查（Iteration Budget Check）
+
+**這一步把 Step 3 的域識別結果轉換為可執行的迭代拆分建議。**
+
+對每個被識別為 `Complicated` 的模組：
+
+1. 從 draft 的「模組動作清單」中，計算該模組的**總動作數**（items 數量）
+2. 根據 `q3_costly` 決定預算上限：
+
+| 條件 | 每 iter 動作上限 | 說明 |
+|------|-----------------|------|
+| Complicated + q3_costly=true | **4** | 出錯成本高，必須控制單次 iter 負載 |
+| Complicated + q3_costly=false | **6** | 有參考經驗，可稍微放寬 |
+| Complex（任何） | **3** | 探索性質，更需小步驗證 |
+| Clear | 不限 | 做法清楚且有成熟參考 |
+
+3. 計算建議迭代數：`suggestedIters = ceil(actionCount / maxPerIter)`
+4. 從 draft 的「迭代規劃表」中，計算該模組目前佔用幾個 iter（`currentIters`）
+5. 比較 `currentIters` vs `suggestedIters`，產出 issue：
+
+| 條件 | Issue 級別 | 說明 |
+|------|-----------|------|
+| Complicated + costly + currentIters < suggestedIters | **BLOCKER** | 必須拆 iter |
+| Complicated + !costly + currentIters < suggestedIters | **WARNING** | 建議拆 iter |
+| Complex + currentIters < suggestedIters | **BLOCKER** | 探索性模組更需要小步 |
+
+6. 將結果填入 `iterBudget` 欄位（見 Step 5 JSON schema）
+
+**範例**：
+```
+模組 question_bank:
+  域: Complicated, q3_costly=true
+  動作數: 6 (PdfParseCoordinator, PdfTextExtractor, PdfImageProcessor, QuestionBankService, QuestionBankList, ImportBankPage)
+  上限: 4/iter
+  建議 iter: ceil(6/4) = 2
+  目前 iter: 1
+  → BLOCKER: 需要拆成至少 2 個 iter
+```
+
+---
+
 ### Step 5: 產出 Report JSON 並呼叫驗證腳本
 
 **5-A: 將分析結果寫成 report JSON**
@@ -126,6 +167,12 @@ JSON 格式（必須完全符合 cynefin-log-writer.cjs 所需的 schema）：
       "flowSteps": 4,
       "depsCount": 2,
       "timeCoupling": false,
+      "iterBudget": {
+        "actionCount": 6,
+        "maxPerIter": 4,
+        "suggestedIters": 2,
+        "currentIters": 1
+      },
       "implicitExpansion": ["Step 2 展開的隱含步驟（若展開後無明顯增加可省略）"],
       "issues": [
         {
@@ -141,9 +188,11 @@ JSON 格式（必須完全符合 cynefin-log-writer.cjs 所需的 schema）：
 ```
 
 > **Issues 分級規則**：
-> - `BLOCKER`：需要修改才能進 PLAN（FLOW 超標、deps 超標、隱含複雜度 >3x）
-> - `WARNING`：提醒但不阻擋（輕度超標、非同步警告）
+> - `BLOCKER`：需要修改才能進 PLAN（FLOW 超標、deps 超標、隱含複雜度 >3x、**迭代預算不足**）
+> - `WARNING`：提醒但不阻擋（輕度超標、非同步警告、Complicated+!costly 預算建議）
 > - 無問題模組：`"issues": []`
+>
+> **注意**：`iterBudget` 欄位為必填（Complicated/Complex 模組）。cynefin-log-writer.cjs 會**機械判定** iterBudget，即使 AI 沒有手動報 BLOCKER，腳本也會根據 iterBudget 數據自動產生。
 
 **5-B: 執行結果驗證腳本**
 
@@ -244,6 +293,28 @@ timestamp 格式：`2026-02-22T10-30-00`（ISO，冒號換成連字號）
 ### deps 超標 → 抽中間層
 
 在 deps 清單裡加一個 Facade 或 Service 層，把多個外部依賴包起來。
+
+### 迭代預算不足 → 拆分 iter
+
+將 Complicated+costly 模組的動作分散到多個 iter，每 iter 最多 4 個動作：
+
+```
+修改前 (1 iter 塞 6 個動作):
+  iter-2: question_bank
+    PdfParseCoordinator, PdfTextExtractor, PdfImageProcessor,
+    QuestionBankService, QuestionBankList, ImportBankPage
+
+修改後 (拆成 2 iter，每 iter 前後端一套):
+  iter-2: question_bank (CRUD + 手動匯入)
+    QuestionBankService, QuestionBankList, ImportBankPage (手動)
+  iter-3: question_bank (PDF 解析)
+    PdfParseCoordinator, PdfTextExtractor, PdfImageProcessor, ImportBankPage (PDF)
+```
+
+拆分原則：
+- P0 動作優先進第一個 iter
+- 每個 iter 必須有 SVC + ROUTE + UI（前後端一套）
+- 每個 iter 結束後必須有可展示的功能
 
 ### 時間耦合 → 標記非同步需求
 

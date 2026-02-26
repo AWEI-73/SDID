@@ -162,7 +162,8 @@ function run(options) {
       { name: '標籤覆蓋率', pattern: '>=80%', desc: '至少 80% 函式有 GEMS 標籤' },
       { name: 'P0/P1 擴展標籤', pattern: 'GEMS-FLOW, GEMS-DEPS, GEMS-TEST', desc: 'P0/P1 必須有完整標籤' },
       { name: 'GEMS-TEST-FILE', pattern: '{module}.test.ts', desc: '測試檔案路徑' },
-      { name: 'Plan 函式清單', pattern: 'implementation_plan 定義的函式', desc: '與 Plan 一致' }
+      { name: 'Plan 函式清單', pattern: 'implementation_plan 定義的函式', desc: '與 Plan 一致' },
+      { name: 'STUB-001 空骨架偵測', pattern: 'P0 函式體非空', desc: 'P0 函式不得為空骨架（return []/{}、// TODO、throw not implemented）' }
     ]
   };
 
@@ -709,6 +710,92 @@ mkdir -p src/modules src/shared src/config`,
       manifest,
       stats: scanResult.stats
     };
+  }
+
+  // ============================================
+  // STUB-001: 空骨架偵測 — 標籤通過但函式體為空
+  // 使用 function-index.json 快篩（size ≤ 5），再讀原始碼確認
+  // P0 → BLOCKER，P1 → WARN（不阻擋）
+  // ============================================
+  if (passed) {
+    const functionIndexPath = path.join(target, '.gems', 'docs', 'function-index.json');
+    if (fs.existsSync(functionIndexPath)) {
+      try {
+        const fnIndex = JSON.parse(fs.readFileSync(functionIndexPath, 'utf8'));
+        const stubViolations = { blockers: [], warns: [] };
+        const STUB_PATTERNS = [
+          /^\s*return\s*\[\s*\]\s*[;,]?\s*$/m,
+          /^\s*return\s*\{\s*\}\s*[;,]?\s*$/m,
+          /^\s*return\s*null\s*[;,]?\s*$/m,
+          /^\s*return\s*undefined\s*[;,]?\s*$/m,
+          /^\s*\/\/\s*TODO/mi,
+          /throw\s+new\s+Error\s*\(\s*['"`]not\s+implemented/mi,
+          /throw\s+new\s+Error\s*\(\s*['"`]stub/mi,
+        ];
+
+        for (const [filePath, functions] of Object.entries(fnIndex.byFile || {})) {
+          for (const fn of functions) {
+            const lines = fn.lines || '';
+            if (!lines) continue;
+            const [startLine, endLine] = lines.split('-').map(Number);
+            const size = endLine - startLine;
+            if (size > 5) continue; // 超過 5 行不是 stub 嫌疑
+
+            // 讀原始碼確認
+            // function-index.json 可能是相對路徑（如 "ExamForge\src\..."）或絕對路徑
+            const resolvedPath = path.isAbsolute(filePath)
+              ? filePath
+              : path.resolve(target, filePath.replace(/\\/g, '/'));
+
+            if (!fs.existsSync(resolvedPath)) continue;
+
+            const fileContent = fs.readFileSync(resolvedPath, 'utf8');
+            const fileLines = fileContent.split('\n');
+            const fnBody = fileLines.slice(Math.max(0, startLine - 1), endLine).join('\n');
+
+            // 排除純 GEMS 標籤行（// [STEP:N]）
+            const nonTagLines = fnBody.split('\n').filter(l =>
+              l.trim() && !/^\s*\/\/\s*\[STEP/.test(l) && !/^\s*\/\*/.test(l) && !/^\s*\*/.test(l)
+            );
+            if (nonTagLines.length <= 2) {
+              // 幾乎只有標籤，判定為 stub
+              const isStub = STUB_PATTERNS.some(p => p.test(fnBody)) || nonTagLines.length <= 1;
+              if (!isStub) continue;
+
+              const priority = fn.priority || 'P2';
+              const entry = `${fn.name} (${priority}, ${size} 行, ${path.basename(filePath)})`;
+              if (priority === 'P0') stubViolations.blockers.push(entry);
+              else if (priority === 'P1') stubViolations.warns.push(entry);
+            }
+          }
+        }
+
+        if (stubViolations.blockers.length > 0) {
+          const attempt = errorHandler.recordError('STUB-001', `P0 空骨架: ${stubViolations.blockers.join(', ')}`);
+          emitBlock({
+            scope: `BUILD Phase 2 | ${story}`,
+            summary: `STUB-001: ${stubViolations.blockers.length} 個 P0 函式為空骨架，標籤通過但無實作`,
+            nextCmd: '補充 P0 函式的商業邏輯實作',
+            details: `P0 空骨架（必須修復）:\n${stubViolations.blockers.map(s => `  - ${s}`).join('\n')}${stubViolations.warns.length > 0 ? `\n\nP1 空骨架（建議修復）:\n${stubViolations.warns.map(s => `  - ${s}`).join('\n')}` : ''}\n\n偵測標準: size ≤ 5 行 且含 return []/{}、// TODO 或 throw new Error('not implemented')`
+          }, {
+            projectRoot: target,
+            iteration: parseInt(iteration.replace('iter-', '')),
+            phase: 'build',
+            step: 'phase-2',
+            story
+          });
+          return { verdict: 'BLOCKER', reason: 'STUB-001', stubViolations };
+        }
+
+        if (stubViolations.warns.length > 0) {
+          console.log(`\n  ⚠ STUB-001 WARNING: ${stubViolations.warns.length} 個 P1 函式疑似空骨架（不阻擋）:`);
+          stubViolations.warns.forEach(w => console.log(`    - ${w}`));
+        }
+      } catch (e) {
+        // function-index.json 解析失敗，跳過 STUB 檢查（向後相容）
+        console.log(`  [STUB-001] function-index.json 讀取失敗，跳過空骨架偵測: ${e.message}`);
+      }
+    }
   }
 
   // 通過

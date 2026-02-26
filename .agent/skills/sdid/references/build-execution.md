@@ -71,6 +71,17 @@ node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
 BUILD Phase 8 完成後，**忽略 output 的「下一步: SCAN」**。
 重新執行 `blueprint-loop.cjs`，它會自動偵測下一步（SHRINK 或下一個 Story）。
 
+**活藍圖狀態由 blueprint-shrink 自動維護，不需要手動更新：**
+
+```
+blueprint-loop.cjs 在 Phase 8 後自動執行 blueprint-shrink：
+  → 主藍圖 iter-N: [CURRENT] → [DONE]
+  → 主藍圖 iter-N+1: [STUB] → [CURRENT]（升格，帶 Fillback suggestions）
+```
+
+shrink 完成後，告知使用者：
+「Iter-N 已完成並折疊。下一個 iter-(N+1) [{模組名}] 已升格為 [CURRENT]，可執行 BLUEPRINT-CONTINUE 展開。」
+
 ### Task-Pipe 路線
 BUILD Phase 8 完成後，重新執行 `taskpipe-loop.cjs`，它會自動進入 SCAN。
 

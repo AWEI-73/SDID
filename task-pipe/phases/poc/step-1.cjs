@@ -190,7 +190,8 @@ function run(options) {
 
     // 嘗試從完成清單中推導模組
     const detectedModules = completionList
-      .filter(item => item.startsWith('[Detected] Module:'))
+      .map(item => typeof item === 'string' ? item : (item.name || item.description || ''))
+      .filter(item => typeof item === 'string' && item.startsWith('[Detected] Module:'))
       .map(item => item.replace('[Detected] Module: ', '').trim());
 
     return `# 📋 ${projectName} - 需求草稿 (${isReverseFromScan ? '反向還原藍圖' : '迭代傳承'})

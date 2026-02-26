@@ -108,18 +108,78 @@ function validateReport(report) {
  * 從 modules 的 issues 判斷整體結果
  * BLOCKER → @NEEDS-FIX
  * 只有 WARNING/INFO → @PASS (帶警告)
+ *
+ * v1.1: 新增 iterBudget 機械判定 — 腳本自動產生 BLOCKER，不依賴 AI 手動報
  */
 function determineResult(modules) {
   const blockers = [];
   const warnings = [];
 
   for (const mod of modules) {
-    if (!mod.issues || mod.issues.length === 0) continue;
-    for (const issue of mod.issues) {
-      if (issue.level === 'BLOCKER') {
-        blockers.push({ module: mod.name, issue });
-      } else if (issue.level === 'WARNING') {
-        warnings.push({ module: mod.name, issue });
+    // --- 既有: 掃描 AI 回報的 issues ---
+    if (mod.issues && mod.issues.length > 0) {
+      for (const issue of mod.issues) {
+        if (issue.level === 'BLOCKER') {
+          blockers.push({ module: mod.name, issue });
+        } else if (issue.level === 'WARNING') {
+          warnings.push({ module: mod.name, issue });
+        }
+      }
+    }
+
+    // --- 新增: iterBudget 機械強制 ---
+    if (mod.iterBudget) {
+      const budget = mod.iterBudget;
+      const maxPerIter = budget.maxPerIter || 4;
+      const suggestedIters = budget.suggestedIters || Math.ceil((budget.actionCount || 0) / maxPerIter);
+      const currentIters = budget.currentIters || 1;
+
+      if (mod.domain === 'Complicated' && mod.threeQuestions && mod.threeQuestions.q3_costly) {
+        // Complicated + costly: 嚴格預算
+        if (budget.actionCount > maxPerIter && currentIters < suggestedIters) {
+          blockers.push({
+            module: mod.name,
+            issue: {
+              level: 'BLOCKER',
+              description: `迭代預算不足: Complicated+costly 模組 "${mod.name}" 有 ${budget.actionCount} 個動作，目前 ${currentIters} iter（上限 ${maxPerIter}/iter），需拆為至少 ${suggestedIters} 個 iter`,
+              suggestions: [
+                `將模組拆分為 ${suggestedIters} 個 iter，每個 iter 最多 ${maxPerIter} 個動作`,
+                `P0 動作優先進第一個 iter，P1/P2 動作排入後續 iter`,
+                `每個 iter 必須有 SVC+ROUTE+UI（前後端一套）`,
+              ],
+              fixTarget: '迭代規劃表 + 模組動作清單',
+            }
+          });
+        }
+      } else if (mod.domain === 'Complicated') {
+        // Complicated + !costly: 建議但不阻擋
+        if (currentIters < suggestedIters) {
+          warnings.push({
+            module: mod.name,
+            issue: {
+              level: 'WARNING',
+              description: `迭代預算建議: 模組 "${mod.name}" 有 ${budget.actionCount} 個動作，建議 ${suggestedIters} iter（目前 ${currentIters}）`,
+              suggestions: [`考慮增加迭代數以降低單一 iter 風險`],
+            }
+          });
+        }
+      } else if (mod.domain === 'Complex') {
+        // Complex: 更嚴格，探索性需要小步
+        const complexMax = budget.maxPerIter || 3;
+        const complexSuggested = Math.ceil((budget.actionCount || 0) / complexMax);
+        if (currentIters < complexSuggested) {
+          blockers.push({
+            module: mod.name,
+            issue: {
+              level: 'BLOCKER',
+              description: `迭代預算不足: Complex 模組 "${mod.name}" 有 ${budget.actionCount} 個動作，探索性模組每 iter 最多 ${complexMax} 個，需拆為至少 ${complexSuggested} 個 iter`,
+              suggestions: [
+                `將模組拆為 ${complexSuggested} 個 iter，先做 Probe（探索驗證）再做完整實作`,
+              ],
+              fixTarget: '迭代規劃表 + 模組動作清單',
+            }
+          });
+        }
       }
     }
   }
@@ -162,6 +222,13 @@ function buildLogContent(report, result, iterNum) {
     lines.push(`  FLOW 步驟: ${mod.flowSteps ?? 'N/A'}  ${flowOk ? '✓' : '⚠ 超標(閾值7)'}`);
     lines.push(`  deps 數量: ${mod.depsCount ?? 'N/A'}  ${depsOk ? '✓' : '⚠ 超標(閾值5)'}`);
     lines.push(`  時間耦合: ${mod.timeCoupling ? '⚠ Clear 等待 Complex' : '無'}`);
+
+    // 迭代預算
+    if (mod.iterBudget) {
+      const b = mod.iterBudget;
+      const budgetOk = !b.suggestedIters || (b.currentIters || 1) >= b.suggestedIters;
+      lines.push(`  迭代預算: ${b.actionCount || '?'} 動作, 上限 ${b.maxPerIter || '?'}/iter → 建議 ${b.suggestedIters || '?'} iter (目前 ${b.currentIters || '?'})  ${budgetOk ? '✓' : '⚠ 不足'}`);
+    }
 
     // Issues
     if (mod.issues && mod.issues.length > 0) {
@@ -231,6 +298,12 @@ Report JSON 格式:
         "flowSteps": 4,
         "depsCount": 2,
         "timeCoupling": false,
+        "iterBudget": {
+          "actionCount": 6,
+          "maxPerIter": 4,
+          "suggestedIters": 2,
+          "currentIters": 1
+        },
         "issues": [
           {
             "level": "BLOCKER|WARNING|INFO",

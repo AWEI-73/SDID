@@ -434,15 +434,16 @@ ${finalModules.map((m, i) => `| ${iterNum}.${i + 1} ${m.name} | P${i === 0 ? 0 :
 
 ## 5.5 函式規格表 (供 PLAN 直接讀取，勿刪)
 
-> AI 填寫此表後，PLAN Step 1 可直接讀取，無需推導。
-> 格式: Type = CONST | LIB | SVC | API | HOOK | UI | ROUTE
-> GEMS-FLOW 格式: STEP_A→STEP_B→STEP_C
+> ⚠️ 此區塊由 AI 填寫後，spec-parser 直接讀取，不再推導。
+> 格式：每行一個函式，欄位用 | 分隔。Type: SVC/ROUTE/UI/LIB/HOOK/CONST。Priority: P0/P1/P2。
+> GEMS-FLOW 格式：來源 → 處理 → 目標（例：UI → SVC → storage）
 
 | Story | 函式名稱 | Type | Priority | GEMS-FLOW | 說明 |
 |-------|---------|------|---------|-----------|------|
-| ${iterNum}.0 | CoreTypes | CONST | P0 | DEFINE→EXPORT | 核心型別定義 |
-| ${iterNum}.0 | MemoryStore | LIB | P0 | INIT→OPERATIONS→EXPORT | 記憶體儲存層 |
-${finalModules.map((m, i) => `| ${iterNum}.${i + 1} | [函式名稱] | [Type] | P0 | [STEP_A→STEP_B→RETURN] | [${m.name}主要功能] |`).join('\n')}
+| ${iterNum}.0 | CoreTypes | CONST | P0 | types → shared | 核心型別定義 |
+| ${iterNum}.0 | MemoryStore | LIB | P0 | storage → local | 記憶體儲存層 |
+${finalModules.map((m, i) => `| ${iterNum}.${i + 1} | [函式名稱] | [Type] | P0 | [來源 → 處理 → 目標] | [說明] |
+| ${iterNum}.${i + 1} | [函式名稱] | [Type] | P1 | [來源 → 處理 → 目標] | [說明] |`).join('\n')}
 
 ---
 

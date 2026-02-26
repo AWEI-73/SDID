@@ -1,18 +1,19 @@
 ---
 name: sdid
-description: SDID 統一開發框架 — 從需求設計到程式碼交付的完整流程。支援兩條設計路線：Blueprint（大藍圖 5 輪對話）和 Task-Pipe（POC 漸進式細部設計），兩條路匯流到 implementation_plan 後共用 BUILD Phase 1-8。觸發詞：「SDID」「藍圖」「blueprint」「新專案」「開發」「build」「繼續」「POC」「Task-Pipe」「快速建」「練習」「小專案」「create project」「new project」「繼續開發」「跑 build」「自動開發」「一鍵開發」「sdid 小修」「quick fix」「改一下」「fix」「小改」「micro fix」。
+description: SDID 統一開發框架 — 從需求設計到程式碼交付的完整流程。觸發詞：「SDID」「藍圖」「blueprint」「新專案」「開發」「build」「繼續」「POC」「Task-Pipe」「快速建」「練習」「小專案」「create project」「new project」「繼續開發」「跑 build」「自動開發」「一鍵開發」「sdid 小修」「quick fix」「改一下」「fix」「小改」「micro fix」。
 ---
 
-# SDID — 統一開發框架
+# SDID — 路由器
 
-## 路由判斷（進入 skill 後第一步）
+> **本文件只做路由判斷。進入模式後讀對應 reference，不要在這裡找規則。**
 
-根據專案狀態和使用者意圖，判斷進入哪個模式：
+## 路由判斷（進入 skill 後唯一職責）
 
 | 條件 | 模式 | 動作 |
 |------|------|------|
-| 使用者說「小修」「fix」「改一下」「quick fix」「micro fix」 | MICRO-FIX | escalation check → 直接改 → micro-fix-gate（見下方） |
+| 使用者說「小修」「fix」「改一下」「quick fix」「micro fix」 | MICRO-FIX | 讀 [micro-fix.md](references/micro-fix.md) |
 | **客製化/第三方/特化模組開發**（「跑 POC」「原型驗證」「串接」「調整」「第三方」「客製」+ 非標準 CRUD） | **POC-FIX** | 開 POC 資料夾 → 反覆驗證 → 整合清除 → BUILD + 必寫測試 |
+| 有專案 + 主藍圖 ACTIVE + 有 [STUB]/[CURRENT] | BLUEPRINT-CONTINUE | 讀 [blueprint-design.md](references/blueprint-design.md) → CONTINUE 段落 |
 | 無專案 + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話 |
 | 無專案 + 使用者需求明確 | DESIGN-TASKPIPE | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --new --project=[name]` |
 | 有專案但無 draft + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話（迭代號自動遞增） |
@@ -21,76 +22,22 @@ description: SDID 統一開發框架 — 從需求設計到程式碼交付的完
 | 有 implementation_plan | BUILD-AUTO | 自動偵測路線繼續 BUILD |
 | 使用者說「快速建」「練習」「小專案」 | QUICKSTART | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --new --project=[name] --type=[type]` |
 
-### Draft 類型自動判斷
+### Draft 類型自動判斷（BUILD-AUTO 進入時）
 
 ```
-draft 有 Enhanced Draft 格式標記（模組動作表、迭代規劃表）→ Blueprint 路線
-  → 執行 CYNEFIN-CHECK（見下方）→ @PASS 後執行 blueprint-loop.cjs
-
-draft 是簡單 requirement_draft → Task-Pipe 路線
-  → 執行 CYNEFIN-CHECK（見下方）→ @PASS 後執行 taskpipe-loop.cjs
+Enhanced Draft 格式（模組動作表、迭代規劃表）→ Blueprint 路線 → blueprint-loop.cjs
+簡單 requirement_draft → Task-Pipe 路線 → taskpipe-loop.cjs
 ```
 
-### CYNEFIN-CHECK（進 PLAN 前強制執行）
+### 路線選擇優先問題
 
-> ⚠️ **強制規則：不詢問使用者、不等待確認、不解釋「我將要執行」，直接執行。**
+新專案且無現有程式碼時，**先問這一個問題**：
+> 「UI 版面和操作流程確認了嗎？還是需要先跑出來看看？」
 
-兩條路線在進入 PLAN 前都必須執行 CYNEFIN-CHECK：
+- 未確認 → **Task-Pipe 優先**（POC 先建 UI 骨架讓使用者確認，再進 PLAN/BUILD）
+- 已確認 → 依需求模糊度選路線（見路由表）
 
-```
-Blueprint:  Enhanced Draft 完成 → [CYNEFIN-CHECK 立即執行] → @PASS → draft-to-plan → BUILD
-Task-Pipe:  POC Step 5 完成    → [CYNEFIN-CHECK 立即執行] → @PASS → PLAN Step 1 → BUILD
-```
-
-**執行流程（三步，不可跳過）：**
-
-```
-Step A: 讀 references/cynefin-check.md，對輸入文件做語意域分析
-Step B: 將分析結果寫成 report JSON 檔 → 存到 .gems/iterations/iter-X/logs/cynefin-report-<timestamp>.json
-Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
-        node sdid-tools/cynefin-log-writer.cjs \
-          --report-file=<Step B 存的 json 路徑> \
-          --target=<project 根目錄> \
-          --iter=<N>
-```
-
-腳本輸出決定下一步：
-- `@PASS` → 在輸入文件末尾加 `CYNEFIN-CHECK: PASS | iter-X | <timestamp>` 標記，繼續進 PLAN
-- `@NEEDS-FIX` → 根據腳本輸出的 BLOCKER 建議直接修改 draft/spec，重跑（從 Step A）
-
-**Report JSON 格式**（Step B 寫的檔案，需符合 cynefin-log-writer.cjs schema）：
-
-```json
-{
-  "route": "Blueprint",
-  "inputFile": "smart-note/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md",
-  "modules": [
-    {
-      "name": "模組名",
-      "domain": "Clear|Complicated|Complex",
-      "threeQuestions": {
-        "q1_clear": true,
-        "q2_reference": true,
-        "q3_costly": false
-      },
-      "flowSteps": 4,
-      "depsCount": 2,
-      "timeCoupling": false,
-      "implicitExpansion": ["展開後的隱含步驟（若無則省略此欄）"],
-      "issues": [
-        {
-          "level": "BLOCKER",
-          "description": "問題描述",
-          "suggestions": ["具體修改建議"],
-          "fixTarget": "需修改的文件路徑"
-        }
-      ]
-    }
-  ]
-}
-```
-
-> `issues` 為空陣列 `[]` 表示該模組無問題。`level` 只有 `BLOCKER`（阻擋）、`WARNING`（警告不阻擋）兩種。
+> ⚠️ 直接走 Blueprint 路線不驗證 UI，版面由 AI 自行決定，跑完才發現不對成本很高。
 
 ### 模糊意圖處理
 
@@ -101,9 +48,15 @@ Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
 
 ---
 
-## 模式鎖定 (Mode Lock)
+## CYNEFIN-CHECK（進 PLAN 前強制執行）
 
-進入任何模式後，嚴格遵守以下規則：
+> ⚠️ **不詢問使用者、不等待確認、直接執行。**
+> 完整規則在 [cynefin-check.md](references/cynefin-check.md)，此處只提示時機。
+
+```
+Blueprint:  Enhanced Draft 完成 → CYNEFIN-CHECK → @PASS → draft-to-plan → BUILD
+Task-Pipe:  POC Step 5 完成    → CYNEFIN-CHECK → @PASS → PLAN Step 1 → BUILD
+```
 
 ### 通用規則
 1. 每完成一步，報告：「目前在 [模式] [步驟 N]，下一步是 [X]」
@@ -165,35 +118,31 @@ Step C: 執行腳本讓腳本客觀判定 @PASS / @NEEDS-FIX：
 
 ## 全授權模式
 
-使用者說「全部授權」「自己跑」「你決定」時：
-
-| 模式 | 行為 |
-|------|------|
-| DESIGN-BLUEPRINT | 內部推演 5 輪（每輪自己做決策不問使用者），最終一次性輸出完整 Enhanced Draft + 「下一步：啟動 BUILD」結論 |
-| DESIGN-TASKPIPE | 直接執行 loop，按 output 操作 |
-| BUILD-AUTO | 直接執行 loop，按 output 操作，@BLOCKER 時嘗試修復 |
-| QUICKSTART | 直接執行，不確認 |
+使用者說「全部授權」「自己跑」「你決定」→ 不問使用者，自主執行。
+各模式的全授權差異在各自的 reference 內說明。
 
 ---
+
+## 禁止事項
+
+| 禁止 | 原因 |
+|------|------|
+| 讀 *.cjs 原始碼 | 工具內部與你無關 |
+| 對 src/ 全域 grep | 灌爆 context 引發幻覺 |
+| 跳過設計步驟 | 每步建立在前一步之上 |
+| 猜測需求 | 標記 [NEEDS CLARIFICATION] |
+| 在 DESIGN 模式讀 src/ | 設計階段不看程式碼 |
 
 ## 參考文件
 
 | 文件 | 用途 | 何時讀取 |
 |------|------|---------|
-| [blueprint-design.md](references/blueprint-design.md) | Blueprint 5 輪對話規則 | 進入 DESIGN-BLUEPRINT 時 |
+| [blueprint-design.md](references/blueprint-design.md) | Blueprint 5 輪對話規則 | 進入 DESIGN-BLUEPRINT / BLUEPRINT-CONTINUE 時 |
 | [taskpipe-design.md](references/taskpipe-design.md) | POC-PLAN 漸進式規則 | 進入 DESIGN-TASKPIPE 時 |
 | [build-execution.md](references/build-execution.md) | BUILD Phase 1-8 + 錯誤處理 | 進入 BUILD-AUTO 時 |
+| [micro-fix.md](references/micro-fix.md) | MICRO-FIX 執行規則 | 進入 MICRO-FIX 時 |
+| [poc-fix.md](references/poc-fix.md) | POC-FIX 四階段執行規則 | 進入 POC-FIX 模式時 |
+| [cynefin-check.md](references/cynefin-check.md) | 進 PLAN 前語意域分析 | 兩條路線進 PLAN 前強制執行 |
 | [architecture-rules.md](references/architecture-rules.md) | 模組化架構規則 | Blueprint Round 3 或 PLAN Step 2 時 |
 | [action-type-mapping.md](references/action-type-mapping.md) | 動作類型映射 | Blueprint Round 5 或 PLAN Step 4 時 |
-| [cynefin-check.md](references/cynefin-check.md) | 進 PLAN 前語意域分析 | 兩條路線進 PLAN 前強制執行 |
-| [poc-fix.md](references/poc-fix.md) | POC-FIX 四階段執行規則 | 進入 POC-FIX 模式時 |
-
-## Prohibited Actions
-
-| 禁止 | 原因 |
-|------|------|
-| 讀 *.cjs 原始碼 | 工具內部與你無關 |
-| 跑 --help | SKILL.md 已有所有資訊 |
-| 跳過設計步驟 | 每步建立在前一步之上 |
-| 猜測需求 | 標記 [NEEDS CLARIFICATION] |
-| 在 DESIGN 模式讀 src/ | 設計階段不看程式碼 |
+| [SDID_ARCHITECTURE.md](references/SDID_ARCHITECTURE.md) | 框架全局說明（給人看，AI 不需每次讀） | 需要框架全貌時 |

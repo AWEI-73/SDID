@@ -263,6 +263,16 @@ function scanGemsTagsEnhanced(srcDir) {
             // 優先使用 GEMS 標籤的名稱（模組級標籤，如 CoreTypes 覆蓋整個檔案）
             const reportName = tags.functionName || funcName;
 
+            // v1.2 FIX: 如果 regex 匹配的是 interface/type/enum，
+            // 但 GEMS 標籤的 functionName 跟匹配的名字不同，
+            // 代表這個 interface 只是剛好在 GEMS 標籤下面，不是真正的函式。
+            // 跳過它，讓後面真正的 function/class/const 來認領。
+            const matchedLine = lines[funcStartLine - 1] || '';
+            const isTypeDeclaration = /^\s*(?:export\s+)?(?:interface|type|enum)\s/.test(matchedLine);
+            if (isTypeDeclaration && reportName !== funcName) {
+              continue;  // 讓真正的 function 去認領這個 GEMS 標籤
+            }
+
             // 避免同一個 GEMS 標籤被重複計算（檔案級標籤只算一次）
             const alreadyReported = tags.functionName &&
               result.functions.some(f => f.name === tags.functionName && f.file === relativePath);

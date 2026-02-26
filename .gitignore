@@ -23,6 +23,11 @@ my_workflow/
 smart-assistant/
 選股用/
 
+# ── sdid-monitor 自動生成 ─────────────────────────
+sdid-monitor/hub.json
+sdid-monitor/dist/
+sdid-monitor/dist_packager/
+
 # ── 根目錄臨時檔案 ────────────────────────────────
 memory.json
 debug-scanner.js

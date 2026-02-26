@@ -29,23 +29,88 @@ app.post('/api/notify', (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Hub rebuild (background, non-blocking) ──────────────────
+const { spawn } = require('child_process');
+const UPDATE_HUB_SCRIPT = path.join(__dirname, 'update-hub.cjs');
+
+let hubRebuildTimer = null;
+function scheduleHubRebuild(reason) {
+  clearTimeout(hubRebuildTimer);
+  hubRebuildTimer = setTimeout(() => {
+    console.log(`🔄  hub rebuild triggered by: ${reason}`);
+    hubCache = { data: null, time: 0 };
+    const child = spawn(process.execPath, [UPDATE_HUB_SCRIPT], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, WORKSPACE_ROOT },
+    });
+    child.unref();
+  }, 1200); // debounce 1.2s，避免連續寫入觸發多次
+}
+
+// ─── Deep watch: 監聽關鍵路徑的檔案異動 ──────────────────────
+// fs.watch recursive 在 Windows 有效，Linux/macOS 只有 non-recursive
+// 分別 watch 各 project 的 .gems/docs 與 .gems/iterations
+
+function watchProject(projName) {
+  const docsPath  = path.join(WORKSPACE_ROOT, projName, '.gems', 'docs');
+  const itersPath = path.join(WORKSPACE_ROOT, projName, '.gems', 'iterations');
+
+  for (const watchPath of [docsPath, itersPath]) {
+    if (!fs.existsSync(watchPath)) continue;
+    try {
+      fs.watch(watchPath, { persistent: false, recursive: true }, (_, filename) => {
+        if (!filename) return;
+        // 只關心 json / md 檔案
+        if (!/\.(json|md)$/.test(filename)) return;
+        scheduleHubRebuild(`${projName}/${filename}`);
+      });
+    } catch (_) { /* 某些 path 不可 watch，略過 */ }
+  }
+}
+
+// watch framework dirs（自己的腳本，沒有 .gems 但改了也要更新）
+const FRAMEWORK_DIRS = ['sdid-tools', 'task-pipe', '.agent', 'sdid-monitor'];
+for (const dir of FRAMEWORK_DIRS) {
+  const p = path.join(WORKSPACE_ROOT, dir);
+  if (!fs.existsSync(p)) continue;
+  try {
+    fs.watch(p, { persistent: false, recursive: true }, (_, filename) => {
+      if (!filename) return;
+      if (!/\.(json|md|cjs|mjs|js|ts)$/.test(filename)) return;
+      if (filename.includes('hub.json')) return; // 避免 hub 更新觸發自己
+      scheduleHubRebuild(`${dir}/${filename}`);
+    });
+    console.log(`👁  watching framework: ${dir}`);
+  } catch (_) { }
+}
+
 // ─── Auto-detect new / removed projects ──────────────────────
-// Watch WORKSPACE_ROOT for directory-level changes (new project created, etc.)
+// Watch WORKSPACE_ROOT top-level for new project dirs
 let watchDebounce = null;
 try {
   fs.watch(WORKSPACE_ROOT, { persistent: false }, (eventType, filename) => {
     if (!filename) return;
-    // Debounce rapid file-system events (e.g. multiple files written at once)
     clearTimeout(watchDebounce);
     watchDebounce = setTimeout(() => {
-      projectsCache = { data: null, time: 0 }; // invalidate cache
+      projectsCache = { data: null, time: 0 };
       broadcast({ type: 'refresh' });
+      // new project might have appeared — re-setup watches
+      scheduleHubRebuild(`workspace root / ${filename}`);
     }, 800);
   });
-  console.log(`👁  Watching workspace for changes: ${WORKSPACE_ROOT}`);
+  console.log(`👁  Watching workspace root: ${WORKSPACE_ROOT}`);
 } catch (e) {
-  console.warn('⚠  fs.watch unavailable, falling back to polling:', e.message);
+  console.warn('⚠  fs.watch unavailable:', e.message);
 }
+
+// Scan existing projects and watch their .gems dirs
+try {
+  fs.readdirSync(WORKSPACE_ROOT, { withFileTypes: true })
+    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .forEach(e => watchProject(e.name));
+  console.log(`👁  Deep-watching all project .gems dirs`);
+} catch (_) { }
 
 // Fallback: poll every 10 s regardless (catches deep changes fs.watch might miss)
 setInterval(() => {
@@ -321,6 +386,52 @@ function scanProjects() {
     .filter(e => fs.existsSync(path.join(WORKSPACE_ROOT, e.name, '.gems', 'iterations')))
     .map(e => buildProjectStatus(e.name, path.join(WORKSPACE_ROOT, e.name, '.gems', 'iterations')));
 }
+
+// ─── Hub map ─────────────────────────────────────────────────
+const HUB_FILE = path.join(__dirname, 'hub.json');
+
+// Rebuild hub synchronously (called by post-commit hook path or on demand)
+function rebuildHub() {
+  try {
+    require('./update-hub.cjs');
+  } catch (e) {
+    console.warn('⚠  update-hub failed:', e.message);
+  }
+}
+
+let hubCache = { data: null, time: 0 };
+function loadHub() {
+  // Invalidate if hub.json was modified after cache was built
+  let mtime = 0;
+  try { mtime = fs.statSync(HUB_FILE).mtimeMs; } catch { /* no file yet */ }
+  if (hubCache.data && mtime <= hubCache.time) return hubCache.data;
+  const raw = fs.existsSync(HUB_FILE) ? fs.readFileSync(HUB_FILE, 'utf8') : null;
+  const data = raw ? JSON.parse(raw) : null;
+  hubCache = { data, time: Date.now() };
+  return data;
+}
+
+app.get('/api/hub', (req, res) => {
+  try {
+    const data = loadHub();
+    if (!data) return res.status(404).json({ error: 'hub.json not found. Run: node update-hub.cjs' });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Trigger hub rebuild via POST (called by git hook)
+app.post('/api/hub/rebuild', (req, res) => {
+  try {
+    hubCache = { data: null, time: 0 }; // invalidate
+    // Run update-hub.cjs as child process (non-blocking)
+    const child = spawn(process.execPath, [path.join(__dirname, 'update-hub.cjs')], {
+      detached: true, stdio: 'ignore'
+    });
+    child.unref();
+    broadcast({ type: 'hub-updated' });
+    res.json({ ok: true, message: 'hub rebuild triggered' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ─── API ─────────────────────────────────────────────────────
 let projectsCache = { data: null, time: 0 };

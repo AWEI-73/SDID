@@ -1,24 +1,51 @@
 # SDID Framework Roadmap
 
 > 每次 session 開始前看這裡，挑一個 milestone 繼續。
-> 最後更新：2026-02-25 (session 3)
+> 最後更新：2026-02-28 (session 4)
 
 ---
 
-## 框架現狀 (v3.0)
+## 框架現狀 (v4.0 — 2026 演進中)
+
+**路線策略（2026-02-28 確定）**
 
 ```
-Blueprint Route (模糊需求)        Task-Pipe Route (清晰需求)
-  5-round dialogue                  POC Step 0-5
-  blueprint-gate (19 checks)        CYNEFIN-CHECK
-  draft-to-plan                     PLAN Step 1-5
-         ↘                              ↙
-              implementation_plan
-                    ↓
-              BUILD Phase 1-8
-                    ↓
-                  SCAN
+三條路線：
+
+  Blueprint 路線（模糊需求）       POC Quick 路線（清晰需求）    MICRO-FIX（旁路）
+  5 輪對話 → blueprint-gate        直接進 POC Quick             直接改 → micro-fix-gate
+              ↘                      ↙
+                   POC Quick
+                       ↓
+             Skill A（字典生成）
+                       ↓
+             .gems/specs/*.json（字典 = 唯一規格真相源）
+                       ↓
+             spec-gate → CYNEFIN → BUILD 1-8 → tag-shrink
 ```
+
+**Task-Pipe 狀態：DEPRECATED**
+- `task-pipe/phases/plan/` — 廢棄（Blueprint + 字典取代 implementation_plan 角色）
+- `task-pipe/phases/poc/` — 廢棄（整合為 POC Quick 路線，不再獨立）
+- POC-FIX 四階段 → 改名 POC Quick，成為獨立入口路線
+- 現有腳本保留不動（加 deprecated 標頭），不刪除
+
+**GEMS-Next 演進（進行中）**
+
+| 波次 | 項目 | 狀態 |
+|------|------|------|
+| 波一 | dict-schema.cjs（schema + validator） | ✅ 完成 |
+| 波一 | ExamForge/.gems/specs/ 目錄結構 | ✅ 完成 |
+| 波一 | pdf-text-extractor.json 格式驗證 | ✅ 完成 |
+| 波二 | tag-shrink.cjs | ⬜ 待做 |
+| 波二 | state-guide.cjs | ⬜ 待做 |
+| 波三 | gems-scanner-v2.cjs + phase-2 判斷 | ⬜ 待做 |
+| 波三 | spec-gate.cjs | ⬜ 待做 |
+| 波三 | phase-8.cjs 字典同步 | ⬜ 待做 |
+
+---
+
+## 框架現狀（舊 v3.0 架構，以下 Milestone 仍有效）
 
 ---
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * PLAN Step 1: 需求確認 & 模糊消除
  * 輸入: POC 產出 | 產物: 確認可進入 Step 2

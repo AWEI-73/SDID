@@ -1,0 +1,10 @@
+{
+  "$meta": {
+    "description": "Blueprint route fixture — Skill A 輸出 index",
+    "format": "{ \"Domain.Action\": \"specs/xxx.json\" }",
+    "lastSynced": "2026-03-01"
+  },
+  "Auth.Login": "specs/auth-service.json",
+  "Auth.Register": "specs/auth-service.json",
+  "Auth.Logout": "specs/auth-service.json"
+}

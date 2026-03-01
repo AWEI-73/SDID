@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * POC Step 1: 模糊消除 + 邏輯預檢
  * 輸入: requirement_draft_iter-X.md | 產物: 驗證過的 draft

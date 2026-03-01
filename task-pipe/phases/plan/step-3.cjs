@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * PLAN Step 3: 架構審查 (Constitution Audit) v4.0
  * 輸入: implementation_plan 初稿 | 產物: 更新 plan（加入審查結果）

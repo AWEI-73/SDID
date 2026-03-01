@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * POC Step 2: 環境檢查 + POC 模式選擇
  * 輸入: requirement_draft | 產物: 更新 draft（加入 POC 模式）

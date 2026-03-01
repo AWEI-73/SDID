@@ -1,0 +1,88 @@
+{
+  "$meta": {
+    "manages": "src/meal-service.ts",
+    "description": "用餐管理 CRUD 模組",
+    "source": "Task-Pipe requirement_spec Section 5",
+    "lastSynced": "2026-03-01"
+  },
+  "Meal.AddMeal": {
+    "priority": "P0",
+    "status": "⬜",
+    "signature": "(data: AddMealDto)→Promise<{ id: string }>",
+    "description": "新增一筆用餐紀錄，驗證輸入後寫入 DB，回傳新紀錄 id",
+    "targetFile": "src/meal-service.ts",
+    "lineRange": "L1-1",
+    "flow": "ValidateInput→CheckUser→Insert→Return",
+    "steps": {
+      "ValidateInput": "確認 userId/date/type 必填欄位存在且格式正確",
+      "CheckUser": "查 tbl_users 確認 userId 有效",
+      "Insert": "INSERT INTO tbl_meals，回傳新生成的 id",
+      "Return": ""
+    },
+    "deps": {
+      "Database.tbl_meals": "寫入用餐紀錄",
+      "Database.tbl_users": "驗證 userId 存在"
+    },
+    "depsRisk": "LOW",
+    "allowedImports": ["pg"],
+    "test": { "unit": true, "integration": true, "e2e": false },
+    "testFile": "meal-add.test.ts",
+    "storyRef": "Story-N.0",
+    "ac": [
+      "Given valid AddMealDto, When AddMeal(data), Then record inserted and id returned",
+      "Given invalid userId, When AddMeal(data), Then throw 404 UserNotFoundError"
+    ]
+  },
+  "Meal.ListMeals": {
+    "priority": "P0",
+    "status": "⬜",
+    "signature": "(query: { userId: string, page: number, limit: number })→Promise<MealRecord[]>",
+    "description": "查詢指定使用者的用餐列表，支援分頁",
+    "targetFile": "src/meal-service.ts",
+    "lineRange": "L1-1",
+    "flow": "ParseQuery→FetchRows→Transform→Return",
+    "steps": {
+      "ParseQuery": "解析 page/limit，設定預設值（page=1, limit=20）",
+      "FetchRows": "SELECT FROM tbl_meals WHERE userId = ? LIMIT ? OFFSET ?",
+      "Transform": "將 DB row 轉為 MealRecord DTO",
+      "Return": ""
+    },
+    "deps": {
+      "Database.tbl_meals": "查詢用餐列表"
+    },
+    "depsRisk": "LOW",
+    "allowedImports": ["pg"],
+    "test": { "unit": true, "integration": true, "e2e": false },
+    "testFile": "meal-list.test.ts",
+    "storyRef": "Story-N.0",
+    "ac": [
+      "Given valid userId, When ListMeals({ userId, page: 1 }), Then return first page of meals",
+      "Given userId with no records, When ListMeals({ userId }), Then return empty array"
+    ]
+  },
+  "Meal.DeleteMeal": {
+    "priority": "P1",
+    "status": "⬜",
+    "signature": "(mealId: string, requesterId: string)→Promise<void>",
+    "description": "軟刪除用餐紀錄，需驗證 requesterId 為該紀錄擁有者",
+    "targetFile": "src/meal-service.ts",
+    "lineRange": "L1-1",
+    "flow": "AuthorizeOwner→SoftDelete→Return",
+    "steps": {
+      "AuthorizeOwner": "查 tbl_meals 確認 requesterId === meal.userId",
+      "SoftDelete": "UPDATE tbl_meals SET deletedAt = NOW() WHERE id = ?",
+      "Return": ""
+    },
+    "deps": {
+      "Database.tbl_meals": "查詢與更新用餐紀錄"
+    },
+    "depsRisk": "LOW",
+    "test": { "unit": true, "integration": false, "e2e": false },
+    "testFile": "meal-delete.test.ts",
+    "storyRef": "Story-N.1",
+    "ac": [
+      "Given owner requesterId, When DeleteMeal(mealId, requesterId), Then meal soft-deleted",
+      "Given non-owner requesterId, When DeleteMeal(mealId, requesterId), Then throw 403 ForbiddenError"
+    ]
+  }
+}

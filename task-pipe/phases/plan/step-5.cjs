@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * PLAN Step 5: 完成 Implementation Plan
  * v2.0: 檢查所有 Story 是否都 READY FOR BUILD

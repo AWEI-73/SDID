@@ -1,0 +1,10 @@
+{
+  "$meta": {
+    "description": "Task-Pipe route fixture — Skill A 輸出 index",
+    "format": "{ \"Domain.Action\": \"specs/xxx.json\" }",
+    "lastSynced": "2026-03-01"
+  },
+  "Meal.AddMeal": "specs/meal-service.json",
+  "Meal.ListMeals": "specs/meal-service.json",
+  "Meal.DeleteMeal": "specs/meal-service.json"
+}

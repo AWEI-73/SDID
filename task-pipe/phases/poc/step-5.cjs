@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * POC Step 5: 需求規格產出 (v2.0 - 防膨脹版)
  * 輸入: draft + Contract + POC | 產物: requirement_spec_iter-X.md

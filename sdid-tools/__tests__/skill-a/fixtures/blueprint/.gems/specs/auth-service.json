@@ -1,0 +1,92 @@
+{
+  "$meta": {
+    "manages": "src/auth-service.ts",
+    "description": "Auth 模組 — JWT 登入/註冊/登出",
+    "source": "Blueprint Enhanced Draft",
+    "lastSynced": "2026-03-01"
+  },
+  "Auth.Login": {
+    "priority": "P0",
+    "status": "⬜",
+    "signature": "(email: string, password: string)→Promise<{ token: string }>",
+    "description": "驗證帳密，比對 bcrypt hash，簽發 JWT（24h 有效期）",
+    "targetFile": "src/auth-service.ts",
+    "lineRange": "L1-1",
+    "flow": "Validate→Query→Hash→IssueJwt",
+    "steps": {
+      "Validate": "檢查 email 格式與 password 非空",
+      "Query": "用 email 查 tbl_users",
+      "Hash": "bcrypt.compare 密碼",
+      "IssueJwt": "簽發 JWT，payload 含 userId，有效期 24h"
+    },
+    "deps": {
+      "Lib.bcrypt": "密碼比對",
+      "Lib.jsonwebtoken": "JWT 簽發",
+      "Database.tbl_users": "查詢使用者"
+    },
+    "depsRisk": "MEDIUM",
+    "allowedImports": ["bcrypt", "jsonwebtoken", "pg"],
+    "test": { "unit": true, "integration": true, "e2e": true },
+    "testFile": "auth-login.test.ts",
+    "storyRef": "Story-1.0",
+    "ac": [
+      "Given valid credentials, When Login(email, pwd), Then return JWT token",
+      "Given wrong password, When Login(email, pwd), Then throw 401 AuthError"
+    ]
+  },
+  "Auth.Register": {
+    "priority": "P0",
+    "status": "⬜",
+    "signature": "(email: string, password: string)→Promise<{ userId: string }>",
+    "description": "建立新帳號：驗證格式、檢查重複、hash 密碼、寫入 DB",
+    "targetFile": "src/auth-service.ts",
+    "lineRange": "L1-1",
+    "flow": "ValidateInput→CheckDuplicate→HashPwd→Insert→Return",
+    "steps": {
+      "ValidateInput": "驗證 email 格式、password 長度 ≥ 8",
+      "CheckDuplicate": "查 tbl_users 確認 email 未被使用",
+      "HashPwd": "bcrypt.hash(password, 12)",
+      "Insert": "INSERT INTO tbl_users",
+      "Return": ""
+    },
+    "deps": {
+      "Lib.bcrypt": "密碼雜湊",
+      "Database.tbl_users": "寫入新使用者"
+    },
+    "depsRisk": "LOW",
+    "allowedImports": ["bcrypt", "pg"],
+    "test": { "unit": true, "integration": true, "e2e": false },
+    "testFile": "auth-register.test.ts",
+    "storyRef": "Story-1.0",
+    "ac": [
+      "Given new email, When Register(email, pwd), Then user created and userId returned",
+      "Given duplicate email, When Register(email, pwd), Then throw 409 ConflictError"
+    ]
+  },
+  "Auth.Logout": {
+    "priority": "P1",
+    "status": "⬜",
+    "signature": "(token: string)→Promise<void>",
+    "description": "撤銷 JWT token，清除 server-side session",
+    "targetFile": "src/auth-service.ts",
+    "lineRange": "L1-1",
+    "flow": "RevokeToken→ClearSession→Return",
+    "steps": {
+      "RevokeToken": "將 token 加入 blacklist（Redis）",
+      "ClearSession": "刪除 tbl_sessions 中對應紀錄",
+      "Return": ""
+    },
+    "deps": {
+      "Lib.redis": "token blacklist",
+      "Database.tbl_sessions": "清除 session"
+    },
+    "depsRisk": "LOW",
+    "test": { "unit": true, "integration": false, "e2e": false },
+    "testFile": "auth-logout.test.ts",
+    "storyRef": "Story-1.1",
+    "ac": [
+      "Given valid token, When Logout(token), Then token added to blacklist",
+      "Given already revoked token, When Logout(token), Then idempotent, no error"
+    ]
+  }
+}

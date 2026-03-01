@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * POC Step 4: UI 原型設計 (v3.0 - 嚴格審查版)
  * 輸入: draft + Contract | 產物: xxxPOC.html

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LEGACY] Task-Pipe route — 保留供有明確需求但無 POC 場景使用，非主推路線
 /**
  * POC Step 3: 契約設計
  * 輸入: requirement_draft | 產物: xxxContract.ts

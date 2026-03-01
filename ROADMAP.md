@@ -1,7 +1,7 @@
 # SDID Framework Roadmap
 
 > 每次 session 開始前看這裡，挑一個 milestone 繼續。
-> 最後更新：2026-03-01 (session 5)
+> 最後更新：2026-03-01 (session 6 — Skill A → spec-gen.cjs 實作完成)
 
 ---
 
@@ -15,7 +15,7 @@
   Blueprint 路線（模糊需求）       Task-Pipe 路線（清晰需求）
   5 輪對話 → blueprint-gate        POC → CYNEFIN → PLAN → BUILD
               ↘                      ↙
-         Skill A（字典生成）⬜ 未實作
+         spec-gen.cjs（字典生成）✅ 完成
                   ↓
         .gems/specs/*.json（字典 = 唯一規格真相源）
                   ↓
@@ -48,14 +48,14 @@
 | 波三 | spec-gate.cjs | ✅ 完成 |
 | 波三 | dict-sync.cjs（phase-8 字典同步） | ✅ 完成（lineRange + status 只升不降） |
 | 波三 | SCAN phase 現代化 | ✅ 完成（03-01 移除舊 gems-scanner.cjs，統一走 v2→enhanced→lite 降級鏈）|
-| **波四** | **Skill A（字典生成腳本）** | **⬜ 未實作 — 收斂的最後一塊** |
+| 波四 | spec-gen.cjs（字典生成腳本） | ✅ 完成（session 6 — 自動偵測 Blueprint/Task-Pipe 格式，產出 specs/*.json + _index.json） |
 
 **收斂目標（2026-03-01 確定）**
 
 字典迴圈 = 框架閉合的最後一塊。**只有正式路線走字典迴圈**：
 ```
 Blueprint ──┐
-Task-Pipe ──┘→ Skill A（字典生成）→ .gems/specs/*.json
+Task-Pipe ──┘→ spec-gen.cjs（字典生成）→ .gems/specs/*.json
                                          ↓
                                    spec-gate（品質驗證）
                                          ↓
@@ -67,23 +67,23 @@ Task-Pipe ──┘→ Skill A（字典生成）→ .gems/specs/*.json
 
 旁路（POC-FIX / MICRO-FIX）不走字典迴圈。
 ```
-字典是路由 SEARCH 的核心，Skill A 做好整個框架就收斂了。
+字典是路由 SEARCH 的核心，spec-gen.cjs 已完成，整個框架已收斂。
 
 ---
 
 ## Milestone 清單
 
-### ★ M10 — Skill A 字典生成 ⬜ 未實作（收斂關鍵）
+### ★ M10 — spec-gen.cjs 字典生成 ✅ 完成（session 6）
 > 目標：讓正式路線能自動產出 `.gems/specs/*.json` 字典，閉合整個框架迴圈
 
-**現況**：下游工具 (dict-sync / spec-gate / gems-scanner-v2) 全部完成，但上游的「誰來產出第一版 specs/」不存在。目前 ExamForge 的 specs 是手動建的。
+**現況**：spec-gen.cjs 已實作，自動偵測 Blueprint / Task-Pipe 兩種輸入格式，產出 dict-schema 合規的 specs/*.json + _index.json。下游工具鏈 (spec-gate / BUILD / dict-sync / SCAN) 全部就緒，字典迴圈已閉合。
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| Skill A 字典生成腳本 | ⬜ 未實作 | **P0** | 讀 Enhanced Draft (Blueprint) 或 PLAN 產物 (Task-Pipe)，產出符合 dict-schema 的 specs/*.json + _index.json |
-| 輸入格式定義 | ⬜ 待設計 | P0 | 明確 Skill A 接受的輸入格式（Blueprint Draft / implementation_plan / 源碼掃描結果） |
-| E2E 驗證 | ⬜ 待做 | P1 | 跑完 Skill A → specs → BUILD → dict-sync → spec-gate → SCAN 完整鏈路 |
-| 測試 fixture | ⬜ 待做 | P1 | 在 `sdid-tools/__tests__/skill-a/fixtures/` 補建完整 fixture |
+| spec-gen.cjs 字典生成腳本 | ✅ 完成 | **P0** | 讀 Enhanced Draft (Blueprint) 或 requirement_spec (Task-Pipe)，產出符合 dict-schema 的 specs/*.json + _index.json |
+| 輸入格式定義 | ✅ 完成 | P0 | 自動偵測：有 `### Iter N:` → Blueprint；否則 → Task-Pipe。解析「模組動作清單表」markdown 表格 |
+| E2E 驗證 | ✅ 完成 | P1 | ExamForge Enhanced Draft → 4 模組 23 函式 → spec-gate 驗證通過（0 warnings） |
+| 測試 fixture | ✅ 完成 | P1 | `sdid-tools/__tests__/skill-a/fixtures/` — Blueprint (Auth) + Task-Pipe (Meal) 兩組 fixture |
 
 ---
 
@@ -197,6 +197,7 @@ Task-Pipe ──┘→ Skill A（字典生成）→ .gems/specs/*.json
 
 | 完成時間 | 內容 |
 |---------|------|
+| 2026-03-01 | **M10: spec-gen.cjs 字典生成完成** — 自動偵測 Blueprint/Task-Pipe，產出 specs/*.json + _index.json，字典迴圈閉合 |
 | 2026-03-01 | fix: gems-scanner-v2 VariableStatement bug（const X = {} 類無法辨識） |
 | 2026-03-01 | fix: SCAN phase 移除舊 gems-scanner.cjs，統一走 v2 降級鏈 |
 | 2026-03-01 | fix: scan.cjs relativeTarget ReferenceError |
@@ -214,19 +215,20 @@ Task-Pipe ──┘→ Skill A（字典生成）→ .gems/specs/*.json
 
 ## 下一個 Session 建議入口
 
-> **收斂優先**：Skill A 字典生成 (M10) 是當前唯一焦點，其他 Milestone 暫緩。
+> **M10 已完成**：spec-gen.cjs 字典迴圈已閉合。以下按優先順序排列。
 
-1. **M10: Skill A 字典生成** — 閉合字典迴圈
-   - 定義輸入格式（Blueprint Draft / Task-Pipe PLAN 產物）
-   - 實作 specs/*.json + _index.json 生成邏輯
-   - 跑 E2E：Skill A → specs → BUILD → dict-sync → spec-gate → SCAN
-2. **M6 全 Story 分片** — 收斂後順手做（0.5 session）
+1. **M6 全 Story 分片** — runner 自動走完 spec 裡所有 story（0.5 session）
+2. **M1-ACC-002**：blueprint-gate 加 Then 效益指標語意掃描
+3. **M8 框架文件收斂** — README / OVERVIEW 與工具鏈同步
 
 ---
 
 ## 工具快速參考
 
 ```bash
+# spec-gen（字典生成 — 讀 Enhanced Draft 或 requirement_spec）
+node sdid-tools/spec-gen.cjs --project=<project> --input=<draft.md> [--iter=N] [--dry-run]
+
 # Blueprint route
 node sdid-tools/blueprint-gate.cjs --draft=<path> --iter=1
 

@@ -157,13 +157,13 @@ function toKebab(name) {
 
 /**
  * 將 flow 字串 → steps 物件（key=stepName, value="" 佔位）
- * "Validate→Query→Hash→IssueJwt" → { Validate: "", Query: "", Hash: "", IssueJwt: "" }
+ * "Validate→Query→Hash→IssueJwt" → { Validate: "TODO", Query: "TODO", Hash: "TODO", IssueJwt: "TODO" }
  */
 function flowToSteps(flow) {
   if (!flow) return {};
   const steps = {};
   flow.split('→').map(s => s.trim()).filter(Boolean).forEach(s => {
-    steps[s] = (s === 'Return') ? '' : 'TODO';
+    steps[s] = 'TODO';
   });
   return steps;
 }

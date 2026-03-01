@@ -34,9 +34,120 @@ let scanGemsTags, validateP0P1Compliance;
 const liteValidatorPath = path.join(__dirname, '../../lib/scan/gems-validator-lite.cjs');
 const gemsScannerPath = path.join(__dirname, '../../lib/gems-scanner.cjs');
 const gasScannerPath = path.join(__dirname, '../../lib/gems-scanner-gas.cjs');
+// v2.6: AST 精確掃描路徑（用於 file:line 精確定位 + 未標籤函式偵測）
+const scannerV2Path = path.resolve(__dirname, '../../../sdid-tools/gems-scanner-v2.cjs');
+
+// ─────────────────────────────────────────────────────────────────────────
+// v2.6: AST 輔助函式
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * 為未標籤函式生成 GEMS 標籤模板
+ * @param {string} funcName  - 函式名稱
+ * @param {number} startLine - 函式起始行號
+ * @param {number} endLine   - 函式結束行號
+ * @param {string} filePath  - 檔案路徑（用來推斷 Domain）
+ * @param {string} story     - Story ID（如 Story-1.0）
+ * @returns {{ newFmt: string, fullFmt: string }}
+ */
+function buildTagTemplate(funcName, startLine, endLine, filePath, story) {
+  // 從檔案名推斷 Domain (storage.ts → Storage, main.ts → Main)
+  const base = path.basename(filePath, path.extname(filePath));
+  const domain = base.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+                     .replace(/^./, c => c.toUpperCase());
+  const lineRef = (endLine && endLine > startLine) ? `L${startLine}-${endLine}` : `L${startLine}`;
+
+  // 新格式 (單行 inline，P2 預設)
+  const newFmt = `// @GEMS [P2] ${domain}.${funcName} | FLOW: Step1→Execute→Return | ${lineRef}`;
+
+  // 完整格式 (P0/P1 用，JSDoc 多行)
+  const fullFmt = [
+    `/**`,
+    ` * GEMS: ${funcName} | P0 | ○○ | (args)→Result | ${story || 'Story-X.Y'} | TODO: 描述`,
+    ` * GEMS-FLOW: ValidateInput→Execute→Return`,
+    ` * GEMS-DEPS: [Internal.Dependency (說明)]`,
+    ` * GEMS-DEPS-RISK: LOW`,
+    ` * GEMS-TEST: ✓ Unit | - Integration | - E2E`,
+    ` * GEMS-TEST-FILE: {module}.test.ts`,
+    ` */`,
+  ].join('\n');
+
+  return { newFmt, fullFmt };
+}
+
+/**
+ * v2.6: gems-scanner-v2 AST 適配器
+ * 將 scanV2() 輸出對應至 phase-2 期望格式，並附帶未標籤函式的精確位置
+ */
+function getScannerV2Adapter(projectRoot) {
+  const { scanV2 } = require(scannerV2Path);
+  return {
+    isV2: true,
+    scanGemsTags: (srcDir) => {
+      const r = scanV2(srcDir, projectRoot);
+
+      // 對應至 phase-2 原有格式（加 line = startLine 相容性欄位）
+      const functions = r.functions.map(f => ({
+        name:       f.name,
+        file:       f.file,
+        line:       f.startLine,    // phase-2 其他地方使用 f.line
+        startLine:  f.startLine,
+        endLine:    f.endLine,
+        priority:   f.priority,
+        flow:       f.flow,
+        deps:       f.deps,
+        depsRisk:   f.depsRisk,
+        test:       f.test,
+        testFile:   f.testFile,
+        description: f.description,
+        gemsId:     f.gemsId,
+        dictBacked: f.dictBacked,
+        phase2Mode: f.phase2Mode,
+        fraudIssues: []
+      }));
+
+      return {
+        functions,
+        untagged: r.untagged,   // [{ name, file, line }] ← 精確 AST 位置！
+        stats: {
+          total:   r.stats.totalScanned,
+          tagged:  r.stats.tagged,
+          untagged: r.stats.untaggedCount,
+          p0: r.stats.P0 || 0,
+          p1: r.stats.P1 || 0,
+          p2: r.stats.P2 || 0,
+          p3: r.stats.P3 || 0,
+        }
+      };
+    },
+    validateP0P1Compliance: (functions) => {
+      const issues = [];
+      for (const fn of functions) {
+        if (fn.priority !== 'P0' && fn.priority !== 'P1') continue;
+        // 每個 issue 附帶 file + line 精確位置
+        if (!fn.flow)    issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-FLOW' });
+        if (!fn.test)    issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-TEST' });
+        if (!fn.testFile)issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-TEST-FILE' });
+        if (fn.priority === 'P0' && !fn.depsRisk)
+          issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-DEPS-RISK' });
+      }
+      return issues;
+    }
+  };
+}
 
 // 動態選擇掃描器
-function getScannerForProject(projectType) {
+function getScannerForProject(projectType, projectRoot) {
+  // v2.6: AST-based scanner — 最優先（提供 file:line 精確定位）
+  if (fs.existsSync(scannerV2Path)) {
+    try {
+      console.log('[Phase 2] 使用 gems-scanner-v2 (AST 精確掃描 + 未標籤定位)');
+      return getScannerV2Adapter(projectRoot);
+    } catch (e) {
+      console.log(`[Phase 2] gems-scanner-v2 載入失敗，退回舊版掃描器: ${e.message}`);
+    }
+  }
+
   // GAS 專案使用專用掃描器
   if (projectType === 'gas' && fs.existsSync(gasScannerPath)) {
     const gasScanner = require(gasScannerPath);
@@ -271,8 +382,8 @@ mkdir -p src/modules src/shared src/config`,
   
   console.log(`[INFO] 編碼驗證: ✓ ${encodingResult.scanned} 檔案全部通過`);
 
-  // 動態選擇掃描器 (根據專案類型)
-  const scanner = getScannerForProject(projectType);
+  // 動態選擇掃描器 (根據專案類型，傳入 target 讓 v2 能載入正確 TypeScript)
+  const scanner = getScannerForProject(projectType, target);
   scanGemsTags = scanner.scanGemsTags;
   validateP0P1Compliance = scanner.validateP0P1Compliance;
 
@@ -592,37 +703,39 @@ mkdir -p src/modules src/shared src/config`,
       )
       : [];
 
-    // 產生可直接複製的標籤範例 (Evolution Blueprint: 使用 gems-fixer 生成精確內容)
-    const { generateGemsBlock, findFunctionSpec } = require('../../lib/auto-fixer/gems-fixer.cjs');
+    // ─── v2.6: AST 精確位置指引 ────────────────────────────────────────────
+    // scanResult.untagged 由 gems-scanner-v2 提供，格式：[{ name, file, line }]
+    const astUntagged = scanResult.untagged || [];
 
-    // 尋找 Plan 目錄
-    const planDir = path.join(target, `.gems/iterations/${iteration}/plan`);
+    // 為每個未標籤函式生成精確的「哪裡 → 寫什麼」指引
+    const astGuideLines = astUntagged.slice(0, 10).map(fn => {
+      const { newFmt, fullFmt } = buildTagTemplate(fn.name, fn.line, fn.line + 5, fn.file, story);
+      return [
+        `  ❌ ${fn.file}:${fn.line}  ${fn.name}`,
+        `     └─ 在第 ${fn.line} 行「上方」加入:`,
+        `        ${newFmt}`
+      ].join('\n');
+    });
+    const astGuideText = astGuideLines.join('\n\n')
+      + (astUntagged.length > 10 ? `\n\n  ...還有 ${astUntagged.length - 10} 個未標籤函式` : '');
 
-    const tagExamples = missingFns.slice(0, 3).map(fn => {
-      // 1. 嘗試從 Plan 找精確規格
-      const spec = findFunctionSpec(fn.name, planDir);
-
-      if (spec) {
-        // 2. 如果找到，生成精確的 GEMS 區塊
-        return generateGemsBlock(spec);
-      } else {
-        // 3. 沒找到 (Fallback)，使用通用模板
+    // Fallback（無 AST 時）：舊版 missingFns + gems-fixer 模板
+    let tagExamples = '';
+    let missingListText = '';
+    if (astUntagged.length === 0) {
+      const { generateGemsBlock, findFunctionSpec } = require('../../lib/auto-fixer/gems-fixer.cjs');
+      const planDir = path.join(target, `.gems/iterations/${iteration}/plan`);
+      tagExamples = missingFns.slice(0, 3).map(fn => {
+        const spec = findFunctionSpec(fn.name, planDir);
+        if (spec) return generateGemsBlock(spec);
         const priority = fn.priority || 'P2';
         const status = priority === 'P0' || priority === 'P1' ? '○○' : '○';
-        return `/**
- * GEMS: ${fn.name} | ${priority} | ${status} | (args)→Result | ${story} | ${fn.description || 'TODO: 描述'}
- * GEMS-FLOW: Step1→Step2→Step3
- * GEMS-DEPS: [Type.Name (說明)]
- * GEMS-DEPS-RISK: LOW
- * GEMS-TEST: ✓ Unit | - Integration | - E2E
- * GEMS-TEST-FILE: {module}.test.ts (模組級，內含 describe('${fn.name}'))
- */`;
-      }
-    }).join('\n\n');
-
-    const missingListText = missingFns.length > 0
-      ? `缺失函式 (共 ${missingFns.length} 個):\n${missingFns.slice(0, 5).map(f => `- ${f.name} (${f.priority})${f.file ? ` → ${f.file}` : ''}`).join('\n')}${missingFns.length > 5 ? `\n...還有 ${missingFns.length - 5} 個` : ''}`
-      : '';
+        return `/**\n * GEMS: ${fn.name} | ${priority} | ${status} | (args)→Result | ${story} | ${fn.description || 'TODO: 描述'}\n * GEMS-FLOW: Step1→Step2→Step3\n * GEMS-DEPS: [Type.Name (說明)]\n * GEMS-DEPS-RISK: LOW\n * GEMS-TEST: ✓ Unit | - Integration | - E2E\n * GEMS-TEST-FILE: {module}.test.ts (模組級，內含 describe('${fn.name}'))\n */`;
+      }).join('\n\n');
+      missingListText = missingFns.length > 0
+        ? `缺失函式 (共 ${missingFns.length} 個):\n${missingFns.slice(0, 5).map(f => `- ${f.name} (${f.priority})${f.file ? ` → ${f.file}` : ''}`).join('\n')}${missingFns.length > 5 ? `\n...還有 ${missingFns.length - 5} 個` : ''}`
+        : '';
+    }
 
     // TACTICAL_FIX 機制：追蹤失敗次數
     const attempt = errorHandler.recordError('E6', `覆蓋率不足 (${coverage}%)`);
@@ -633,7 +746,7 @@ mkdir -p src/modules src/shared src/config`,
         scope: `BUILD Phase 2 | ${story}`,
         summary: `標籤覆蓋率需要進一步完善 (${MAX_ATTEMPTS}/${MAX_ATTEMPTS}) | 覆蓋率: ${coverage}%`,
         nextCmd: '建議：架構師協作，確認 GEMS 標籤格式',
-        details: `覆蓋率: ${coverage}% (需 >=80%)\n掃描目錄: ${srcPath}\n\n${missingListText}`
+        details: `覆蓋率: ${coverage}% (需 >=80%)\n掃描目錄: ${srcPath}\n\n${astUntagged.length > 0 ? `未標籤函式 (${astUntagged.length} 個):\n${astGuideText}` : missingListText}`
       }, {
         projectRoot: target,
         iteration: parseInt(iteration.replace('iter-', '')),
@@ -652,48 +765,68 @@ mkdir -p src/modules src/shared src/config`,
       };
     }
 
-    // 還有重試機會
+    // 還有重試機會 — 輸出精確位置指引
     const recoveryLevel = errorHandler.getRecoveryLevel();
 
+    // ─── 精確錯誤輸出（直接 console.log，不走 anchorOutput 的通用格式）──
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log(`@BLOCKER | 覆蓋率不足 (${coverage}%，需 >=80%) | 未標籤函式: ${astUntagged.length || missingFns.length} 個`);
+    console.log(`@CONTEXT: Phase 2 | ${story} | 掃描: ${srcPath}`);
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('');
+
+    if (astUntagged.length > 0) {
+      // v2.6: AST 精確定位 — 顯示每個函式的 file:line + 應補的標籤
+      console.log('@UNTAGGED_FUNCTIONS (需在函式「上方一行」加入 @GEMS 標籤):');
+      console.log('');
+      console.log(astGuideText);
+      console.log('');
+      console.log('@FORMAT_GUIDE:');
+      console.log('  新格式 (P2/P3):  // @GEMS [P2] Domain.FuncName | FLOW: Step1→Step2→Return | L{n}-{m}');
+      console.log('  完整格式 (P0/P1): JSDoc /** ... */ 含 GEMS-FLOW, GEMS-DEPS, GEMS-TEST, GEMS-TEST-FILE');
+      console.log('  P0 必填: GEMS-FLOW, GEMS-DEPS, GEMS-DEPS-RISK, GEMS-TEST, GEMS-TEST-FILE');
+    } else {
+      // Fallback: 舊版輸出
+      if (missingListText) console.log(missingListText);
+      if (tagExamples) {
+        console.log('');
+        console.log('@GEMS_TAG_TEMPLATE (直接複製貼上):');
+        console.log(tagExamples);
+      }
+    }
+
+    console.log('');
+    console.log(`@ATTEMPT: ${attempt}/${MAX_ATTEMPTS}`);
+    console.log(`@NEXT_COMMAND`);
+    console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
+    console.log('═══════════════════════════════════════════════════════════════');
+
+    // 同時存 log（用 anchorOutput）
     anchorOutput({
       context: `Phase 2 | ${story} | 標籤覆蓋率不足`,
       info: {
         '覆蓋率': `${coverage}% (需 >=80%)`,
         '掃描目錄': srcPath,
-        '缺失函式': missingFns.length
+        '未標籤函式': astUntagged.length || missingFns.length
       },
       error: {
         type: 'TACTICAL_FIX',
-        summary: missingListText,
+        summary: astUntagged.length > 0
+          ? `未標籤函式 (${astUntagged.length} 個):\n${astGuideText}`
+          : missingListText || '覆蓋率不足',
         attempt,
         maxAttempts: MAX_ATTEMPTS
       },
       template: {
-        title: 'GEMS_TAG_TEMPLATE (直接複製貼上，勿自行修改格式)',
-        content: tagExamples || `/**
- * GEMS: functionName | P2 | ○ | (args)→Result | ${story} | 描述
- * GEMS-FLOW: Step1→Step2→Step3
- * GEMS-DEPS: [Type.Name (說明)]
- * GEMS-DEPS-RISK: LOW
- * GEMS-TEST: ✓ Unit | - Integration | - E2E
- * GEMS-TEST-FILE: {module}.test.ts (模組級，內含 describe('functionName'))
- */`
-      },
-      guide: {
-        title: 'PRIORITY_GUIDE',
-        content: `- P0: 核心邏輯，必須有完整標籤 (FLOW, DEPS, TEST, TEST-FILE)
-- P1: 重要功能，必須有基本標籤
-- P2/P3: 輔助功能，僅需 GEMS 基本標籤`
-      },
-      template: {
         title: `RECOVERY_ACTION (Level ${recoveryLevel})`,
         content: recoveryLevel === 1
-          ? '直接複製上方模板，貼到對應函式上方'
+          ? '直接在上方指定位置加入 @GEMS 標籤（複製上方模板，修改 Domain/FuncName）'
           : recoveryLevel === 2
-            ? '讀取 implementation_plan 確認函式清單，逐一補標籤'
+            ? '讀取 implementation_plan 確認函式清單，對照 @UNTAGGED_FUNCTIONS 逐一補標籤'
             : '完整分析標籤格式問題，準備人類介入'
       },
-      output: `NEXT: 為每個缺失函式加上 GEMS 標籤（直接複製上方模板）\nNEXT: ${getRetryCmd('BUILD', '2', { story })}`
+      output: `NEXT: 為每個 @UNTAGGED_FUNCTIONS 函式在對應行號上方加入 @GEMS 標籤\nNEXT: ${getRetryCmd('BUILD', '2', { story })}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -840,11 +973,43 @@ mkdir -p src/modules src/shared src/config`,
     errors.push(`未實作: ${comparison.missing.map(m => m.name).slice(0, 3).join(', ')}${comparison.missing.length > 3 ? '...' : ''}`);
   }
 
+  // v2.6: 精確定位 — 每個 issue 附帶 file:line（由 getScannerV2Adapter 的 validateP0P1Compliance 提供）
+  const issuesByFn = {};
+  for (const i of complianceIssues) {
+    const key = i.fn;
+    if (!issuesByFn[key]) {
+      const fn = scanResult.functions.find(f => f.name === i.fn);
+      issuesByFn[key] = {
+        fn: i.fn,
+        file: i.file || (fn ? fn.file : '?'),
+        line: i.line || (fn ? fn.line : '?'),
+        priority: i.priority || (fn ? fn.priority : '?'),
+        issues: []
+      };
+    }
+    issuesByFn[key].issues.push(i.issue);
+  }
+
+  // 精確的「哪個函式 → 在哪行 → 缺什麼 → 補什麼」指引
+  const complianceGuides = Object.values(issuesByFn).map(entry => {
+    const { newFmt, fullFmt } = buildTagTemplate(entry.fn, entry.line, entry.line + 5, entry.file || '', story);
+    const missingFields = entry.issues.map(iss => {
+      if (iss === '缺少 GEMS-FLOW')      return ' * GEMS-FLOW: Step1→Step2→Return';
+      if (iss === '缺少 GEMS-TEST')      return ' * GEMS-TEST: ✓ Unit | - Integration | - E2E';
+      if (iss === '缺少 GEMS-TEST-FILE') return ' * GEMS-TEST-FILE: {module}.test.ts';
+      if (iss === '缺少 GEMS-DEPS-RISK') return ' * GEMS-DEPS-RISK: LOW';
+      return ` * ${iss}`;
+    });
+    return [
+      `  ❌ ${entry.file}:${entry.line}  ${entry.fn} (${entry.priority})`,
+      `     缺少: ${entry.issues.join(', ')}`,
+      `     └─ 在 GEMS JSDoc 中補充:`,
+      ...missingFields.map(l => `        ${l}`)
+    ].join('\n');
+  }).join('\n\n');
+
   // 需修正的檔案
-  const filesToFix = [...new Set(complianceIssues.map(i => {
-    const fn = scanResult.functions.find(f => f.name === i.fn);
-    return fn ? fn.file : null;
-  }).filter(Boolean))];
+  const filesToFix = [...new Set(Object.values(issuesByFn).map(i => i.file).filter(Boolean))];
 
   // TACTICAL_FIX 機制：追蹤失敗次數
   const attempt = errorHandler.recordError('E6', errors.join('; '));
@@ -855,7 +1020,7 @@ mkdir -p src/modules src/shared src/config`,
       scope: `BUILD Phase 2 | ${story}`,
       summary: `標籤驗收需要進一步完善 (${MAX_ATTEMPTS}/${MAX_ATTEMPTS}) | 覆蓋率: ${coverage}%`,
       nextCmd: '建議：架構師協作，檢查 GEMS 標籤正確性',
-      details: `覆蓋率: ${coverage}% (${coverageMode})\n\n錯誤摘要:\n${errors.map(e => `- ${e}`).join('\n')}\n\n需修正檔案:\n${filesToFix.slice(0, 5).map(f => `- ${f}`).join('\n')}`
+      details: `覆蓋率: ${coverage}% (${coverageMode})\n\n錯誤摘要:\n${errors.map(e => `- ${e}`).join('\n')}\n\n@COMPLIANCE_ISSUES (精確位置):\n${complianceGuides || '(無詳細資訊)'}\n\n需修正檔案:\n${filesToFix.slice(0, 5).map(f => `- ${f}`).join('\n')}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -876,15 +1041,36 @@ mkdir -p src/modules src/shared src/config`,
     };
   }
 
-  // 還有重試機會
+  // 還有重試機會 — 精確輸出 compliance 問題
   const recoveryLevel = errorHandler.getRecoveryLevel();
 
-  const fixGuide = recoveryLevel === 1
-    ? '參考 GEMS 標籤模板，為每個函式加上標籤'
-    : recoveryLevel === 2
-      ? '讀取 implementation_plan 確認函式清單\n對照源碼逐一檢查標籤'
-      : '完整分析錯誤根本原因\n考慮是否需要回到 PLAN 階段調整';
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`@BLOCKER | P0/P1 標籤不完整 | ${complianceIssues.length} 個問題`);
+  console.log(`@CONTEXT: Phase 2 | ${story} | 覆蓋率: ${coverage}% (${coverageMode})`);
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('');
 
+  if (complianceGuides) {
+    console.log('@COMPLIANCE_ISSUES (需在對應函式的 GEMS JSDoc 中補充欄位):');
+    console.log('');
+    console.log(complianceGuides);
+    console.log('');
+  }
+
+  if (comparison.missing.length > 0) {
+    console.log('@MISSING_FUNCTIONS (Plan 定義但源碼未找到):');
+    comparison.missing.slice(0, 5).forEach(m => console.log(`  ❌ ${m.name} (${m.priority})`));
+    if (comparison.missing.length > 5) console.log(`  ...還有 ${comparison.missing.length - 5} 個`);
+    console.log('');
+  }
+
+  console.log(`@ATTEMPT: ${attempt}/${MAX_ATTEMPTS}`);
+  console.log(`@NEXT_COMMAND`);
+  console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
+  console.log('═══════════════════════════════════════════════════════════════');
+
+  // 存 log
   anchorOutput({
     context: `Phase 2 | ${story} | 標籤驗收失敗`,
     info: {
@@ -894,15 +1080,19 @@ mkdir -p src/modules src/shared src/config`,
     },
     error: {
       type: 'TACTICAL_FIX',
-      summary: errors.join('\n'),
+      summary: `${errors.join('\n')}\n\n@COMPLIANCE_ISSUES (精確位置):\n${complianceGuides}`,
       attempt,
       maxAttempts: MAX_ATTEMPTS
     },
     template: {
       title: `修正指引 (Level ${recoveryLevel})`,
-      content: fixGuide
+      content: recoveryLevel === 1
+        ? '直接在 @COMPLIANCE_ISSUES 指定的函式 GEMS JSDoc 中補充缺少的欄位'
+        : recoveryLevel === 2
+          ? '讀取 implementation_plan 確認 P0/P1 函式清單，對照源碼逐一補齊標籤'
+          : '完整分析錯誤根本原因，考慮是否需要回到 PLAN 階段調整'
     },
-    output: `NEXT: 補充缺失的 GEMS 標籤\nNEXT: ${getRetryCmd('BUILD', '2', { story })}`
+    output: `NEXT: 補充 @COMPLIANCE_ISSUES 中每個函式缺少的 GEMS 標籤欄位\nNEXT: ${getRetryCmd('BUILD', '2', { story })}`
   }, {
     projectRoot: target,
     iteration: parseInt(iteration.replace('iter-', '')),

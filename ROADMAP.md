@@ -7,30 +7,35 @@
 
 ## 框架現狀 (v4.0 — 2026 演進中)
 
-**路線策略（2026-02-28 確定）**
+**路線策略（2026-03-01 更新）**
 
 ```
-三條路線：
+兩條正式路線 + 兩條旁路：
 
-  Blueprint 路線（模糊需求）       POC Quick 路線（清晰需求）    MICRO-FIX（旁路）
-  5 輪對話 → blueprint-gate        直接進 POC Quick             直接改 → micro-fix-gate
+  Blueprint 路線（模糊需求）       Task-Pipe 路線（清晰需求）
+  5 輪對話 → blueprint-gate        POC → CYNEFIN → PLAN → BUILD
               ↘                      ↙
-                   POC Quick
-                       ↓
-             Skill A（字典生成）
-                       ↓
-             .gems/specs/*.json（字典 = 唯一規格真相源）
-                       ↓
-             spec-gate → CYNEFIN → BUILD 1-8 → tag-shrink
+         Skill A（字典生成）⬜ 未實作
+                  ↓
+        .gems/specs/*.json（字典 = 唯一規格真相源）
+                  ↓
+        spec-gate → CYNEFIN → BUILD 1-8 → dict-sync → SCAN
+                                                         ↓
+                                              state-guide 路由下一輪
+
+  旁路（不走字典迴圈）：
+    POC-FIX   — 已驗證 POC → 直接移植，必寫測試，micro-fix-gate 驗收
+    MICRO-FIX — 改一兩行 → micro-fix-gate 驗收，不寫測試
 ```
 
-**Task-Pipe 狀態：DEPRECATED**
+**Task-Pipe 部分廢棄**
 - `task-pipe/phases/plan/` — 廢棄（Blueprint + 字典取代 implementation_plan 角色）
-- `task-pipe/phases/poc/` — 廢棄（整合為 POC Quick 路線，不再獨立）
-- POC-FIX 四階段 → 改名 POC Quick，成為獨立入口路線
-- 現有腳本保留不動（加 deprecated 標頭），不刪除
+- `task-pipe/phases/poc/` — 廢棄（不再獨立使用）
+- `task-pipe/phases/build/` — **仍在使用**（BUILD 1-8 + SCAN 統一入口）
+- `task-pipe/phases/scan/` — **仍在使用**（已改走 gems-scanner-v2 降級鏈）
+- 現有已廢棄腳本保留不動（加 deprecated 標頭），不刪除
 
-**GEMS-Next 演進（進行中）**
+**GEMS-Next 演進**
 
 | 波次 | 項目 | 狀態 |
 |------|------|------|
@@ -42,127 +47,126 @@
 | 波三 | gems-scanner-v2.cjs + phase-2 判斷 | ✅ 完成（AST + 雙格式 + gemsId 連結）(03-01 修 VariableStatement bug) |
 | 波三 | spec-gate.cjs | ✅ 完成 |
 | 波三 | dict-sync.cjs（phase-8 字典同步） | ✅ 完成（lineRange + status 只升不降） |
-| 波三 | SCAN phase 現代化 | ✅ 完成（03-01 移除舊 gems-scanner.cjs 路線，統一走 v2→enhanced→lite 降級鏈）|
+| 波三 | SCAN phase 現代化 | ✅ 完成（03-01 移除舊 gems-scanner.cjs，統一走 v2→enhanced→lite 降級鏈）|
+| **波四** | **Skill A（字典生成腳本）** | **⬜ 未實作 — 收斂的最後一塊** |
 
 **收斂目標（2026-03-01 確定）**
 
-字典迴圈 = 框架閉合的最後一塊。三條路線都應產出/更新字典：
+字典迴圈 = 框架閉合的最後一塊。**只有正式路線走字典迴圈**：
 ```
 Blueprint ──┐
-POC Quick ──┤→ Skill A（字典生成/更新）→ .gems/specs/*.json
-MICRO-FIX ──┘         ↓
-                 spec-gate（品質驗證）
-                      ↓
-        BUILD 1-8 → dict-sync（行號回寫）→ spec-gate
-                      ↓
-        state-guide 讀到最新 specs → 下一輪路由
+Task-Pipe ──┘→ Skill A（字典生成）→ .gems/specs/*.json
+                                         ↓
+                                   spec-gate（品質驗證）
+                                         ↓
+                              BUILD 1-8 → dict-sync（行號回寫）
+                                         ↓
+                              SCAN（.gems/docs/ 全景報告）
+                                         ↓
+                              state-guide 讀 specs + docs → 下一輪路由
+
+旁路（POC-FIX / MICRO-FIX）不走字典迴圈。
 ```
-字典是路由 SEARCH 的核心，串起來整個框架就收斂了。
-
----
-
-## 框架現狀（舊 v3.0 架構，以下 Milestone 仍有效）
+字典是路由 SEARCH 的核心，Skill A 做好整個框架就收斂了。
 
 ---
 
 ## Milestone 清單
 
-### M1 — Gate 驗證覆蓋完整化 ✅ 進行中
+### ★ M10 — Skill A 字典生成 ⬜ 未實作（收斂關鍵）
+> 目標：讓正式路線能自動產出 `.gems/specs/*.json` 字典，閉合整個框架迴圈
+
+**現況**：下游工具 (dict-sync / spec-gate / gems-scanner-v2) 全部完成，但上游的「誰來產出第一版 specs/」不存在。目前 ExamForge 的 specs 是手動建的。
+
+| 項目 | 狀態 | 優先 | 說明 |
+|------|------|------|------|
+| Skill A 字典生成腳本 | ⬜ 未實作 | **P0** | 讀 Enhanced Draft (Blueprint) 或 PLAN 產物 (Task-Pipe)，產出符合 dict-schema 的 specs/*.json + _index.json |
+| 輸入格式定義 | ⬜ 待設計 | P0 | 明確 Skill A 接受的輸入格式（Blueprint Draft / implementation_plan / 源碼掃描結果） |
+| E2E 驗證 | ⬜ 待做 | P1 | 跑完 Skill A → specs → BUILD → dict-sync → spec-gate → SCAN 完整鏈路 |
+| 測試 fixture | ⬜ 待做 | P1 | 在 `sdid-tools/__tests__/skill-a/fixtures/` 補建完整 fixture |
+
+---
+
+### M1 — Gate 驗證覆蓋完整化 🟡 進行中
 > 目標：Blueprint Gate 的機械驗證與設計規則完全對齊
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
 | ACC-001：AC 欄位存在性 | ✅ 完成 | P0 | blueprint-gate checkACIntegrity |
-| ACC-002：Then 含效益指標驗證 | ⬜ 待做 | P1 | blueprint-design Round 5 有規則但 gate 沒有對應機械驗證。需在 checkACIntegrity 加 Then 語意掃描（排除純技術描述） |
-| ACC-003：Demo Checkpoint 必填 | ⬜ 待做 | P1 | Round 4 硬規則，但 gate 未驗證迭代規劃表的 Demo Checkpoint 欄位是否填寫 |
+| ACC-002：Then 含效益指標驗證 | ⬜ 待做 | P1 | blueprint-design Round 5 有規則但 gate 沒有對應機械驗證 |
+| ACC-003：Demo Checkpoint 必填 | ⬜ 待做 | P1 | Round 4 硬規則，但 gate 未驗證 |
 | blueprint-gate 重複 checkACIntegrity | ✅ 已修 | P0 | 兩個同名函式 → 已刪除舊版 |
 
 ---
 
-### M2 — Spec-Parser 健壯性 ✅ 進行中
+### M2 — Spec-Parser 健壯性 🟡 進行中
 > 目標：5.5 函式規格表 → plan-generator 的 E2E pipeline 更可靠
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| table-first fallback 無警告 | ✅ 已修 | P0 | 5.5 區塊存在但 story 無有效行時，現在會 stderr 警告 |
-| 表格格式容錯 | ⬜ 待做 | P2 | 目前若 AI 多一個空格或少一個 `\|` 會 silently fallback，可加更多 regex 容錯 |
-| 跨 story 重複函式名稱偵測 | ⬜ 待做 | P2 | 若同名函式出現在兩個 story，plan-generator 可能產生衝突 |
+| table-first fallback 無警告 | ✅ 已修 | P0 | |
+| 表格格式容錯 | ⬜ 待做 | P2 | AI 多空格或少一個 `\|` 會 silently fallback |
+| 跨 story 重複函式名稱偵測 | ⬜ 待做 | P2 | 同名函式出現在兩個 story 可能產生衝突 |
 
 ---
 
-### M3 — Cynefin Check 觸發時機明確化 ⬜ 未開始
-> 目標：確保 Cynefin 在 POC 完成後立即攔截，而不是等到 PLAN
+### M3 — Cynefin Check 精煉 🟡 已有基礎實作
+> 目標：確認兩條正式路線的 CYNEFIN 攔截時機正確
+
+**已實作的部分**：
+- Blueprint loop: `blueprint-loop/scripts/loop.cjs` 有 `CYNEFIN_CHECK` case (line 440)
+- Task-Pipe loop: `task-pipe/skills/sdid-loop/scripts/loop.cjs` POC 完成後檢查 `cynefin-check-pass-*` log (line 461)
+- `cynefin-log-writer.cjs` 工具腳本（不分路線）
+- POC-FIX / MICRO-FIX 明確排除，不做 CYNEFIN
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| Task-Pipe loop 的 Cynefin 攔截點 | ⬜ 待確認 | P1 | 目前 loop.cjs 在 POC 完成後觸發，但需確認 Complex domain 的建議是否在 POC 階段就回饋 |
-| Blueprint loop 的 Cynefin 攔截點 | ⬜ 待確認 | P1 | blueprint-loop.cjs Cynefin 觸發位置 vs draft-to-plan 執行順序 |
-| Cynefin 結果對 Level 的影響 | ⬜ 待做 | P2 | Complex → 自動建議降 Level 或拆 story |
+| Blueprint loop CYNEFIN 攔截 | ✅ 已實作 | — | `blueprint-loop/scripts/loop.cjs` |
+| Task-Pipe loop CYNEFIN 攔截 | ✅ 已實作 | — | `sdid-loop/scripts/loop.cjs` |
+| Complex domain 建議拆 story | ⬜ 待做 | P2 | Complex → 自動建議降 Level 或拆 story |
 
 ---
 
-### M4 — Monitor 整合強化 ⬜ 未開始
-> 目標：sdid-monitor 能完整反映兩條路的狀態
+### M4 — Monitor 整合強化 ⬜ 未開始（低優先）
+> 目標：sdid-monitor 能完整反映狀態
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| Blueprint 路的 phase 識別 | ⬜ 待確認 | P2 | monitor 能否識別 blueprint-gate / draft-to-plan 的進度事件 |
-| Cynefin 結果在 monitor 顯示 | ⬜ 待做 | P3 | 每個 project 的 Cynefin domain 標示 |
-| VSC gate 結果在 monitor 顯示 | ⬜ 待做 | P3 | blueprint-gate VSC-001/002 + phase-1 VSC 結果可視化 |
+| Blueprint 路的 phase 識別 | ⬜ 待確認 | P2 | |
+| Cynefin 結果在 monitor 顯示 | ⬜ 待做 | P3 | |
+| VSC gate 結果在 monitor 顯示 | ⬜ 待做 | P3 | |
 
 ---
 
-### M5 — SKILL.md routing 完整性 ✅ 進行中
+### M5 — SKILL.md routing 完整性 ✅ 完成
 > 目標：routing table 覆蓋所有實際使用場景
 
-| 項目 | 狀態 | 優先 | 說明 |
-|------|------|------|------|
-| POC-FIX 快速路徑（v1） | ✅ 完成 | P1 | 初版：已驗證 POC → 直接移植 |
-| POC-FIX 完整循環（v2） | ✅ 完成 | P0 | **重寫**：四階段流程（SETUP → VERIFY → CONSOLIDATE → BUILD+TEST）。覆蓋場景：第三方串接、客製化演算法、需反覆驗證的特化模組。與 MICRO-FIX 的差異：必寫測試 |
-| SKILL.md routing table 完整性確認 | ⬜ 待確認 | P1 | bc70dcb 的其他 mode 邏輯是否正確 |
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| POC-FIX 快速路徑（v1） | ✅ 完成 | 初版 |
+| POC-FIX 完整循環（v2） | ✅ 完成 | 四階段流程 SETUP→VERIFY→CONSOLIDATE→BUILD+TEST |
+| SKILL.md routing table 確認 | ✅ 完成 | bc70dcb 已驗證 |
 
 ---
 
-### M6 — Task-Pipe PLAN 全 Story 分片 ⬜ 未開始
-> 目標：runner 自動走完 spec 裡所有 story，不靠手動逐一餵 --story
-
-**背景**：ExamForge iter-11 有 3 個 story，PLAN log 只跑了 11.0 和 11.1，11.2 從未被 BUILD。
-根本原因：step-2 的 NEXT 指令永遠指向 step-3（往深走），不會橫向提示「還有 Story-X.2 沒跑」。
+### M6 — 全 Story 分片 ⬜ 未開始
+> 目標：runner 自動走完 spec 裡所有 story
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| step-2 生成後印出全 story 指令清單 | ⬜ 待做 | P0 | `generatePlansFromSpec()` 成功後，stdout 印出每個 story 的完整 PLAN Step 2-5 指令，讓 AI 一次看到全部 |
-| plan/step-5 加全局 gate | ⬜ 待做 | P1 | `--all-stories` 模式：掃描 spec 的 story 清單 vs plan/ 目錄，輸出哪些 story 還沒 READY，全部通過才放行進 BUILD |
-| runner story 進度追蹤 | ⬜ 待做 | P2 | state-manager 記錄每個 story 的 PLAN 完成狀態，`--resume` 時自動跳到第一個未完成的 story |
+| step-2 印出全 story 指令清單 | ⬜ 待做 | P0 | `generatePlansFromSpec()` 後列出所有 story 的指令 |
+| plan/step-5 全局 gate | ⬜ 待做 | P1 | `--all-stories` 模式 |
+| runner story 進度追蹤 | ⬜ 待做 | P2 | state-manager 記錄 PLAN 完成狀態 |
 
 ---
 
 ### M7 — Story 邊界偵測 ⬜ 未開始
-> 目標：偵測 spec 拆 story 時與 POC 函式邊界不對齊的問題
-
-**背景**：ExamForge iter-11 的 metadata 過濾邏輯在 POC 裡是 `extractImagesFromPage` 的 inline if-continue，
-但 spec 拆成獨立的 Story-11.2 `filterPagingAndCategories`，導致 story-11.1 的 plan 已經做了 story-11.2 的事。
+> 目標：偵測 spec 拆 story 時與 POC 函式邊界不對齊
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| PLAN step-1 跨 story FLOW 重疊偵測 | ⬜ 待做 | P2 | 若兩個 story 的 GEMS-FLOW 有相同 step 名稱，發出 WARN |
-| spec 函式表 vs POC 函式清單對齊檢查 | ⬜ 待做 | P2 | 比對 5.5 函式規格表的函式名稱是否全部能在 POC 產物中找到對應 |
-
----
-
-### M9 — micro-fix-gate POC-FIX 模式擴充 ⬜ 未開始
-> 目標：POC-FIX / MICRO-FIX 的 gate 能驗證 GEMS 標籤完整性（不依賴 plan）
-
-**背景**：BUILD Phase 2 的標籤掃描硬綁 `implementation_plan`，POC-FIX 和 MICRO-FIX 只跑 `micro-fix-gate.cjs`，
-不會檢查 GEMS 標籤是否完整。POC-FIX 改多個檔案 + 加新函式時，缺乏標籤驗證。
-
-| 項目 | 狀態 | 優先 | 說明 |
-|------|------|------|------|
-| `--mode=poc-fix` flag | ⬜ 待做 | P1 | 對 `--changed` 的檔案掃描：新增/修改的函式是否有 GEMS 基本標籤 + P0/P1 擴充標籤 |
-| `@GEMS-TEST-FILE` 存在性驗證 | ⬜ 待做 | P1 | 檢查 `@GEMS-TEST-FILE` 指向的檔案是否真的存在（POC-FIX 必寫測試） |
-| consolidation-log 自動讀取 | ⬜ 待做 | P2 | gate 可接受 `--log=poc-consolidation-log.md`，自動從 `changed:` 行取得檔案清單 |
-
-> ⏳ 等 POC-FIX 實戰跑過幾次再做，避免過早設計
+| 跨 story FLOW 重疊偵測 | ⬜ 待做 | P2 | 同名 step → WARN |
+| spec vs POC 函式對齊檢查 | ⬜ 待做 | P2 | |
 
 ---
 
@@ -171,8 +175,21 @@ MICRO-FIX ──┘         ↓
 
 | 項目 | 狀態 | 優先 | 說明 |
 |------|------|------|------|
-| SDID_FRAMEWORK_OVERVIEW.md | ⬜ 待做 | P2 | 曾在 30f0c45 新增、bc70dcb 刪除。若需對外說明，建議重建並維護在 docs/ 下 |
-| README.md 與實際工具同步 | ⬜ 待確認 | P2 | README 在 bc70dcb 有大量更新，確認 entry point 指令正確 |
+| SDID_FRAMEWORK_OVERVIEW.md | ⬜ 待做 | P2 | 需重建 |
+| README.md 與實際工具同步 | ⬜ 待確認 | P2 | |
+
+---
+
+### M9 — micro-fix-gate 擴充 ⬜ 未開始
+> 目標：POC-FIX / MICRO-FIX 的 gate 能驗證 GEMS 標籤完整性
+
+| 項目 | 狀態 | 優先 | 說明 |
+|------|------|------|------|
+| `--mode=poc-fix` flag | ⬜ 待做 | P1 | 對 `--changed` 檔案掃描 GEMS 標籤 |
+| `@GEMS-TEST-FILE` 存在性驗證 | ⬜ 待做 | P1 | |
+| consolidation-log 自動讀取 | ⬜ 待做 | P2 | |
+
+> ⏳ 等 POC-FIX 實戰跑過幾次再做
 
 ---
 
@@ -180,12 +197,16 @@ MICRO-FIX ──┘         ↓
 
 | 完成時間 | 內容 |
 |---------|------|
-| 2026-02-25 | M5: POC-FIX v2 重寫 — 四階段完整循環（SETUP→VERIFY→CONSOLIDATE→BUILD+TEST），必寫測試 |
+| 2026-03-01 | fix: gems-scanner-v2 VariableStatement bug（const X = {} 類無法辨識） |
+| 2026-03-01 | fix: SCAN phase 移除舊 gems-scanner.cjs，統一走 v2 降級鏈 |
+| 2026-03-01 | fix: scan.cjs relativeTarget ReferenceError |
+| 2026-03-01 | test: sdid-test-app 完整跑完 BUILD Phase 1-8 + SCAN |
+| 2026-02-25 | M5: POC-FIX v2 重寫 — 四階段完整循環 |
 | 2026-02-25 | M1: blueprint-gate 重複函式修復 |
 | 2026-02-25 | M2: spec-parser 5.5 fallback warning |
 | 2026-02-25 | feat: 5.5 函式規格表 → spec-parser → plan-generator E2E |
 | 2026-02-24 | feat: Blueprint 硬規則強化（VSC 強制 + Demo Checkpoint + AC 效益導向） |
-| 2026-02-22 | feat: Cynefin Check 整合進 loop 攔截 |
+| 2026-02-22 | feat: Cynefin Check 整合進 loop 攔截（Blueprint + Task-Pipe 兩條路線） |
 | 2026-02-21 | feat: VSC gate 整合至 Blueprint + Task-Pipe (phase-1) |
 | 舊 | feat: micro-fix-gate.cjs + SKILL.md routing |
 
@@ -193,24 +214,13 @@ MICRO-FIX ──┘         ↓
 
 ## 下一個 Session 建議入口
 
-> **收斂優先**：字典迴圈是當前唯一焦點，其他 Milestone 暫緩。
+> **收斂優先**：Skill A 字典生成 (M10) 是當前唯一焦點，其他 Milestone 暫緩。
 
-1. **Skill A 字典生成**：讓三條路線都能產出/更新 `.gems/specs/*.json`
-   - GENERATE 模式（Blueprint / POC Quick）：從 Draft / POC 產物產出完整 specs
-   - PATCH 模式（MICRO-FIX）：掃描變更檔案，增量更新 spec entry
-2. **E2E 驗證**：跑完 Skill A → specs → BUILD → dict-sync → spec-gate 完整鏈路
-3. **M6 全 Story 分片**：改 step-2.cjs 印出所有 story 指令清單（收斂後順手做）
-
----
-
-## 已完成的重要里程碑（session 5 新增）
-
-| 完成時間 | 內容 |
-|---------|------|
-| 2026-03-01 | fix: gems-scanner-v2 VariableStatement bug（const X = {} 類無法辨識） |
-| 2026-03-01 | fix: SCAN phase 移除舊 gems-scanner.cjs，統一走 v2 降級鏈 |
-| 2026-03-01 | fix: scan.cjs relativeTarget ReferenceError |
-| 2026-03-01 | test: sdid-test-app 完整跑完 BUILD Phase 1-8 + SCAN |
+1. **M10: Skill A 字典生成** — 閉合字典迴圈
+   - 定義輸入格式（Blueprint Draft / Task-Pipe PLAN 產物）
+   - 實作 specs/*.json + _index.json 生成邏輯
+   - 跑 E2E：Skill A → specs → BUILD → dict-sync → spec-gate → SCAN
+2. **M6 全 Story 分片** — 收斂後順手做（0.5 session）
 
 ---
 
@@ -220,14 +230,17 @@ MICRO-FIX ──┘         ↓
 # Blueprint route
 node sdid-tools/blueprint-gate.cjs --draft=<path> --iter=1
 
-# Task-Pipe route (新專案)
-node task-pipe/runner.cjs --phase=POC --step=0 --target=<project>
+# Task-Pipe route（BUILD 入口）
+node task-pipe/runner.cjs --phase=BUILD --step=1 --target=<project> --story=Story-X.0
 
-# SCAN (產出 .gems/docs/)
+# SCAN（產出 .gems/docs/）
 node task-pipe/runner.cjs --phase=SCAN --target=<project>
 
-# dict-sync (回寫行號到 .gems/specs/)
+# dict-sync（回寫行號到 .gems/specs/）
 node sdid-tools/dict-sync.cjs --project=<project> [--src=src] [--dry-run]
+
+# spec-gate（驗證字典品質）
+node sdid-tools/spec-gate.cjs --project=<project>
 
 # Monitor
 node sdid-monitor/server.cjs   # http://localhost:3737

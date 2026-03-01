@@ -191,7 +191,8 @@ function parseFile(ts, filePath, projectRoot) {
       }
       seen.add(`${relFile}::${name}`);
 
-      const lineNum = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+      const lineNum  = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+      const endLineNum = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
       const commentText = getLeadingComment(ts, node, sourceFile);
       const parsed = parseComment(commentText);
 
@@ -201,6 +202,7 @@ function parseFile(ts, filePath, projectRoot) {
           name: parsed.functionName || name,
           file: relFile,
           startLine: lineNum,
+          endLine:   endLineNum,
           commentText,
           priority:    parsed.priority,
           flow:        parsed.flow,

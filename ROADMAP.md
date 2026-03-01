@@ -38,10 +38,10 @@
 | 波一 | ExamForge/.gems/specs/ 目錄結構 | ✅ 完成 |
 | 波一 | pdf-text-extractor.json 格式驗證 | ✅ 完成 |
 | 波二 | tag-shrink.cjs | ✅ 完成 |
-| 波二 | state-guide.cjs | ⬜ 待做（依賴 function-index gemsId/specFile 擴充） |
-| 波三 | gems-scanner-v2.cjs + phase-2 判斷 | ⬜ 待做 |
+| 波二 | state-guide.cjs | ⬜ 待做（gems-scanner-v2 完成，現可開始） |
+| 波三 | gems-scanner-v2.cjs + phase-2 判斷 | ✅ 完成（AST + 雙格式 + gemsId 連結） |
 | 波三 | spec-gate.cjs | ✅ 完成 |
-| 波三 | phase-8.cjs 字典同步 | ⬜ 待做 |
+| 波三 | dict-sync.cjs（phase-8 字典同步） | ✅ 完成（lineRange + status 只升不降） |
 
 ---
 

@@ -21,7 +21,7 @@
 
 'use strict';
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 // ─────────────────────────────────────────────────────────────
@@ -29,15 +29,15 @@ const path = require('path');
 // ─────────────────────────────────────────────────────────────
 
 // 舊格式（多行 JSDoc）：GEMS: funcName | P0 | ✓✓ | sig | Story-X.Y | 描述
-const OLD_BASIC   = /\*\s*GEMS:\s*(\S+)\s*\|\s*(P[0-3])\s*\|\s*([✓○⚠]+)\s*\|\s*([^|]+)\s*\|\s*(Story-[\d.]+)\s*\|\s*(.+)/;
-const OLD_FLOW    = /\*\s*GEMS-FLOW:\s*(.+)/;
-const OLD_DEPS    = /\*\s*GEMS-DEPS:\s*(.+)/;
-const OLD_RISK    = /\*\s*GEMS-DEPS-RISK:\s*(.+)/;
-const OLD_TEST    = /\*\s*GEMS-TEST:\s*(.+)/;
-const OLD_TESTFILE= /\*\s*GEMS-TEST-FILE:\s*(.+)/;
+const OLD_BASIC = /\*\s*GEMS:\s*(\S+)\s*\|\s*(P[0-3])\s*\|\s*([✓○⚠]+)\s*\|\s*([^|]+)\s*\|\s*(Story-[\d.]+)\s*\|\s*(.+)/;
+const OLD_FLOW = /\*\s*GEMS-FLOW:\s*(.+)/;
+const OLD_DEPS = /\*\s*GEMS-DEPS:\s*(.+)/;
+const OLD_RISK = /\*\s*GEMS-DEPS-RISK:\s*(.+)/;
+const OLD_TEST = /\*\s*GEMS-TEST:\s*(.+)/;
+const OLD_TESTFILE = /\*\s*GEMS-TEST-FILE:\s*(.+)/;
 
 // 新格式（單行 inline）：@GEMS [P0] Domain.Action | FLOW: A→B | L50-61
-const NEW_INLINE  = /@GEMS\s+\[([^\]]+)\]\s+([\w]+\.[\w]+)(?:\s*\|\s*FLOW:\s*([^|]+?))?(?:\s*\|\s*(L(\d+)-(\d+)))?\s*$/;
+const NEW_INLINE = /@GEMS\s+\[([^\]]+)\]\s+([\w]+\.[\w]+)(?:\s*\|\s*FLOW:\s*([^|]+?))?(?:\s*\|\s*(L(\d+)-(\d+)))?\s*$/;
 
 // ─────────────────────────────────────────────────────────────
 // dict index
@@ -82,12 +82,12 @@ function parseComment(commentText) {
   for (const line of lines) {
     const m = line.match(NEW_INLINE);
     if (m) {
-      result.format      = 'new';
-      result.priority    = m[1].trim().toUpperCase();
-      result.gemsId      = m[2].trim();
-      result.functionName= m[2].trim();
-      result.flow        = m[3] ? m[3].trim() : null;
-      result.lineRange   = m[4] ? m[4].trim() : null;
+      result.format = 'new';
+      result.priority = m[1].trim().toUpperCase();
+      result.gemsId = m[2].trim();
+      result.functionName = m[2].trim();
+      result.flow = m[3] ? m[3].trim() : null;
+      result.lineRange = m[4] ? m[4].trim() : null;
       return result;
     }
   }
@@ -95,16 +95,16 @@ function parseComment(commentText) {
   // 嘗試舊格式（JSDoc GEMS:）
   const basicM = commentText.match(OLD_BASIC);
   if (basicM) {
-    result.format       = 'old';
+    result.format = 'old';
     result.functionName = basicM[1].trim();
-    result.priority     = basicM[2].trim();
-    result.description  = basicM[6].trim();
+    result.priority = basicM[2].trim();
+    result.description = basicM[6].trim();
   }
-  const flowM  = commentText.match(OLD_FLOW);    if (flowM)  result.flow     = flowM[1].trim();
-  const depsM  = commentText.match(OLD_DEPS);    if (depsM)  result.deps     = depsM[1].trim();
-  const riskM  = commentText.match(OLD_RISK);    if (riskM)  result.depsRisk = riskM[1].trim();
-  const testM  = commentText.match(OLD_TEST);    if (testM)  result.test     = testM[1].trim();
-  const tfM    = commentText.match(OLD_TESTFILE);if (tfM)    result.testFile  = tfM[1].trim();
+  const flowM = commentText.match(OLD_FLOW); if (flowM) result.flow = flowM[1].trim();
+  const depsM = commentText.match(OLD_DEPS); if (depsM) result.deps = depsM[1].trim();
+  const riskM = commentText.match(OLD_RISK); if (riskM) result.depsRisk = riskM[1].trim();
+  const testM = commentText.match(OLD_TEST); if (testM) result.test = testM[1].trim();
+  const tfM = commentText.match(OLD_TESTFILE); if (tfM) result.testFile = tfM[1].trim();
 
   if (result.priority) result.format = result.format || 'old';
   return result;
@@ -132,22 +132,20 @@ function isFunctionNode(ts, node) {
     || ts.isInterfaceDeclaration(node)   // interface ExtractorInterfaces
     || ts.isTypeAliasDeclaration(node)   // type Foo = ...
     || ts.isClassDeclaration(node)       // class Foo
-    || (ts.isVariableDeclaration(node)
-        && node.initializer
-        && (ts.isArrowFunction(node.initializer)
-            || ts.isFunctionExpression(node.initializer)));
+    || ts.isVariableStatement(node);     // catch all const / let / var exports
 }
 
 function getFunctionName(ts, node, sourceFile) {
   if (ts.isFunctionDeclaration(node)
-      || ts.isMethodDeclaration(node)
-      || ts.isInterfaceDeclaration(node)
-      || ts.isTypeAliasDeclaration(node)
-      || ts.isClassDeclaration(node)) {
+    || ts.isMethodDeclaration(node)
+    || ts.isInterfaceDeclaration(node)
+    || ts.isTypeAliasDeclaration(node)
+    || ts.isClassDeclaration(node)) {
     return node.name ? node.name.getText(sourceFile) : null;
   }
-  if (ts.isVariableDeclaration(node)) {
-    return node.name.getText(sourceFile);
+  if (ts.isVariableStatement(node)) {
+    const decls = node.declarationList.declarations;
+    if (decls.length > 0) return decls[0].name.getText(sourceFile);
   }
   // Arrow function 直接宣告（不在 variable 裡）→ 跳過，讓 variable parent 認領
   return null;
@@ -174,13 +172,13 @@ function getLeadingComment(ts, node, sourceFile) {
  * @returns {{ functions, untagged }}
  */
 function parseFile(ts, filePath, projectRoot) {
-  const content  = fs.readFileSync(filePath, 'utf8');
-  const relFile  = path.relative(process.cwd(), filePath);
+  const content = fs.readFileSync(filePath, 'utf8');
+  const relFile = path.relative(process.cwd(), filePath);
   const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
 
   const functions = [];
-  const untagged  = [];
-  const seen      = new Set();
+  const untagged = [];
+  const seen = new Set();
 
   function visit(node) {
     if (isFunctionNode(ts, node)) {
@@ -191,7 +189,7 @@ function parseFile(ts, filePath, projectRoot) {
       }
       seen.add(`${relFile}::${name}`);
 
-      const lineNum  = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+      const lineNum = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
       const endLineNum = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
       const commentText = getLeadingComment(ts, node, sourceFile);
       const parsed = parseComment(commentText);
@@ -202,18 +200,18 @@ function parseFile(ts, filePath, projectRoot) {
           name: parsed.functionName || name,
           file: relFile,
           startLine: lineNum,
-          endLine:   endLineNum,
+          endLine: endLineNum,
           commentText,
-          priority:    parsed.priority,
-          flow:        parsed.flow,
-          deps:        parsed.deps,
-          depsRisk:    parsed.depsRisk,
-          test:        parsed.test,
-          testFile:    parsed.testFile,
+          priority: parsed.priority,
+          flow: parsed.flow,
+          deps: parsed.deps,
+          depsRisk: parsed.depsRisk,
+          test: parsed.test,
+          testFile: parsed.testFile,
           description: parsed.description,
-          lineRange:   parsed.lineRange,
-          gemsFormat:  parsed.format,
-          _rawGemsId:  parsed.gemsId   // 新格式直接有；舊格式 null
+          lineRange: parsed.lineRange,
+          gemsFormat: parsed.format,
+          _rawGemsId: parsed.gemsId   // 新格式直接有；舊格式 null
         });
       } else {
         // 無標籤 → untagged
@@ -236,10 +234,10 @@ function scanDirectory(dir) {
   if (!fs.existsSync(dir)) return result;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (!['node_modules','dist','build','coverage','.git','__tests__'].includes(entry.name))
+      if (!['node_modules', 'dist', 'build', 'coverage', '.git', '__tests__'].includes(entry.name))
         result.push(...scanDirectory(path.join(dir, entry.name)));
     } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts')
-               && !entry.name.includes('.test.') && !entry.name.includes('.spec.')) {
+      && !entry.name.includes('.test.') && !entry.name.includes('.spec.')) {
       result.push(path.join(dir, entry.name));
     }
   }
@@ -266,12 +264,12 @@ function resolveGemsId(func, dictIndex, usedGemsIds) {
 }
 
 function scanV2(srcDir, projectRoot) {
-  const ts        = loadTypescript(projectRoot);
+  const ts = loadTypescript(projectRoot);
   const dictIndex = loadDictIndex(projectRoot);
-  const files     = scanDirectory(srcDir);
+  const files = scanDirectory(srcDir);
 
   const allFunctions = [];
-  const allUntagged  = [];
+  const allUntagged = [];
 
   for (const file of files) {
     const { functions, untagged } = parseFile(ts, file, projectRoot);
@@ -285,9 +283,9 @@ function scanV2(srcDir, projectRoot) {
   );
 
   const enriched = allFunctions.map(func => {
-    const gemsId    = resolveGemsId(func, dictIndex, usedGemsIds);
+    const gemsId = resolveGemsId(func, dictIndex, usedGemsIds);
     if (gemsId && !func._rawGemsId) usedGemsIds.add(gemsId); // 標記老格式已認領
-    const specFile   = gemsId ? (dictIndex.get(gemsId) || null) : null;
+    const specFile = gemsId ? (dictIndex.get(gemsId) || null) : null;
     const dictBacked = !!(gemsId && specFile);
     const phase2Mode = dictBacked ? 'dict-spec' : 'comment-only';
 
@@ -296,8 +294,8 @@ function scanV2(srcDir, projectRoot) {
   });
 
   // 統計
-  const byPriority  = { P0: 0, P1: 0, P2: 0, P3: 0 };
-  const dictBacked  = enriched.filter(f => f.dictBacked).length;
+  const byPriority = { P0: 0, P1: 0, P2: 0, P3: 0 };
+  const dictBacked = enriched.filter(f => f.dictBacked).length;
   const commentOnly = enriched.length - dictBacked;
 
   for (const f of enriched) {
@@ -312,10 +310,10 @@ function scanV2(srcDir, projectRoot) {
     functions: enriched,
     untagged: allUntagged,
     stats: {
-      totalScanned:  enriched.length + allUntagged.length,
-      tagged:        enriched.length,
+      totalScanned: enriched.length + allUntagged.length,
+      tagged: enriched.length,
       untaggedCount: allUntagged.length,
-      coverageRate:  enriched.length + allUntagged.length > 0
+      coverageRate: enriched.length + allUntagged.length > 0
         ? ((enriched.length / (enriched.length + allUntagged.length)) * 100).toFixed(1) + '%'
         : '0%',
       ...byPriority,
@@ -331,10 +329,10 @@ function scanV2(srcDir, projectRoot) {
 // ─────────────────────────────────────────────────────────────
 
 function generateFunctionIndexV2(functions) {
-  const byFile      = {};
-  const byPriority  = { P0: [], P1: [], P2: [], P3: [] };
-  const byGemsId    = {};
-  const byPhase2    = { 'dict-spec': [], 'comment-only': [] };
+  const byFile = {};
+  const byPriority = { P0: [], P1: [], P2: [], P3: [] };
+  const byGemsId = {};
+  const byPhase2 = { 'dict-spec': [], 'comment-only': [] };
 
   for (const f of functions) {
     // byFile
@@ -347,13 +345,13 @@ function generateFunctionIndexV2(functions) {
     // byGemsId
     if (f.gemsId) {
       byGemsId[f.gemsId] = {
-        name:      f.name,
-        file:      f.file,
-        line:      f.startLine,
-        priority:  f.priority,
-        specFile:  f.specFile,
+        name: f.name,
+        file: f.file,
+        line: f.startLine,
+        priority: f.priority,
+        specFile: f.specFile,
         dictBacked: f.dictBacked,
-        flow:      f.flow || null
+        flow: f.flow || null
       };
     }
 
@@ -370,17 +368,17 @@ function generateFunctionIndexV2(functions) {
 
 if (require.main === module) {
   const args = process.argv.slice(2);
-  let projectRoot  = process.cwd();
-  let srcSubDir    = 'src';
+  let projectRoot = process.cwd();
+  let srcSubDir = 'src';
   let outputSubDir = '.gems';
 
   for (const a of args) {
-    if (a.startsWith('--project=')) projectRoot  = path.resolve(a.split('=')[1]);
-    if (a.startsWith('--src='))     srcSubDir    = a.split('=')[1];
-    if (a.startsWith('--output='))  outputSubDir = a.split('=')[1];
+    if (a.startsWith('--project=')) projectRoot = path.resolve(a.split('=')[1]);
+    if (a.startsWith('--src=')) srcSubDir = a.split('=')[1];
+    if (a.startsWith('--output=')) outputSubDir = a.split('=')[1];
   }
 
-  const srcDir    = path.join(projectRoot, srcSubDir);
+  const srcDir = path.join(projectRoot, srcSubDir);
   const outputDir = path.join(projectRoot, outputSubDir);
 
   console.log('\n╔═══════════════════════════════════════╗');
@@ -405,8 +403,8 @@ if (require.main === module) {
   console.log(`  dict index:   ${result.stats.dictIndexSize} 筆`);
 
   console.log('\n─── Phase-2 判斷 ──────────────────────');
-  const dictSpec    = result.functions.filter(f => f.phase2Mode === 'dict-spec');
-  const cmtOnly     = result.functions.filter(f => f.phase2Mode === 'comment-only');
+  const dictSpec = result.functions.filter(f => f.phase2Mode === 'dict-spec');
+  const cmtOnly = result.functions.filter(f => f.phase2Mode === 'comment-only');
 
   if (dictSpec.length) {
     console.log(`\n  [dict-spec] 讀字典 spec 建置 (${dictSpec.length}):`);
@@ -432,7 +430,7 @@ if (require.main === module) {
   fs.writeFileSync(fPath, JSON.stringify(result, null, 2));
 
   const iPath = path.join(outputDir, 'function-index-v2.json');
-  const idx   = generateFunctionIndexV2(result.functions);
+  const idx = generateFunctionIndexV2(result.functions);
   fs.writeFileSync(iPath, JSON.stringify(idx, null, 2));
 
   console.log('\n─────────────────────────────────────────');

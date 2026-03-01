@@ -895,13 +895,21 @@
         const allScanLogs = logs.filter(f => f.startsWith('scan-scan-'));
         const scanNode = node('SCAN', 'gate-scan', gatePhases.scan, allScanLogs[allScanLogs.length - 1] || null, allScanLogs.length);
         const reportBtn = gatePhases.scan === 'pass'
-          ? A + `<div class="node pass" data-tip="全專案掃描" onclick="loadScan('${escAttr(pname)}')">📊 Report</div>`
+          ? A + `<div class="node pass" data-tip="全專案掃描" onclick="loadScan('${escAttr(pname)}')">📊 SCAN Report</div>`
           : '';
         sections.push(`<div class="flow-sec">
       <div class="sec-label">SCAN</div>
       <div class="flow-track">${scanNode}${reportBtn}</div>
     </div>`);
       }
+
+      // Alignment Button (always show if we have an Iteration selected, useful for early viewing)
+      const alignBtn = `<div class="node info" data-tip="計畫與產出對齊" onclick="loadAlignment('${escAttr(pname)}', '${selIter}')">🎯 Plan Alignment</div>`;
+      sections.push(`<div class="flow-sec">
+        <div class="sec-label">Review</div>
+        <div class="flow-track">${alignBtn}</div>
+      </div>`);
+
 
       const st = el.scrollTop;
       el.innerHTML = `
@@ -947,7 +955,84 @@
       renderLog(`${file} (${lines})`, text);
     }
 
-    // ── Layer 3b: SCAN viz ────────────────────────────────────────
+    // ── Layer 3b: SCAN viz & Alignment ────────────────────────────
+    async function loadAlignment(project, iter) {
+      const el = document.getElementById('right-panel');
+      el.innerHTML = '<div class="empty"><div class="ico">⏳</div>Loading Alignment...</div>';
+      try {
+        const data = await fetch(`/api/alignment/${encodeURIComponent(project)}/${encodeURIComponent(iter)}`).then(r => r.json());
+        if (data.error) throw new Error(data.error);
+        renderAlignment(data, project);
+      } catch (err) {
+        el.innerHTML = `<div class="empty"><div class="ico">⚠️</div>${escHtml(err.message)}<br><small style="opacity:0.6;margin-top:8px;display:block">確保已產生 implementation_plan</small></div>`;
+      }
+    }
+
+    function renderAlignment(data, project) {
+      const el = document.getElementById('right-panel');
+      const { storyId, planFile, matched = [], missing = [], unplanned = [] } = data;
+
+      // Calculate coverage
+      const totalPlanned = matched.length + missing.length;
+      const coverage = totalPlanned > 0 ? Math.round((matched.length / totalPlanned) * 100) : 0;
+
+      const stats = `<div class="scan-stats">
+        <div class="stat-box"><div class="stat-val ${coverage === 100 ? 'p2' : 'p1'}">${coverage}%</div><div class="stat-lbl">計畫覆蓋率</div></div>
+        <div class="stat-box"><div class="stat-val p2">${matched.length}</div><div class="stat-lbl">已實作 (Matched)</div></div>
+        <div class="stat-box"><div class="stat-val p0">${missing.length}</div><div class="stat-lbl">漏做 (Missing)</div></div>
+        <div class="stat-box"><div class="stat-val p1">${unplanned.length}</div><div class="stat-lbl">計畫外 (Unplanned)</div></div>
+      </div>`;
+
+      // Render Missing (Red)
+      const missingItems = missing.map(f => `
+        <div class="fn-item" style="border-left: 3px solid var(--err)">
+          <span class="fn-risk ${f.priority || 'P0'}">${f.priority || 'P0'}</span>
+          <div>
+            <div class="fn-name" style="color: var(--err)">${escHtml(f.name)}</div>
+            <div class="fn-desc">Types: ${escHtml(f.type || 'UNKNOWN')} (Planned, but no @GEMS-FUNCTION found)</div>
+          </div>
+          <span class="badge error">Missing</span>
+        </div>
+      `).join('');
+
+      // Render Matched (Green)
+      const matchedItems = matched.map(f => {
+        const clickEvent = f.file && f.lines ? `onclick="loadCode('${escAttr(project)}', '${escAttr(f.file)}', '${escAttr(f.lines)}')"` : '';
+        return `
+        <div class="fn-item" ${clickEvent} title="${f.file ? escHtml(f.file) : ''}" style="border-left: 3px solid var(--pass)">
+          <span class="fn-risk ${f.risk || f.priority || 'P3'}">${f.risk || f.priority || 'P3'}</span>
+          <div>
+            <div class="fn-name" style="color: var(--pass)">${escHtml(f.name)}</div>
+            <div class="fn-desc">${escHtml(f.file)} (Lines: ${f.lines || '?'})</div>
+          </div>
+          <span class="badge pass">Matched</span>
+        </div>
+      `}).join('');
+
+      // Render Unplanned (Yellow)
+      const unplannedItems = unplanned.map(f => {
+        const clickEvent = f.file && f.lines ? `onclick="loadCode('${escAttr(project)}', '${escAttr(f.file)}', '${escAttr(f.lines)}')"` : '';
+        return `
+        <div class="fn-item" ${clickEvent} title="${f.file ? escHtml(f.file) : ''}" style="border-left: 3px solid var(--warn)">
+          <span class="fn-risk ${f.risk || 'P3'}">${f.risk || 'P3'}</span>
+          <div>
+            <div class="fn-name" style="color: var(--warn)">${escHtml(f.name)}</div>
+            <div class="fn-desc">${escHtml(f.file)} (Lines: ${f.lines || '?'})</div>
+          </div>
+          <span class="badge info">Unplanned</span>
+        </div>
+      `}).join('');
+
+      let content = `<div class="scan-sec">${stats}`;
+      if (missing.length) content += `<div class="sec-label" style="margin-top:16px;color:var(--err)">🔴 遺漏實作 (Missing)</div><div class="fn-list">${missingItems}</div>`;
+      if (unplanned.length) content += `<div class="sec-label" style="margin-top:16px;color:var(--warn)">🟡 計畫外/額外 (Unplanned)</div><div class="fn-list">${unplannedItems}</div>`;
+      if (matched.length) content += `<div class="sec-label" style="margin-top:16px;color:var(--pass)">🟢 已實作 (Matched)</div><div class="fn-list">${matchedItems}</div>`;
+      content += `</div>`;
+
+      el.innerHTML = `<div class="log-head">🎯 Alignment: ${escHtml(storyId || 'Unknown Story')} 
+        <br><span style="font-size:9px;color:var(--text3)">Source: ${escHtml(planFile)}</span></div>${content}`;
+    }
+
     function renderScan(data) {
       const el = document.getElementById('right-panel');
       if (!data || !data.functions) {

@@ -523,6 +523,15 @@ if (fs.existsSync(claudeProjectsRoot)) {
   }
 }
 
+// 同步更新 Kiro steering（只更新已存在的檔案，不新建）
+const kiroSteeringFile = path.join(WORKSPACE_ROOT, '.kiro', 'steering', 'workspace-hub.md');
+if (fs.existsSync(kiroSteeringFile)) {
+  // 保留 front-matter，內容替換為最新快照
+  const frontMatter = '---\ninclusion: always\n---\n\n';
+  fs.writeFileSync(kiroSteeringFile, frontMatter + md, 'utf8');
+  console.log(`  kiro      : updated ${kiroSteeringFile}`);
+}
+
 const total   = Object.keys(hub.projects).length;
 const hasGems = Object.values(hub.projects).filter(p => p.hasGems).length;
 const hasFn   = Object.values(hub.projects).filter(p => p.fnData).length;

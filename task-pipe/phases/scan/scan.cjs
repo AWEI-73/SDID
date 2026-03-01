@@ -46,13 +46,8 @@ function run(options) {
     }
   });
 
-  // v2.4: 使用本地 scanner（task-pipe 獨立運作）
-  const scannerPaths = [
-    path.join(__dirname, '..', '..', 'lib', 'gems-scanner.cjs')
-  ];
-
-  const scannerPath = scannerPaths.find(p => fs.existsSync(p));
-
+  // v2.5: 統一使用 builtin scan（支援 gems-scanner-v2 AST → enhanced → lite 降級鏈）
+  // 舊的 gems-scanner.cjs (task-pipe/lib/) 已淘汰，不再使用
   const runOptions = {
     projectRoot: absTarget,
     iteration: parseInt(iteration.replace('iter-', '') || '1'),
@@ -60,145 +55,124 @@ function run(options) {
     step: 'scan'
   };
 
-  if (!scannerPath) {
-    // 沒有 scanner，使用內建的簡易掃描
-    return runBuiltinScan(absTarget, srcDir, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType);
-  }
-
-  // 使用找到的 scanner
-  return runFullScan(absTarget, srcDir, iteration, scannerPath, docsPath, backupsPath, iterPath, errorHandler, runOptions);
+  return runBuiltinScan(absTarget, srcDir, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType);
 }
 
-/**
- * 使用完整 scanner
- */
-function runFullScan(target, srcDir, iteration, scannerPath, docsPath, backupsPath, iterPath, errorHandler, runOptions) {
-  anchorOutput({
-    context: `Phase SCAN | 規格書產出 | ${iteration}`,
-    info: {
-      'Scanner': 'gems-full-scanner.cjs',
-      '源碼': srcDir,
-      '輸出': docsPath
-    },
-    task: ['執行掃描並產出規格書'],
-    output: 'Scanning...'
-  }, runOptions);
-
-  try {
-    // 備份當前 iteration 與源碼
-    backupIteration(iterPath, srcDir, backupsPath, iteration);
-
-    // 執行 scanner - 注意：srcDir 是相對於 target 的路徑
-    const iterationsPath = path.join(target, '.gems', 'iterations');
-    const relativeSrcDir = path.relative(target, srcDir);
-    const cmd = `node "${scannerPath}" "${relativeSrcDir}" --output="${docsPath}" --iterations="${iterationsPath}"`;
-
-    execSync(cmd, {
-      cwd: target,
-      stdio: 'inherit',
-      encoding: 'utf8'
-    });
-
-    // 驗證產出
-    const expectedFiles = ['system-blueprint.json', 'functions.json', 'schema.json', 'tech-stack.json'];
-    const produced = expectedFiles.filter(f => fs.existsSync(path.join(docsPath, f)));
-    const missing = expectedFiles.filter(f => !fs.existsSync(path.join(docsPath, f)));
-
-    if (missing.length > 0) {
-      console.log(`\n[WARN] 缺少產出檔案: ${missing.join(', ')}`);
-    }
-
-    anchorPass('SCAN', 'Full Scan',
-      `SCAN 完成 | 產出: ${produced.length}/${expectedFiles.length}`,
-      `位置: ${path.relative(process.cwd(), docsPath) || docsPath}`,
-      { ...runOptions, details: produced.join(', ') }
-    );
-
-    return { verdict: 'PASS', produced, missing };
-
-  } catch (err) {
-    // TACTICAL_FIX 機制
-    const attempt = errorHandler.recordError('E6', err.message);
-
-    if (errorHandler.shouldBlock()) {
-      anchorError('BLOCKER',
-        `SCAN 連續失敗 (${MAX_ATTEMPTS}/${MAX_ATTEMPTS})`,
-        '需要人類介入',
-        {
-          details: `### SCAN Phase 執行連續失敗
-錯誤: ${err.message}
-建議行動:
-1. 檢查 scanner 工具是否正確安裝
-2. 確認源碼目錄與依賴`,
-          ...runOptions
-        });
-      return { verdict: 'BLOCKER', reason: 'tactical_fix_limit', error: err.message };
-    }
-
-    const recoveryLevel = errorHandler.getRecoveryLevel();
-
-    anchorOutput({
-      context: `Phase SCAN | 失敗 | Attempt ${attempt}`,
-      error: {
-        type: 'TACTICAL_FIX',
-        summary: `SCAN 執行失敗: ${err.message}`,
-        attempt,
-        maxAttempts: MAX_ATTEMPTS
-      },
-      template: {
-        title: `RECOVERY_ACTION (Level ${recoveryLevel})`,
-        content: recoveryLevel === 1
-          ? '重新執行掃描'
-          : recoveryLevel === 2
-            ? '檢查源碼目錄與依賴'
-            : '完整診斷，準備人類介入'
-      },
-      output: `NEXT: node task-pipe/runner.cjs --phase=SCAN --target=${relativeTarget}`
-    }, runOptions);
-
-    return { verdict: 'PENDING', attempt, error: err.message };
-  }
-}
+// [REMOVED] runFullScan — 舊 gems-scanner.cjs 路線已淘汰
+// Phase 2 使用 gems-scanner-v2 (sdid-tools/)，SCAN 統一走 runBuiltinScan
 
 /**
  * 內建簡易掃描（沒有完整 scanner 時使用）
  * v7.0: 使用增強版掃描器，支援行號索引
  */
 function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType) {
+  // v2.5: 降級鏈  gems-scanner-v2 (AST) → enhanced → lite
+  let scannerLabel = 'Unknown';
+
+  // 嘗試載入 gems-scanner-v2 (sdid-tools/ — 與 Phase 2 相同)
+  const scannerV2Path = path.resolve(__dirname, '../../../sdid-tools/gems-scanner-v2.cjs');
+  const hasV2 = fs.existsSync(scannerV2Path);
+  if (hasV2) scannerLabel = 'gems-scanner-v2 (AST)';
+  else scannerLabel = 'Enhanced v7.0 (Regex 行號索引)';
+
   anchorOutput({
     context: `Phase SCAN | 規格書產出 | ${iteration}`,
     info: {
-      'Scanner': 'Enhanced v7.0 (行號索引)',
+      'Scanner': scannerLabel,
       '源碼': srcDir,
       '輸出': docsPath
     },
-    task: ['執行增強掃描 (含 startLine/endLine)'],
+    task: ['執行掃描 (含 startLine/endLine)'],
     output: 'Scanning...'
   }, runOptions);
 
   try {
     // 備份當前 iteration 與源碼
     backupIteration(iterPath, srcDir, backupsPath, iteration);
-    // v7.0: 優先使用增強版掃描器
+
     let scanResult;
     let scannerVersion = '6.0';
 
-    try {
-      const { scanGemsTagsEnhanced, generateFunctionIndex } = require('../../lib/scan/gems-scanner-enhanced.cjs');
-      scanResult = scanGemsTagsEnhanced(srcDir);
-      scannerVersion = '7.0';
+    // ── 優先級 1: gems-scanner-v2 (AST，與 Phase 2 同源) ──
+    if (hasV2) {
+      try {
+        const { scanV2 } = require(scannerV2Path);
+        const raw = scanV2(srcDir, target);
+        scannerVersion = '8.0';
 
-      // 產出函式索引檔 (給 AI 快速查詢)
-      const index = generateFunctionIndex(scanResult.functions);
-      fs.writeFileSync(
-        path.join(docsPath, 'function-index.json'),
-        JSON.stringify(index, null, 2)
-      );
-    } catch (e) {
-      // Fallback 到舊版
-      console.log(`[SCAN] Enhanced scanner not available, using lite version`);
+        // 轉換為 SCAN phase 期望的格式
+        scanResult = {
+          functions: raw.functions.map(f => ({
+            name: f.name,
+            file: f.file,
+            startLine: f.startLine,
+            endLine: f.endLine,
+            line: f.startLine,
+            commentLine: f.startLine > 1 ? f.startLine - 1 : null,
+            lines: (f.endLine && f.startLine) ? f.endLine - f.startLine + 1 : null,
+            priority: f.priority,
+            description: f.description,
+            signature: f.signature || '',
+            storyId: f.storyId || '',
+            flow: f.flow || '',
+            deps: f.deps || '',
+            depsRisk: f.depsRisk || '',
+            testStatus: f.test || '',
+            gemsId: f.gemsId,
+          })),
+          stats: {
+            total: raw.stats.totalScanned,
+            tagged: raw.stats.tagged,
+            p0: raw.stats.P0 || 0,
+            p1: raw.stats.P1 || 0,
+            p2: raw.stats.P2 || 0,
+            p3: raw.stats.P3 || 0,
+            avgFunctionLines: raw.stats.avgLines || 0,
+          }
+        };
+        console.log(`[SCAN] 使用 gems-scanner-v2 (AST) — 與 Phase 2 同源`);
+      } catch (e) {
+        console.log(`[SCAN] gems-scanner-v2 載入失敗 (${e.message})，降級到 enhanced`);
+      }
+    }
+
+    // ── 優先級 2: gems-scanner-enhanced (Regex + 行號) ──
+    if (!scanResult) {
+      try {
+        const { scanGemsTagsEnhanced, generateFunctionIndex } = require('../../lib/scan/gems-scanner-enhanced.cjs');
+        scanResult = scanGemsTagsEnhanced(srcDir);
+        scannerVersion = '7.0';
+        console.log(`[SCAN] 使用 gems-scanner-enhanced (Regex)`);
+
+        // 產出函式索引檔 (給 AI 快速查詢)
+        const index = generateFunctionIndex(scanResult.functions);
+        fs.writeFileSync(
+          path.join(docsPath, 'function-index.json'),
+          JSON.stringify(index, null, 2)
+        );
+      } catch (e) {
+        console.log(`[SCAN] Enhanced scanner not available (${e.message})，降級到 lite`);
+      }
+    }
+
+    // ── 優先級 3: gems-validator (Regex lite) ──
+    if (!scanResult) {
       const { scanGemsTags } = require('../../lib/scan/gems-validator.cjs');
       scanResult = scanGemsTags(srcDir);
+      scannerVersion = '6.0';
+      console.log(`[SCAN] 使用 gems-validator (Regex lite)`);
+    }
+
+    // v8.0: 若使用 v2 scanner，也產出 function-index
+    if (scannerVersion === '8.0') {
+      try {
+        const { generateFunctionIndex } = require('../../lib/scan/gems-scanner-enhanced.cjs');
+        const index = generateFunctionIndex(scanResult.functions);
+        fs.writeFileSync(
+          path.join(docsPath, 'function-index.json'),
+          JSON.stringify(index, null, 2)
+        );
+      } catch { /* enhanced not available, skip index */ }
     }
 
     // 產出 functions.json (v7.0 含行號)

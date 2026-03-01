@@ -5,8 +5,8 @@
   "main": "main.cjs",
   "scripts": {
     "start": "node server.cjs",
-    "start:electron": "electron .",
-    "build:exe": "npx electron-packager . sdid-monitor --platform=win32 --arch=x64 --out=dist_packager --overwrite",
+    "start:electron": "set ELECTRON_RUN_AS_NODE= && electron .",
+    "build:exe": "set ELECTRON_RUN_AS_NODE= && npx electron-packager . sdid-monitor --platform=win32 --arch=x64 --out=dist_packager --overwrite",
     "dist": "electron-builder -w"
   },
   "keywords": [],

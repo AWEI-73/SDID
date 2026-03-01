@@ -193,6 +193,7 @@ function scanGemsTagsEnhanced(srcDir) {
     version: '7.0',  // 新版本號，表示有行號
     generatedAt: new Date().toISOString(),
     functions: [],
+    untagged: [],
     stats: {
       total: 0,
       tagged: 0,
@@ -253,12 +254,14 @@ function scanGemsTagsEnhanced(srcDir) {
 
         // 找 GEMS 註解
         const commentInfo = findGEMSComment(lines, funcStartLine);
+        let isTagged = false;
 
         if (commentInfo) {
           const tags = extractSmartTags(commentInfo.comment);
 
           // 只要有 Priority 就算有標籤
           if (tags.priority) {
+            isTagged = true;
             // v1.1: 如果 GEMS 標籤有明確的 functionName，且與程式碼宣告名不同，
             // 優先使用 GEMS 標籤的名稱（模組級標籤，如 CoreTypes 覆蓋整個檔案）
             const reportName = tags.functionName || funcName;
@@ -334,6 +337,23 @@ function scanGemsTagsEnhanced(srcDir) {
               issues: issues.filter(i => i.severity === 'ERROR').map(i => i.msg),
               compliant
             });
+          }
+        }
+
+        if (!isTagged) {
+          // 過濾掉單純的 interface/type/enum
+          const matchedLine = lines[funcStartLine - 1] || '';
+          const isTypeDeclaration = /^\s*(?:export\s+)?(?:interface|type|enum)\s/.test(matchedLine);
+
+          if (!isTypeDeclaration) {
+            if (!foundFunctions.has(funcName)) {
+              foundFunctions.set(funcName, true);
+              result.untagged.push({
+                name: funcName,
+                file: relativePath,
+                line: funcStartLine
+              });
+            }
           }
         }
       }

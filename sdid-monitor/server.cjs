@@ -42,7 +42,7 @@ function scheduleHubRebuild(reason) {
     const child = spawn(process.execPath, [UPDATE_HUB_SCRIPT], {
       detached: true,
       stdio: 'ignore',
-      env: { ...process.env, WORKSPACE_ROOT },
+      env: { ...process.env, WORKSPACE_ROOT, ELECTRON_RUN_AS_NODE: '1' },
     });
     child.unref();
   }, 1200); // debounce 1.2s，避免連續寫入觸發多次
@@ -53,7 +53,7 @@ function scheduleHubRebuild(reason) {
 // 分別 watch 各 project 的 .gems/docs 與 .gems/iterations
 
 function watchProject(projName) {
-  const docsPath  = path.join(WORKSPACE_ROOT, projName, '.gems', 'docs');
+  const docsPath = path.join(WORKSPACE_ROOT, projName, '.gems', 'docs');
   const itersPath = path.join(WORKSPACE_ROOT, projName, '.gems', 'iterations');
 
   for (const watchPath of [docsPath, itersPath]) {
@@ -425,7 +425,9 @@ app.post('/api/hub/rebuild', (req, res) => {
     hubCache = { data: null, time: 0 }; // invalidate
     // Run update-hub.cjs as child process (non-blocking)
     const child = spawn(process.execPath, [path.join(__dirname, 'update-hub.cjs')], {
-      detached: true, stdio: 'ignore'
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
     });
     child.unref();
     broadcast({ type: 'hub-updated' });
@@ -528,6 +530,103 @@ app.get('/api/scan/:project', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/alignment/:project/:iter', (req, res) => {
+  try {
+    const { project, iter } = req.params;
+    const planDir = path.resolve(WORKSPACE_ROOT, project, '.gems', 'iterations', iter, 'plan');
+    const newIdxPath = path.resolve(WORKSPACE_ROOT, project, '.gems', 'docs', 'function-index.json');
+    const oldIdxPath = path.resolve(WORKSPACE_ROOT, project, '.gems', 'docs', 'functions.json');
+
+    if (!fs.existsSync(planDir)) return res.status(404).json({ error: 'Plan directory not found' });
+
+    // Find the latest implementation plan file
+    const planFiles = fs.readdirSync(planDir).filter(f => f.startsWith('implementation_plan_') && f.endsWith('.md'));
+    if (planFiles.length === 0) return res.status(404).json({ error: 'No implementation plan found' });
+
+    // Use the most recently modified or logically last one (we just take the latest by string sort for now)
+    const latestPlanFile = planFiles.sort().pop();
+    const planPath = path.join(planDir, latestPlanFile);
+
+    // Read and parse the plan
+    const planContent = fs.readFileSync(planPath, 'utf8');
+    const plannedItems = new Set();
+    const planDetails = {};
+    const extractStoryMatch = planContent.match(/\*\*Story ID\*\*:?\s*([\w.-]+)/);
+    const storyId = extractStoryMatch ? extractStoryMatch[1].trim() : '';
+
+    // Extract items from markdown table (e.g. | 1 | StorageService | FEATURE | ...)
+    const tableRegex = /\|\s*\d+\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|/g;
+    let match;
+    while ((match = tableRegex.exec(planContent)) !== null) {
+      const itemName = match[1].trim();
+      const type = match[2].trim();
+      const priority = match[3].trim();
+      if (itemName && itemName !== '名稱' && itemName !== '---') { // skip header
+        plannedItems.add(itemName);
+        planDetails[itemName] = { type, priority, planned: true };
+      }
+    }
+
+    // Load actual functions
+    let actualFunctions = [];
+    if (fs.existsSync(newIdxPath)) {
+      const data = JSON.parse(fs.readFileSync(newIdxPath, 'utf8'));
+      for (const [file, items] of Object.entries(data.byFile || {})) {
+        for (const item of items) {
+          actualFunctions.push({
+            name: item.name,
+            risk: item.priority || 'P3',
+            file: file,
+            lines: item.lines,
+            storyId: Object.keys(data.byStory || {}).find(s => data.byStory[s].includes(item.name)) || ''
+          });
+        }
+      }
+    } else if (fs.existsSync(oldIdxPath)) {
+      // Very basic fallback
+      const data = JSON.parse(fs.readFileSync(oldIdxPath, 'utf8'));
+      if (data.functions) {
+        actualFunctions = data.functions.map(f => ({ name: f.name, file: f.file }));
+      }
+    }
+
+    const actualItemNames = new Set(actualFunctions.map(f => f.name));
+
+    // Compare
+    const alignment = {
+      storyId,
+      planFile: latestPlanFile,
+      matched: [],
+      missing: [],
+      unplanned: [] // Implemented but not in plan (for this story, or broadly)
+    };
+
+    // Check what was planned vs actual
+    for (const item of plannedItems) {
+      const actualMatch = actualFunctions.find(f => f.name === item);
+      if (actualMatch) {
+        alignment.matched.push({ ...planDetails[item], ...actualMatch });
+      } else {
+        alignment.missing.push({ name: item, ...planDetails[item] });
+      }
+    }
+
+    // Check what was actual vs planned (if we have a storyId, we probably only want to show unplanned FOR THIS STORY)
+    // If we don't know the story ID, or the index format doesn't group by story, we might show everything unplanned, which is noisy.
+    // Let's filter unplanned to only show items that claim to be for this storyId, OR if there's no story grouping available
+    for (const actual of actualFunctions) {
+      if (!plannedItems.has(actual.name)) {
+        // if the actual item is tagged with the current story, but wasn't in the plan list!
+        if (!storyId || actual.storyId === storyId) {
+          alignment.unplanned.push(actual);
+        }
+      }
+    }
+
+    res.json(alignment);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/code', (req, res) => {
   try {
     const { project, file, lines } = req.query;
@@ -560,4 +659,11 @@ app.get('/api/code', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.listen(PORT, () => console.log(`SDID Monitor → http://localhost:${PORT}`));
+const server = app.listen(PORT, () => console.log(`SDID Monitor → http://localhost:${PORT}`));
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.warn(`[WARN] Port ${PORT} is already in use. Assuming server is already running elsewhere.`);
+  } else {
+    console.error('[ERROR] Server start failed:', e);
+  }
+});

@@ -60,9 +60,9 @@ function getPhaseScript(phase, step) {
 
 function detectRoute(projectRoot) {
   // 優先看入口文件（比 .gems/specs 更準確）
-  // Blueprint  → blueprint-draft-input.md  (REQUIREMENT DRAFT)
-  // Task-Pipe  → taskpipe-spec-input.md    (REQUIREMENT SPEC)
-  // POC-FIX    → poc-consolidation-log.md  (POC 整合輸出)
+  // Blueprint  → requirement-draft.md    (REQUIREMENT DRAFT)
+  // Task-Pipe  → requirement-spec.md     (REQUIREMENT SPEC)
+  // POC-FIX    → poc-consolidation-log.md (POC 整合輸出)
   const iterDirs = path.join(projectRoot, '.gems', 'iterations');
   if (fs.existsSync(iterDirs)) {
     for (const iter of fs.readdirSync(iterDirs)) {
@@ -74,8 +74,8 @@ function detectRoute(projectRoot) {
   const rootPocLog = path.join(projectRoot, '.gems', 'poc-consolidation-log.md');
   if (fs.existsSync(rootPocLog)) return 'POC-FIX';
 
-  if (fs.existsSync(path.join(projectRoot, 'blueprint-draft-input.md'))) return 'Blueprint';
-  if (fs.existsSync(path.join(projectRoot, 'taskpipe-spec-input.md')))    return 'Task-Pipe (LEGACY)';
+  if (fs.existsSync(path.join(projectRoot, 'requirement-draft.md'))) return 'Blueprint';
+  if (fs.existsSync(path.join(projectRoot, 'requirement-spec.md')))  return 'Task-Pipe (LEGACY)';
 
   // fallback：看 .gems/specs 有沒有字典（有的話視為 POC-FIX）
   const specsDir = path.join(projectRoot, '.gems', 'specs');

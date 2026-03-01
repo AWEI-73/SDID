@@ -59,14 +59,30 @@ function getPhaseScript(phase, step) {
 // ─────────────────────────────────────────────────────────────
 
 function detectRoute(projectRoot) {
-  const specsDir  = path.join(projectRoot, '.gems', 'specs');
-  const blueprintFile = path.join(projectRoot, 'blueprint.json');
+  // 優先看入口文件（比 .gems/specs 更準確）
+  // Blueprint  → blueprint-draft-input.md  (REQUIREMENT DRAFT)
+  // Task-Pipe  → taskpipe-spec-input.md    (REQUIREMENT SPEC)
+  // POC-FIX    → poc-consolidation-log.md  (POC 整合輸出)
+  const iterDirs = path.join(projectRoot, '.gems', 'iterations');
+  if (fs.existsSync(iterDirs)) {
+    for (const iter of fs.readdirSync(iterDirs)) {
+      const pocLog = path.join(iterDirs, iter, 'poc', 'poc-consolidation-log.md');
+      if (fs.existsSync(pocLog)) return 'POC-FIX';
+    }
+  }
+  // 根目錄直接放的 consolidation log（ExamForge 舊位置）
+  const rootPocLog = path.join(projectRoot, '.gems', 'poc-consolidation-log.md');
+  if (fs.existsSync(rootPocLog)) return 'POC-FIX';
 
+  if (fs.existsSync(path.join(projectRoot, 'blueprint-draft-input.md'))) return 'Blueprint';
+  if (fs.existsSync(path.join(projectRoot, 'taskpipe-spec-input.md')))    return 'Task-Pipe (LEGACY)';
+
+  // fallback：看 .gems/specs 有沒有字典（有的話視為 POC-FIX）
+  const specsDir = path.join(projectRoot, '.gems', 'specs');
   if (fs.existsSync(specsDir)) {
     const specFiles = fs.readdirSync(specsDir).filter(f => f.endsWith('.json') && f !== '_index.json');
     if (specFiles.length > 0) return 'POC-FIX';
   }
-  if (fs.existsSync(blueprintFile)) return 'Blueprint';
   return 'Task-Pipe (LEGACY)';
 }
 

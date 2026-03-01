@@ -849,7 +849,8 @@ mkdir -p src/modules src/shared src/config`,
 
   // ============================================
   // STUB-001: 空骨架偵測 — 標籤通過但函式體為空
-  // 使用 function-index.json 快篩（size ≤ 5），再讀原始碼確認
+  // 使用 function-index.json 快篩（size ≤ 15），再讀原始碼確認
+  // 分析 effectiveLines（去掉所有註解 + 函式簽名 + 右括號），避免 STEP 灌水逃脫
   // P0 → BLOCKER，P1 → WARN（不阻擋）
   // ============================================
   if (passed) {
@@ -874,7 +875,7 @@ mkdir -p src/modules src/shared src/config`,
             if (!lines) continue;
             const [startLine, endLine] = lines.split('-').map(Number);
             const size = endLine - startLine;
-            if (size > 5) continue; // 超過 5 行不是 stub 嫌疑
+            if (size > 15) continue; // 超過 15 行不是 stub 嫌疑
 
             // 讀原始碼確認
             // function-index.json 可能是相對路徑（如 "ExamForge\src\..."）或絕對路徑
@@ -888,13 +889,19 @@ mkdir -p src/modules src/shared src/config`,
             const fileLines = fileContent.split('\n');
             const fnBody = fileLines.slice(Math.max(0, startLine - 1), endLine).join('\n');
 
-            // 排除純 GEMS 標籤行（// [STEP:N]）
-            const nonTagLines = fnBody.split('\n').filter(l =>
-              l.trim() && !/^\s*\/\/\s*\[STEP/.test(l) && !/^\s*\/\*/.test(l) && !/^\s*\*/.test(l)
-            );
-            if (nonTagLines.length <= 2) {
-              // 幾乎只有標籤，判定為 stub
-              const isStub = STUB_PATTERNS.some(p => p.test(fnBody)) || nonTagLines.length <= 1;
+            // effectiveLines: 去掉所有註解、函式簽名、右括號，只留真實邏輯行
+            const effectiveLines = fnBody.split('\n').filter(l => {
+              const t = l.trim();
+              if (!t) return false;
+              if (/^\s*\/\//.test(l)) return false;                     // 所有註解（含 STEP、TODO）
+              if (/^\s*\/\*/.test(l) || /^\s*\*/.test(l)) return false; // block 註解
+              if (/^\s*(export\s+)?(async\s+)?function\s/.test(l)) return false; // 函式簽名
+              if (/^\s*\}\s*$/.test(l)) return false;                   // 右括號
+              return true;
+            });
+            if (effectiveLines.length <= 2) {
+              // 真實邏輯行極少，判定為 stub
+              const isStub = STUB_PATTERNS.some(p => p.test(fnBody)) || effectiveLines.length <= 1;
               if (!isStub) continue;
 
               const priority = fn.priority || 'P2';
@@ -911,7 +918,7 @@ mkdir -p src/modules src/shared src/config`,
             scope: `BUILD Phase 2 | ${story}`,
             summary: `STUB-001: ${stubViolations.blockers.length} 個 P0 函式為空骨架，標籤通過但無實作`,
             nextCmd: '補充 P0 函式的商業邏輯實作',
-            details: `P0 空骨架（必須修復）:\n${stubViolations.blockers.map(s => `  - ${s}`).join('\n')}${stubViolations.warns.length > 0 ? `\n\nP1 空骨架（建議修復）:\n${stubViolations.warns.map(s => `  - ${s}`).join('\n')}` : ''}\n\n偵測標準: size ≤ 5 行 且含 return []/{}、// TODO 或 throw new Error('not implemented')`
+            details: `P0 空骨架（必須修復）:\n${stubViolations.blockers.map(s => `  - ${s}`).join('\n')}${stubViolations.warns.length > 0 ? `\n\nP1 空骨架（建議修復）:\n${stubViolations.warns.map(s => `  - ${s}`).join('\n')}` : ''}\n\n偵測標準: size ≤ 15 行 且去掉註解/簽名後 effectiveLines ≤ 2 且含 return []/{}、// TODO 或 throw new Error('not implemented')`
           }, {
             projectRoot: target,
             iteration: parseInt(iteration.replace('iter-', '')),

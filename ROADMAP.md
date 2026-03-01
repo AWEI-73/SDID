@@ -1,7 +1,7 @@
 # SDID Framework Roadmap
 
 > 每次 session 開始前看這裡，挑一個 milestone 繼續。
-> 最後更新：2026-02-28 (session 4)
+> 最後更新：2026-03-01 (session 5)
 
 ---
 
@@ -39,9 +39,25 @@
 | 波一 | pdf-text-extractor.json 格式驗證 | ✅ 完成 |
 | 波二 | tag-shrink.cjs | ✅ 完成 |
 | 波二 | state-guide.cjs | ✅ 完成（5 區塊輸出：狀態/讀物/歷史/下一步/紅線） |
-| 波三 | gems-scanner-v2.cjs + phase-2 判斷 | ✅ 完成（AST + 雙格式 + gemsId 連結） |
+| 波三 | gems-scanner-v2.cjs + phase-2 判斷 | ✅ 完成（AST + 雙格式 + gemsId 連結）(03-01 修 VariableStatement bug) |
 | 波三 | spec-gate.cjs | ✅ 完成 |
 | 波三 | dict-sync.cjs（phase-8 字典同步） | ✅ 完成（lineRange + status 只升不降） |
+| 波三 | SCAN phase 現代化 | ✅ 完成（03-01 移除舊 gems-scanner.cjs 路線，統一走 v2→enhanced→lite 降級鏈）|
+
+**收斂目標（2026-03-01 確定）**
+
+字典迴圈 = 框架閉合的最後一塊。三條路線都應產出/更新字典：
+```
+Blueprint ──┐
+POC Quick ──┤→ Skill A（字典生成/更新）→ .gems/specs/*.json
+MICRO-FIX ──┘         ↓
+                 spec-gate（品質驗證）
+                      ↓
+        BUILD 1-8 → dict-sync（行號回寫）→ spec-gate
+                      ↓
+        state-guide 讀到最新 specs → 下一輪路由
+```
+字典是路由 SEARCH 的核心，串起來整個框架就收斂了。
 
 ---
 
@@ -177,9 +193,24 @@
 
 ## 下一個 Session 建議入口
 
-1. **M6-P0**：改 `task-pipe/phases/plan/step-2.cjs`，`generatePlansFromSpec()` 成功後印出所有 story 的指令清單
-2. **M1-ACC-002**：在 `blueprint-gate.cjs` 的 `checkACIntegrity` 加入 Then 效益指標的語意掃描
-3. **M3**：讀 `blueprint-loop.cjs` + `task-pipe/skills/sdid-loop/scripts/loop.cjs` 確認 Cynefin 攔截時機
+> **收斂優先**：字典迴圈是當前唯一焦點，其他 Milestone 暫緩。
+
+1. **Skill A 字典生成**：讓三條路線都能產出/更新 `.gems/specs/*.json`
+   - GENERATE 模式（Blueprint / POC Quick）：從 Draft / POC 產物產出完整 specs
+   - PATCH 模式（MICRO-FIX）：掃描變更檔案，增量更新 spec entry
+2. **E2E 驗證**：跑完 Skill A → specs → BUILD → dict-sync → spec-gate 完整鏈路
+3. **M6 全 Story 分片**：改 step-2.cjs 印出所有 story 指令清單（收斂後順手做）
+
+---
+
+## 已完成的重要里程碑（session 5 新增）
+
+| 完成時間 | 內容 |
+|---------|------|
+| 2026-03-01 | fix: gems-scanner-v2 VariableStatement bug（const X = {} 類無法辨識） |
+| 2026-03-01 | fix: SCAN phase 移除舊 gems-scanner.cjs，統一走 v2 降級鏈 |
+| 2026-03-01 | fix: scan.cjs relativeTarget ReferenceError |
+| 2026-03-01 | test: sdid-test-app 完整跑完 BUILD Phase 1-8 + SCAN |
 
 ---
 
@@ -192,9 +223,12 @@ node sdid-tools/blueprint-gate.cjs --draft=<path> --iter=1
 # Task-Pipe route (新專案)
 node task-pipe/runner.cjs --phase=POC --step=0 --target=<project>
 
+# SCAN (產出 .gems/docs/)
+node task-pipe/runner.cjs --phase=SCAN --target=<project>
+
+# dict-sync (回寫行號到 .gems/specs/)
+node sdid-tools/dict-sync.cjs --project=<project> [--src=src] [--dry-run]
+
 # Monitor
 node sdid-monitor/server.cjs   # http://localhost:3737
-
-# Blueprint loop
-node .agent/skills/blueprint-loop/scripts/loop.cjs --project=<path>
 ```

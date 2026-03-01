@@ -445,7 +445,7 @@ mkdir -p src/modules src/shared src/config`,
 
       // 存 log
       const { saveLog } = require('../../lib/shared/log-output.cjs');
-      saveLog({
+      const fpLogPath = saveLog({
         projectRoot: target,
         iteration: parseInt(iteration.replace('iter-', '')),
         phase: 'build',
@@ -497,6 +497,7 @@ mkdir -p src/modules src/shared src/config`,
       // 印出修復 TASK
       console.log(taskLines.join('\n'));
 
+      console.log(`@LOG: ${fpLogPath}`);
       console.log(`@NEXT_COMMAND`);
       console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
       console.log('');
@@ -576,7 +577,7 @@ mkdir -p src/modules src/shared src/config`,
 
     // 存 log
     const { saveLog: saveFlowLog } = require('../../lib/shared/log-output.cjs');
-    saveFlowLog({
+    const flowLogPath = saveFlowLog({
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
       phase: 'build',
@@ -630,6 +631,7 @@ mkdir -p src/modules src/shared src/config`,
     // 印出修復 TASK
     console.log(taskLines.join('\n'));
 
+    console.log(`@LOG: ${flowLogPath}`);
     console.log(`@NEXT_COMMAND`);
     console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
     console.log('');

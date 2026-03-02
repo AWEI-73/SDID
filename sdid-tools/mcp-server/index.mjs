@@ -324,6 +324,81 @@ server.registerTool(
   }
 );
 
+// ═══════════════════════════════════════════════════════════════
+// Tool 8: sdid-build
+// ═══════════════════════════════════════════════════════════════
+
+/** runner.cjs 在 task-pipe/ 目錄，需要獨立的 helper */
+async function runRunner(args) {
+  const SDID_ROOT = path.resolve(TOOLS_DIR, '..');
+  const runnerPath = path.join(SDID_ROOT, 'task-pipe', 'runner.cjs');
+  try {
+    const { stdout, stderr } = await execFileAsync('node', [runnerPath, '--ai', ...args], {
+      cwd: SDID_ROOT,
+      timeout: 120000,
+      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+    });
+    return { ok: true, output: stripAnsi(stdout + (stderr ? '\n' + stderr : '')) };
+  } catch (err) {
+    const output = stripAnsi((err.stdout || '') + '\n' + (err.stderr || err.message || ''));
+    return { ok: false, output };
+  }
+}
+
+server.registerTool(
+  'sdid-build',
+  {
+    title: 'SDID BUILD Runner',
+    description: '執行 BUILD Phase（1-8）或自動偵測下一步。回傳該 phase 的指令和驗證結果。加 --auto 可自動串接到下一個 phase 直到 BLOCKER。',
+    inputSchema: {
+      target: z.string().describe('專案根目錄路徑'),
+      phase: z.enum(['BUILD', 'POC', 'PLAN']).optional().describe('階段（BUILD/POC/PLAN），省略則自動偵測'),
+      step: z.number().optional().describe('步驟編號（如 BUILD Phase 1-8）'),
+      story: z.string().optional().describe('Story ID（如 Story-11.0）'),
+      iteration: z.string().optional().describe('迭代（如 iter-11），省略則自動偵測'),
+      auto: z.boolean().optional().describe('Auto Mode：PASS 後自動跑下一個 Phase'),
+      dryRun: z.boolean().optional().describe('預覽模式'),
+      diagnose: z.boolean().optional().describe('診斷專案狀態'),
+    },
+  },
+  async ({ target, phase, step, story, iteration, auto, dryRun, diagnose }) => {
+    const args = [`--target=${resolvePath(target)}`];
+    if (phase) args.push(`--phase=${phase}`);
+    if (step) args.push(`--step=${step}`);
+    if (story) args.push(`--story=${story}`);
+    if (iteration) args.push(`--iteration=${iteration}`);
+    if (auto) args.push('--auto');
+    if (dryRun) args.push('--dry-run');
+    if (diagnose) args.push('--diagnose');
+
+    const result = await runRunner(args);
+    return { content: [{ type: 'text', text: result.output }] };
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
+// Tool 9: sdid-scan
+// ═══════════════════════════════════════════════════════════════
+
+server.registerTool(
+  'sdid-scan',
+  {
+    title: 'SDID SCAN Runner',
+    description: '執行 SCAN Phase — 產出 .gems/docs/ 全景報告（function-index、覆蓋率、未標籤清單）。',
+    inputSchema: {
+      target: z.string().describe('專案根目錄路徑'),
+      iteration: z.string().optional().describe('迭代（如 iter-11），省略則自動偵測'),
+    },
+  },
+  async ({ target, iteration }) => {
+    const args = [`--target=${resolvePath(target)}`, '--phase=SCAN'];
+    if (iteration) args.push(`--iteration=${iteration}`);
+
+    const result = await runRunner(args);
+    return { content: [{ type: 'text', text: result.output }] };
+  }
+);
+
 // ─────────────────────────────────────────────────────────────
 // 啟動
 // ─────────────────────────────────────────────────────────────

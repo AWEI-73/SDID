@@ -1,0 +1,14 @@
+{
+  "name": "sdid-mcp-server",
+  "version": "1.0.0",
+  "description": "SDID Framework MCP Server — expose sdid-tools as MCP tools for Claude Code",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.25.0"
+  }
+}

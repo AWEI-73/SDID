@@ -169,7 +169,7 @@ function run(options) {
         content: criticalItems
       },
       task: taskItems,
-      output: `NEXT: ${getRetryCmd('BUILD', '7', { story })}`
+      output: `NEXT: ${getRetryCmd('BUILD', '7', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -209,7 +209,7 @@ function run(options) {
     emitPass({
       scope: 'BUILD Phase 7',
       summary: checkSummary + uiBindNote + execNote,
-      nextCmd: getNextCmd('BUILD', '7', { story, level })
+      nextCmd: getNextCmd('BUILD', '7', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -231,7 +231,7 @@ function run(options) {
       title: 'CHECKLIST',
       content: checklistItems
     },
-    output: `NEXT: ${getRetryCmd('BUILD', '7', { story })} --pass`
+    output: `NEXT: ${getRetryCmd('BUILD', '7', { story, target: relativeTarget, iteration })} --pass`
   }, {
     projectRoot: target,
     iteration: parseInt(iteration.replace('iter-', '')),
@@ -477,13 +477,7 @@ function findUnexportedFunctions(target, srcPath, iteration, story) {
   if (!manifest.hasManifest || manifest.functions.length === 0) return issues;
 
   // 2. 掃描 src 取得已標籤的函式及其檔案位置
-  const liteValidatorPath = path.join(__dirname, '../../lib/scan/gems-validator-lite.cjs');
-  let scanGemsTags;
-  if (fs.existsSync(liteValidatorPath)) {
-    scanGemsTags = require(liteValidatorPath).scanGemsTagsLite;
-  } else {
-    scanGemsTags = require('../../lib/scan/gems-validator.cjs').scanGemsTags;
-  }
+  const { scanGemsTags } = require('../../lib/scan/gems-scanner-unified.cjs');
 
   const scanResult = scanGemsTags(srcPath);
   const storyFunctions = scanResult.functions.filter(f => f.storyId === story);

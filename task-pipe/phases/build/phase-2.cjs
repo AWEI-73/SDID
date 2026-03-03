@@ -34,8 +34,8 @@ let scanGemsTags, validateP0P1Compliance;
 const liteValidatorPath = path.join(__dirname, '../../lib/scan/gems-validator-lite.cjs');
 const gemsScannerPath = path.join(__dirname, '../../lib/gems-scanner.cjs');
 const gasScannerPath = path.join(__dirname, '../../lib/gems-scanner-gas.cjs');
-// v2.6: AST 精確掃描路徑（用於 file:line 精確定位 + 未標籤函式偵測）
-const scannerV2Path = path.resolve(__dirname, '../../../sdid-tools/gems-scanner-v2.cjs');
+// v2.6: AST 精確掃描路徑（統一入口）
+const scannerV2Path = path.join(__dirname, '../../lib/scan/gems-scanner-unified.cjs');
 
 // ─────────────────────────────────────────────────────────────────────────
 // v2.6: AST 輔助函式
@@ -371,7 +371,7 @@ mkdir -p src/modules src/shared src/config`,
     console.log(`  詳情: ${logPath}`);
     console.log('═══════════════════════════════════════════════════════════════');
     console.log('');
-    console.log(`修復後重跑: ${getRetryCmd('BUILD', '2', { story })}`);
+    console.log(`修復後重跑: ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
     
     return { 
       verdict: 'BLOCKER', 
@@ -499,7 +499,7 @@ mkdir -p src/modules src/shared src/config`,
 
       console.log(`@LOG: ${fpLogPath}`);
       console.log(`@NEXT_COMMAND`);
-      console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
+      console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
       console.log('');
       console.log('@FORBIDDEN');
       console.log('  🚫 禁止自行決定檔案路徑，必須使用 Plan 定義的路徑');
@@ -633,7 +633,7 @@ mkdir -p src/modules src/shared src/config`,
 
     console.log(`@LOG: ${flowLogPath}`);
     console.log(`@NEXT_COMMAND`);
-    console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
+    console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
     console.log('');
     console.log('@FORBIDDEN');
     console.log('  🚫 禁止自行發明 FLOW 步驟名稱，必須使用 Plan 定義的 FLOW');
@@ -801,7 +801,7 @@ mkdir -p src/modules src/shared src/config`,
     console.log('');
     console.log(`@ATTEMPT: ${attempt}/${MAX_ATTEMPTS}`);
     console.log(`@NEXT_COMMAND`);
-    console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
+    console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
     console.log('═══════════════════════════════════════════════════════════════');
 
     // 同時存 log（用 anchorOutput）
@@ -828,7 +828,7 @@ mkdir -p src/modules src/shared src/config`,
             ? '讀取 implementation_plan 確認函式清單，對照 @UNTAGGED_FUNCTIONS 逐一補標籤'
             : '完整分析標籤格式問題，準備人類介入'
       },
-      output: `NEXT: 為每個 @UNTAGGED_FUNCTIONS 函式在對應行號上方加入 @GEMS 標籤\nNEXT: ${getRetryCmd('BUILD', '2', { story })}`
+      output: `NEXT: 為每個 @UNTAGGED_FUNCTIONS 函式在對應行號上方加入 @GEMS 標籤\nNEXT: ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -960,7 +960,7 @@ mkdir -p src/modules src/shared src/config`,
     emitPass({
       scope: 'BUILD Phase 2',
       summary: `覆蓋率: ${coverage}% (${coverageMode}) | P0: ${scanResult.stats.p0} | P1: ${scanResult.stats.p1}${manifestInfo}`,
-      nextCmd: getNextCmd('BUILD', '2', { story, level })
+      nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -1076,7 +1076,7 @@ mkdir -p src/modules src/shared src/config`,
 
   console.log(`@ATTEMPT: ${attempt}/${MAX_ATTEMPTS}`);
   console.log(`@NEXT_COMMAND`);
-  console.log(`  ${getRetryCmd('BUILD', '2', { story })}`);
+  console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
   console.log('═══════════════════════════════════════════════════════════════');
 
   // 存 log
@@ -1101,7 +1101,7 @@ mkdir -p src/modules src/shared src/config`,
           ? '讀取 implementation_plan 確認 P0/P1 函式清單，對照源碼逐一補齊標籤'
           : '完整分析錯誤根本原因，考慮是否需要回到 PLAN 階段調整'
     },
-    output: `NEXT: 補充 @COMPLIANCE_ISSUES 中每個函式缺少的 GEMS 標籤欄位\nNEXT: ${getRetryCmd('BUILD', '2', { story })}`
+    output: `NEXT: 補充 @COMPLIANCE_ISSUES 中每個函式缺少的 GEMS 標籤欄位\nNEXT: ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`
   }, {
     projectRoot: target,
     iteration: parseInt(iteration.replace('iter-', '')),

@@ -66,14 +66,9 @@ function run(options) {
  * v7.0: 使用增強版掃描器，支援行號索引
  */
 function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType) {
-  // v2.5: 降級鏈  gems-scanner-v2 (AST) → enhanced → lite
-  let scannerLabel = 'Unknown';
-
-  // 嘗試載入 gems-scanner-v2 (sdid-tools/ — 與 Phase 2 相同)
-  const scannerV2Path = path.resolve(__dirname, '../../../sdid-tools/gems-scanner-v2.cjs');
-  const hasV2 = fs.existsSync(scannerV2Path);
-  if (hasV2) scannerLabel = 'gems-scanner-v2 (AST)';
-  else scannerLabel = 'Enhanced v7.0 (Regex 行號索引)';
+  // v2.5: 統一使用 gems-scanner-unified（AST → Regex 自動降級）
+  const unified = require('../../lib/scan/gems-scanner-unified.cjs');
+  const scannerLabel = unified.hasAstScanner ? 'gems-scanner-v2 (AST)' : 'gems-validator (Regex)';
 
   anchorOutput({
     context: `Phase SCAN | 規格書產出 | ${iteration}`,
@@ -91,80 +86,54 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
     backupIteration(iterPath, srcDir, backupsPath, iteration);
 
     let scanResult;
-    let scannerVersion = '6.0';
+    let scannerVersion;
 
-    // ── 優先級 1: gems-scanner-v2 (AST，與 Phase 2 同源) ──
-    if (hasV2) {
-      try {
-        const { scanV2 } = require(scannerV2Path);
-        const raw = scanV2(srcDir, target);
-        scannerVersion = '8.0';
+    // ── 統一掃描入口 ──
+    const raw = unified.scan(srcDir, target);
+    scannerVersion = raw.scannerVersion === 'ast-v2' ? '8.0' : '6.0';
 
-        // 轉換為 SCAN phase 期望的格式
-        scanResult = {
-          functions: raw.functions.map(f => ({
-            name: f.name,
-            file: f.file,
-            startLine: f.startLine,
-            endLine: f.endLine,
-            line: f.startLine,
-            commentLine: f.startLine > 1 ? f.startLine - 1 : null,
-            lines: (f.endLine && f.startLine) ? f.endLine - f.startLine + 1 : null,
-            priority: f.priority,
-            description: f.description,
-            signature: f.signature || '',
-            storyId: f.storyId || '',
-            flow: f.flow || '',
-            deps: f.deps || '',
-            depsRisk: f.depsRisk || '',
-            testStatus: f.test || '',
-            gemsId: f.gemsId,
-          })),
-          stats: {
-            total: raw.stats.totalScanned,
-            tagged: raw.stats.tagged,
-            p0: raw.stats.P0 || 0,
-            p1: raw.stats.P1 || 0,
-            p2: raw.stats.P2 || 0,
-            p3: raw.stats.P3 || 0,
-            avgFunctionLines: raw.stats.avgLines || 0,
-          }
-        };
-        console.log(`[SCAN] 使用 gems-scanner-v2 (AST) — 與 Phase 2 同源`);
-      } catch (e) {
-        console.log(`[SCAN] gems-scanner-v2 載入失敗 (${e.message})，降級到 enhanced`);
-      }
+    if (raw.scannerVersion === 'ast-v2') {
+      // AST 結果需要轉換為 SCAN phase 期望的格式
+      scanResult = {
+        functions: raw.functions.map(f => ({
+          name: f.name,
+          file: f.file,
+          startLine: f.startLine,
+          endLine: f.endLine,
+          line: f.startLine,
+          commentLine: f.startLine > 1 ? f.startLine - 1 : null,
+          lines: (f.endLine && f.startLine) ? f.endLine - f.startLine + 1 : null,
+          priority: f.priority,
+          description: f.description,
+          signature: f.signature || '',
+          storyId: f.storyId || '',
+          flow: f.flow || '',
+          deps: f.deps || '',
+          depsRisk: f.depsRisk || '',
+          testStatus: f.test || '',
+          gemsId: f.gemsId,
+        })),
+        stats: {
+          total: raw.stats.total,
+          tagged: raw.stats.tagged,
+          p0: raw.stats.p0,
+          p1: raw.stats.p1,
+          p2: raw.stats.p2,
+          p3: raw.stats.p3,
+          avgFunctionLines: 0,
+        }
+      };
+      console.log(`[SCAN] 使用 gems-scanner-unified (AST)`);
+    } else {
+      scanResult = {
+        functions: raw.functions,
+        stats: raw.stats,
+      };
+      console.log(`[SCAN] 使用 gems-scanner-unified (Regex fallback)`);
     }
 
-    // ── 優先級 2: gems-scanner-enhanced (Regex + 行號) ──
-    if (!scanResult) {
-      try {
-        const { scanGemsTagsEnhanced, generateFunctionIndex } = require('../../lib/scan/gems-scanner-enhanced.cjs');
-        scanResult = scanGemsTagsEnhanced(srcDir);
-        scannerVersion = '7.0';
-        console.log(`[SCAN] 使用 gems-scanner-enhanced (Regex)`);
-
-        // 產出函式索引檔 (給 AI 快速查詢)
-        const index = generateFunctionIndex(scanResult.functions);
-        fs.writeFileSync(
-          path.join(docsPath, 'function-index.json'),
-          JSON.stringify(index, null, 2)
-        );
-      } catch (e) {
-        console.log(`[SCAN] Enhanced scanner not available (${e.message})，降級到 lite`);
-      }
-    }
-
-    // ── 優先級 3: gems-validator (Regex lite) ──
-    if (!scanResult) {
-      const { scanGemsTags } = require('../../lib/scan/gems-validator.cjs');
-      scanResult = scanGemsTags(srcDir);
-      scannerVersion = '6.0';
-      console.log(`[SCAN] 使用 gems-validator (Regex lite)`);
-    }
-
-    // v8.0: 若使用 v2 scanner，也產出 function-index
-    if (scannerVersion === '8.0') {
+    // 產出 function-index
+    if (unified.generateFunctionIndexV2 && scanResult.functions?.length > 0) {
       try {
         const { generateFunctionIndex } = require('../../lib/scan/gems-scanner-enhanced.cjs');
         const index = generateFunctionIndex(scanResult.functions);

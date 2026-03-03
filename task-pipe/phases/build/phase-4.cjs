@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { writeCheckpoint } = require('../../lib/checkpoint.cjs');
-const { scanGemsTags, validateTestFiles, validateTestTypes } = require('../../lib/scan/gems-validator.cjs');
+const { scanGemsTags, validateTestFiles, validateTestTypes } = require('../../lib/scan/gems-scanner-unified.cjs');
 const { createErrorHandler, handlePhaseSuccess, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
 const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
 const { anchorPass, anchorError, anchorErrorSpec, emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cjs');
@@ -155,7 +155,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     emitPass({
       scope: 'BUILD Phase 4',
       summary: `P0: ${p0Tested.length}/${p0Fns.length} (E2E: ${testTypeResult.stats.p0WithE2E}) | P1: ${p1Tested.length}/${p1Fns.length} (Integration: ${testTypeResult.stats.p1WithIntegration})${warningNote}${typeWarningNote}`,
-      nextCmd: getNextCmd('BUILD', '4', { story, level })
+      nextCmd: getNextCmd('BUILD', '4', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -236,7 +236,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       verdict: 'BLOCKER',
       context: `Phase 4 | ${story} | 缺少 ${criticalIssues.length} 個必要測試`,
       tasks,
-      nextCommand: getRetryCmd('BUILD', '4', { story })
+      nextCommand: getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -287,7 +287,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       verdict: 'BLOCKER',
       context: `Phase 4 | ${story} | P0/P1 缺測試 (P0: ${missingP0.length}, P1: ${missingP1.length})`,
       tasks,
-      nextCommand: getRetryCmd('BUILD', '4', { story })
+      nextCommand: getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -316,7 +316,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       verdict: 'BLOCKER',
       context: `Phase 4 | ${story} | GEMS-DEPS-RISK 標記錯誤 (${riskIssues.length} 個)`,
       tasks,
-      nextCommand: getRetryCmd('BUILD', '4', { story })
+      nextCommand: getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -381,7 +381,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     verdict: 'TACTICAL_FIX',
     context: `Phase 4 | ${story} | 缺測試 ${missingTests.length} 個 (${attempt}/${MAX_ATTEMPTS})`,
     tasks,
-    nextCommand: getRetryCmd('BUILD', '4', { story }),
+    nextCommand: getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration }),
     strategyDrift
   }, {
     projectRoot: target,

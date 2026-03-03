@@ -18,7 +18,7 @@ const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePending } = require('../../lib/shared/log-output.cjs');
 
 const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
-const { scanGemsTags } = require('../../lib/scan/gems-validator.cjs');
+const { scanGemsTags } = require('../../lib/scan/gems-scanner-unified.cjs');
 const { getNextCmd, getRetryCmd, getPassCmd } = require('../../lib/shared/next-command-helper.cjs');
 
 function run(options) {
@@ -108,7 +108,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
 
       anchorPass('BUILD', 'Phase 3',
         summary + warningNote,
-        getNextCmd('BUILD', '3', { story, level }),
+        getNextCmd('BUILD', '3', { story, level, target: relativeTarget, iteration }),
         {
           projectRoot: target,
           iteration: parseInt(iteration.replace('iter-', '')),
@@ -126,7 +126,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
         summary: `缺少: ${failed.map(c => c.name).join(', ')}`
       },
       task: ['補充測試檔案 (P0:U+I+E2E, P1:U+I, P2:U)'],
-      output: `NEXT: ${getRetryCmd('BUILD', '3', { story })}`
+      output: `NEXT: ${getRetryCmd('BUILD', '3', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -187,7 +187,7 @@ describe('loadData', () => {
       title: 'TEMPLATE',
       content: template
     },
-    output: getNextCmd('BUILD', '3', { story, level })
+    output: getNextCmd('BUILD', '3', { story, level, target: relativeTarget, iteration })
   }, {
     projectRoot: target,
     iteration: parseInt(iteration.replace('iter-', '')),

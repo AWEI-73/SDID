@@ -25,55 +25,8 @@ const { getNextCmd, getRetryCmd, getPassCmd } = require('../../lib/shared/next-c
 
 // Note: validateExecutability is loaded dynamically in checkProjectExecutability()
 
-// 優先使用本地 gems-scanner (AST 版)，fallback 到 gems-validator (Regex 版)
-let scanGemsTags;
-const gemsScannerPath = path.join(__dirname, '../../lib/gems-scanner.cjs');
-
-if (fs.existsSync(gemsScannerPath)) {
-  const gemsScanner = require(gemsScannerPath);
-
-  scanGemsTags = (srcDir) => {
-    const files = gemsScanner.scanDirectory(srcDir);
-    const result = {
-      functions: [],
-      stats: { total: 0, tagged: 0, p0: 0, p1: 0, p2: 0, p3: 0 }
-    };
-
-    for (const file of files) {
-      const parsed = gemsScanner.parseFile(file);
-      for (const fn of parsed.functions) {
-        result.stats.total++;
-        if (fn.hasGEMSTag && fn.gemsTags.basic) {
-          result.stats.tagged++;
-          const priority = fn.gemsTags.basic.riskLevel?.toLowerCase() || 'p3';
-          result.stats[priority]++;
-
-          result.functions.push({
-            name: fn.name,
-            file: parsed.file,
-            line: fn.lineNumber,
-            priority: fn.gemsTags.basic.riskLevel,
-            status: fn.gemsTags.basic.status,
-            signature: fn.gemsTags.basic.signature,
-            storyId: fn.gemsTags.basic.storyId,
-            description: fn.gemsTags.basic.description,
-            flow: fn.gemsTags.flow,
-            deps: fn.gemsTags.deps,
-            depsRisk: fn.gemsTags.depsRisk,
-            test: fn.gemsTags.test,
-            testFile: fn.gemsTags.testFile,
-            fraudIssues: []
-          });
-        }
-      }
-    }
-    return result;
-  };
-} else {
-  // Fallback 到 gems-validator (Regex 版)
-  const validator = require('../../lib/scan/gems-validator.cjs');
-  scanGemsTags = validator.scanGemsTags;
-}
+// v2.1: 統一使用 gems-scanner-unified（內建 AST + Regex fallback）
+const { scanGemsTags } = require('../../lib/scan/gems-scanner-unified.cjs');
 
 function run(options) {
 
@@ -170,7 +123,7 @@ function run(options) {
               summary: `${criticalIssues.length} 個 CRITICAL 品質問題必須修復:\n${criticalIssues.map(q => `- [${q.type}] ${q.function || q.file || ''}: ${q.message}`).join('\n')}`
             },
             task: criticalIssues.map(q => `修復 ${q.function || q.file}: ${q.message}`),
-            output: `NEXT: ${getRetryCmd('BUILD', '8', { story })}`
+            output: `NEXT: ${getRetryCmd('BUILD', '8', { story, target: relativeTarget, iteration })}`
           }, {
             projectRoot: target,
             iteration: parseInt(iteration.replace('iter-', '')),
@@ -193,7 +146,7 @@ function run(options) {
               title: 'P7_ZERO_TOLERANCE',
               content: `請在 ${path.relative(target, suggestionsFile)} 中補充改善建議:\n- suggestions[]: 至少補到合計 ${ZERO_TOLERANCE_MIN} 個\n- 類型: REFACTOR / FEATURE / TEST / PERFORMANCE\n- 不要敷衍，寫有意義的改善建議`
             },
-            output: `NEXT: ${getRetryCmd('BUILD', '8', { story })}`
+            output: `NEXT: ${getRetryCmd('BUILD', '8', { story, target: relativeTarget, iteration })}`
           }, {
             projectRoot: target,
             iteration: parseInt(iteration.replace('iter-', '')),
@@ -235,7 +188,7 @@ function run(options) {
               warningIssues.length > 0 ? { '警告': warningIssues.map(i => i.message).join('; ') } : {}
             ),
             task: criticalIssues.map(i => i.suggestion),
-            output: `NEXT: ${getRetryCmd('BUILD', '8', { story })}`
+            output: `NEXT: ${getRetryCmd('BUILD', '8', { story, target: relativeTarget, iteration })}`
           }, {
             projectRoot: target,
             iteration: parseInt(iteration.replace('iter-', '')),
@@ -287,7 +240,7 @@ function run(options) {
               '日誌': smokeResult.logs.slice(-3).join('\n')
             },
             task: ['檢查編譯錯誤', '確認 TypeScript 設定正確', '修復後重新執行'],
-            output: `NEXT: ${getRetryCmd('BUILD', '8', { story })}`
+            output: `NEXT: ${getRetryCmd('BUILD', '8', { story, target: relativeTarget, iteration })}`
           }, {
             projectRoot: target,
             iteration: parseInt(iteration.replace('iter-', '')),
@@ -424,7 +377,7 @@ NEXT: node task-pipe/runner.cjs --phase=SCAN --target=${relativeTarget}`
             ? '參考模板完成 Fillback 與 Suggestions'
             : '完整分析產出需求，準備人類介入'
       },
-      output: `NEXT: ${getRetryCmd('BUILD', '8', { story })}`
+      output: `NEXT: ${getRetryCmd('BUILD', '8', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -469,7 +422,7 @@ NEXT: node task-pipe/runner.cjs --phase=SCAN --target=${relativeTarget}`
    - suggestedGoal: 下次迭代的主要目標
    - suggestedItems: 建議的 Item 列表`
       },
-      output: `NEXT: ${getRetryCmd('BUILD', '8', { story })}`
+      output: `NEXT: ${getRetryCmd('BUILD', '8', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -549,7 +502,7 @@ NEXT: node task-pipe/runner.cjs --phase=SCAN --target=${relativeTarget}`
       content: fillbackTemplate
     },
     gemsTemplate: suggestionsTemplate,
-    output: `NEXT: ${getRetryCmd('BUILD', '8', { story })}`
+    output: `NEXT: ${getRetryCmd('BUILD', '8', { story, target: relativeTarget, iteration })}`
   }, {
     projectRoot: target,
     iteration: parseInt(iteration.replace('iter-', '')),

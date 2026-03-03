@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Draft-to-Plan v1.0 - 藍圖→執行計畫 機械轉換器
+ * Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器 + 骨架預生成
  * 
  * 從活藍圖的動作清單，確定性轉換為 implementation_plan per Story。
+ * v1.1: 同時生成 .ts/.tsx 骨架檔（帶完整 GEMS 標籤 + AC + STEP 錨點）
  * 零 AI 推導，純格式轉換。
  * 
  * 用法:
@@ -23,12 +24,13 @@ const { validatePlan, formatResult } = require('../task-pipe/lib/plan/plan-valid
 // 參數解析
 // ============================================
 function parseArgs() {
-  const args = { draft: null, iter: 1, target: null, dryRun: false, help: false };
+  const args = { draft: null, iter: 1, target: null, dryRun: false, help: false, scaffold: true };
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--draft=')) args.draft = path.resolve(arg.split('=').slice(1).join('='));
     else if (arg.startsWith('--iter=')) args.iter = parseInt(arg.split('=')[1]);
     else if (arg.startsWith('--target=')) args.target = path.resolve(arg.split('=').slice(1).join('='));
     else if (arg === '--dry-run') args.dryRun = true;
+    else if (arg === '--no-scaffold') args.scaffold = false;
     else if (arg === '--help' || arg === '-h') args.help = true;
   }
   return args;
@@ -128,7 +130,7 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
     const filePath = inferFilePath(cleanName, a.type, moduleName);
     const acRef = (a.ac || a['AC'] || '').trim();
     const acBlock = acRef && acRef !== '-'
-      ? `\n**驗收條件**: ${acRef} (見藍圖「驗收條件」區塊)`
+      ? `\n**驗收條件**: ${acRef}`
       : '';
 
     return `### Item ${i + 1}: ${cleanName}
@@ -145,7 +147,7 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
  * GEMS-TEST: ${testStrategy}
  * GEMS-TEST-FILE: ${testFile}
  */
-${stepAnchors}
+${acRef && acRef !== '-' ? acRef.split(/[,;]\s*/).map(ac => `// ${ac.trim()}`).join('\n') + '\n' : ''}${stepAnchors}
 \`\`\`
 
 **檔案**:
@@ -233,6 +235,116 @@ ${integrationSpec}
 }
 
 // ============================================
+// 骨架預生成 (v1.1)
+// ============================================
+
+/**
+ * 為一個 Story 的所有動作生成 .ts/.tsx 骨架檔
+ * 骨架包含：完整 GEMS 標籤 + AC 行 + [STEP] 錨點 + export 簽名
+ * 
+ * @param {string} targetDir - 專案根目錄
+ * @param {number} iterNum - 迭代編號
+ * @param {number} storyIndex - Story 索引
+ * @param {string} moduleName - 模組名稱
+ * @param {Array} actions - 動作清單
+ * @param {object} options - { dryRun }
+ * @returns {{ generated: string[], skipped: string[] }}
+ */
+function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, options = {}) {
+  const storyId = `Story-${iterNum}.${storyIndex}`;
+  const result = { generated: [], skipped: [] };
+
+  for (const a of actions) {
+    const isModify = (a.techName || '').includes('[Modify]');
+    if (isModify) {
+      const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
+      result.skipped.push(`${cleanName} (Modify)`);
+      continue;
+    }
+
+    const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
+    const kebab = cleanName
+      .replace(/([a-z])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+      .toLowerCase();
+
+    const filePath = inferFilePath(cleanName, a.type, moduleName);
+    const fullPath = path.join(targetDir, filePath);
+
+    // 如果檔案已存在，跳過（不覆蓋）
+    if (fs.existsSync(fullPath)) {
+      result.skipped.push(`${cleanName} (exists)`);
+      continue;
+    }
+
+    const isTsx = filePath.endsWith('.tsx');
+    const depsStr = (!a.deps || a.deps === '無') ? '無' : a.deps;
+    const depsRisk = inferDepsRisk(a.deps);
+    const testStrategy = inferTestStrategy(a.priority);
+    const testFile = inferTestFile(cleanName, a.type);
+
+    // AC 行
+    const acRef = (a.ac || a['AC'] || '').trim();
+    const acLines = [];
+    if (acRef && acRef !== '-') {
+      // 支援多個 AC（逗號分隔）
+      const acIds = acRef.split(/[,;]\s*/);
+      for (const acId of acIds) {
+        const trimmed = acId.trim();
+        if (trimmed) {
+          acLines.push(`// ${trimmed}`);
+        }
+      }
+    }
+
+    // FLOW → [STEP] 錨點
+    const flow = a.flow || 'TODO';
+    const steps = flow.split('→').map(s => s.trim()).filter(Boolean);
+    const stepLines = steps.map(s => `// [STEP] ${s}`);
+
+    // 組裝骨架內容
+    const lines = [
+      `// ${filePath} (由 draft-to-plan 自動生成)`,
+      '',
+      '/**',
+      ` * GEMS: ${cleanName} | ${a.priority} | ○○ | (args)→Result | ${storyId} | ${a.semantic || cleanName}`,
+      ` * GEMS-FLOW: ${flow}`,
+      ` * GEMS-DEPS: ${depsStr}`,
+      ` * GEMS-DEPS-RISK: ${depsRisk}`,
+      ` * GEMS-TEST: ${testStrategy}`,
+      ` * GEMS-TEST-FILE: ${testFile}`,
+      ' */',
+      ...acLines,
+      ...stepLines,
+    ];
+
+    // export 簽名
+    if (isTsx) {
+      lines.push(`export default function ${cleanName}() {`);
+      lines.push(`  throw new Error('Not implemented — ${storyId}');`);
+      lines.push('}');
+    } else {
+      lines.push(`export function ${cleanName}(/* TODO */) {`);
+      lines.push(`  throw new Error('Not implemented — ${storyId}');`);
+      lines.push('}');
+    }
+    lines.push('');
+
+    if (options.dryRun) {
+      result.generated.push(`${cleanName} → ${filePath} (dry-run)`);
+    } else {
+      // 確保目錄存在
+      const dir = path.dirname(fullPath);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(fullPath, lines.join('\n'), 'utf8');
+      result.generated.push(`${cleanName} → ${filePath}`);
+    }
+  }
+
+  return result;
+}
+
+// ============================================
 // 主程式
 // ============================================
 function main() {
@@ -240,7 +352,7 @@ function main() {
 
   if (args.help) {
     console.log(`
-Draft-to-Plan v1.0 - 藍圖→執行計畫 機械轉換器
+Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
 
 用法:
   node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
@@ -250,6 +362,7 @@ Draft-to-Plan v1.0 - 藍圖→執行計畫 機械轉換器
   --iter=<N>        迭代編號 (預設: 1)
   --target=<path>   專案根目錄 (必填)
   --dry-run         預覽模式，不寫入檔案
+  --no-scaffold     不生成 .ts 骨架檔
   --help            顯示此訊息
 `);
     process.exit(0);
@@ -298,10 +411,11 @@ Draft-to-Plan v1.0 - 藍圖→執行計畫 機械轉換器
     process.exit(1);
   }
 
-  console.log(`\n📐 Draft-to-Plan v1.0`);
+  console.log(`\n📐 Draft-to-Plan v1.1`);
   console.log(`   藍圖: ${path.basename(args.draft)}`);
   console.log(`   Level: ${stats.level || '?'} | 迭代: iter-${args.iter}`);
   console.log(`   模組: ${modules.map(m => m.id).join(', ')}`);
+  console.log(`   骨架: ${args.scaffold ? '✅ 開啟' : '❌ 關閉'}`);
   console.log('');
 
   if (modules.length === 0) {
@@ -377,6 +491,57 @@ Draft-to-Plan v1.0 - 藍圖→執行計畫 機械轉換器
     storyIndex++;
   }
 
+  // ============================================
+  // 骨架預生成
+  // ============================================
+  if (args.scaffold && !args.dryRun && generated.length > 0) {
+    console.log(`\n🦴 骨架預生成:`);
+    let totalScaffold = 0;
+    let totalSkipped = 0;
+
+    // 重新遍歷 modules（跟上面同樣的邏輯）
+    let scaffoldIdx = 0;
+    for (const mod of modules) {
+      if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+      if (mod.actions.length === 0) continue;
+
+      const scaffoldResult = generateScaffold(
+        args.target, args.iter, scaffoldIdx, mod.id, mod.actions,
+        { dryRun: args.dryRun }
+      );
+
+      for (const g of scaffoldResult.generated) {
+        console.log(`   🦴 ${g}`);
+      }
+      for (const s of scaffoldResult.skipped) {
+        console.log(`   ⏭️ ${s}`);
+      }
+
+      totalScaffold += scaffoldResult.generated.length;
+      totalSkipped += scaffoldResult.skipped.length;
+      scaffoldIdx++;
+    }
+
+    console.log(`   📊 骨架: ${totalScaffold} 生成, ${totalSkipped} 跳過`);
+  } else if (args.dryRun && args.scaffold) {
+    console.log(`\n🦴 骨架預生成 (dry-run):`);
+    let scaffoldIdx = 0;
+    for (const mod of modules) {
+      if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+      if (mod.actions.length === 0) continue;
+
+      const scaffoldResult = generateScaffold(
+        args.target, args.iter, scaffoldIdx, mod.id, mod.actions,
+        { dryRun: true }
+      );
+
+      for (const g of scaffoldResult.generated) {
+        console.log(`   [dry-run] 🦴 ${g}`);
+      }
+      scaffoldIdx++;
+    }
+  }
+
   console.log(`\n📊 結果: ${generated.length} 個 implementation_plan 生成`);
 
   if (generated.length === 0) {
@@ -409,7 +574,7 @@ Draft-to-Plan v1.0 - 藍圖→執行計畫 機械轉換器
 // ============================================
 // 導出
 // ============================================
-module.exports = { generatePlan, inferDepsRisk, inferTestStrategy, inferTestFile, inferFilePath };
+module.exports = { generatePlan, generateScaffold, inferDepsRisk, inferTestStrategy, inferTestFile, inferFilePath };
 
 if (require.main === module) {
   main();

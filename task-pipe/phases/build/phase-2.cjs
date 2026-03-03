@@ -655,7 +655,104 @@ mkdir -p src/modules src/shared src/config`,
   }
 
   // ============================================
-  // v2.2: 基於函式清單計算覆蓋率
+  // v2.7: 骨架比對 — 契約函式標籤鎖死 + 新增函式 Priority 規則
+  // 骨架由 draft-to-plan 預生成，標籤是機械生成的「規格」
+  // 契約函式（骨架生成的）標籤不能被 AI 篡改
+  // 新增函式（AI 自由新增的）必須有標籤，Priority 只能是 P3
+  // ============================================
+  const scaffoldDir = path.join(target, 'src');
+  const scaffoldManifest = manifest.hasManifest ? manifest.functions : [];
+
+  if (scaffoldManifest.length > 0) {
+    const scaffoldIssues = { tampered: [], missingTag: [], wrongPriority: [] };
+
+    for (const planned of scaffoldManifest) {
+      const actualFn = scanResult.functions.find(
+        f => f.name.toLowerCase() === planned.name.toLowerCase()
+      );
+      if (!actualFn) continue; // 缺失函式由覆蓋率檢查處理
+
+      // 契約函式：Priority 不能被改
+      if (planned.priority && actualFn.priority &&
+          planned.priority !== actualFn.priority) {
+        scaffoldIssues.tampered.push({
+          name: planned.name,
+          file: actualFn.file,
+          line: actualFn.startLine || actualFn.line,
+          expected: planned.priority,
+          actual: actualFn.priority
+        });
+      }
+    }
+
+    // 新增函式（不在 manifest 中）：必須有標籤，Priority 只能是 P3
+    const extraFunctions = scanResult.functions.filter(f =>
+      !scaffoldManifest.find(p => p.name.toLowerCase() === f.name.toLowerCase())
+    );
+
+    for (const extra of extraFunctions) {
+      if (!extra.priority) {
+        scaffoldIssues.missingTag.push({
+          name: extra.name,
+          file: extra.file,
+          line: extra.startLine || extra.line
+        });
+      } else if (extra.priority !== 'P3') {
+        scaffoldIssues.wrongPriority.push({
+          name: extra.name,
+          file: extra.file,
+          line: extra.startLine || extra.line,
+          priority: extra.priority
+        });
+      }
+    }
+
+    // 契約函式標籤被篡改 → BLOCKER
+    if (scaffoldIssues.tampered.length > 0) {
+      const taskLines = scaffoldIssues.tampered.map((t, i) => [
+        `@TASK-${i + 1}`,
+        `  ACTION: RESTORE_PRIORITY`,
+        `  FUNCTION: ${t.name}`,
+        `  FILE: ${t.file}:${t.line}`,
+        `  FIX: 將 GEMS 標籤的 Priority 從 ${t.actual} 改回 ${t.expected}`,
+        `  REASON: 契約函式 Priority 由 draft-to-plan 鎖定，不能修改`,
+        ''
+      ].join('\n')).join('\n');
+
+      console.log('');
+      console.log('═══════════════════════════════════════════════════════════');
+      console.log(`@BLOCKER | 契約函式標籤被篡改 | ${scaffoldIssues.tampered.length} 個`);
+      console.log(`@CONTEXT: Phase 2 | ${story} | 骨架比對`);
+      console.log('═══════════════════════════════════════════════════════════');
+      console.log('');
+      console.log(taskLines);
+      console.log(`@NEXT_COMMAND`);
+      console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
+      console.log('');
+      console.log('@FORBIDDEN');
+      console.log('  🚫 契約函式的 Priority 由 draft-to-plan 機械生成，不能修改');
+      console.log('  ✅ 如需調整 Priority，回到藍圖修改後重跑 draft-to-plan');
+      console.log('═══════════════════════════════════════════════════════════');
+
+      return { verdict: 'BLOCKER', reason: 'scaffold_tampered', scaffoldIssues };
+    }
+
+    // 新增函式 Priority > P3 → WARNING（不阻擋，只提醒）
+    if (scaffoldIssues.wrongPriority.length > 0) {
+      console.log(`\n  ⚠ 骨架比對 WARNING: ${scaffoldIssues.wrongPriority.length} 個新增函式 Priority 高於 P3（建議回 Plan 補充）:`);
+      scaffoldIssues.wrongPriority.forEach(w =>
+        console.log(`    - ${w.name} (${w.priority}) → ${w.file}:${w.line}`)
+      );
+    }
+
+    if (scaffoldManifest.length > 0) {
+      const tamperedCount = scaffoldIssues.tampered.length;
+      const extraCount = extraFunctions.length;
+      console.log(`[INFO] 骨架比對: ✓ 契約函式 ${scaffoldManifest.length} 個${tamperedCount === 0 ? ' (標籤完整)' : ''} | 新增函式 ${extraCount} 個`);
+    }
+  }
+
+
   // ============================================
   let coverage, coverageMode, plannedFunctions, taggedPlannedFns, extraFunctions;
 

@@ -107,6 +107,32 @@ function detectComponentEndLine(lines, startLine) {
 // ==============================================
 
 /**
+ * 找函式前的 AC 行（// AC-X.Y 格式）
+ * 位置：GEMS 標籤結束後、[STEP] 之前
+ * @param {string[]} lines - 檔案所有行
+ * @param {number} gemsEndLine - GEMS 標籤結束行 (1-based)
+ * @param {number} funcLine - 函式開始行 (1-based)
+ * @returns {string[]} AC ID 陣列，如 ["AC-1.1", "AC-1.2"]
+ */
+function findACLines(lines, gemsEndLine, funcLine) {
+  const acIds = [];
+  // 從 GEMS 標籤結束行的下一行開始，到函式開始行之前
+  for (let i = gemsEndLine; i < funcLine - 1 && i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    // 匹配 // AC-X.Y 或 // AC-X.Y (摘要)
+    const acMatch = trimmed.match(/^\/\/\s*(AC-[\d.]+)(?:\s+\(.*\))?/);
+    if (acMatch) {
+      acIds.push(acMatch[1]);
+    }
+    // 遇到 [STEP] 就停止
+    if (trimmed.startsWith('// [STEP]')) break;
+    // 遇到非空非 AC 非 STEP 的行也停止（避免誤抓）
+    if (trimmed && !trimmed.startsWith('//')) break;
+  }
+  return acIds;
+}
+
+/**
  * 找函式前的 GEMS 註解區塊
  * @param {string[]} lines - 檔案所有行
  * @param {number} funcLine - 函式開始行 (1-based)
@@ -316,6 +342,9 @@ function scanGemsTagsEnhanced(srcDir) {
 
             foundFunctions.set(reportName, true);
 
+            // 收集 AC 行（// AC-X.Y 格式，位於 GEMS 標籤 */ 後、[STEP] 前）
+            const acIds = findACLines(lines, commentInfo.endLine, funcStartLine);
+
             result.functions.push({
               name: reportName,
               file: relativePath,
@@ -335,7 +364,9 @@ function scanGemsTagsEnhanced(srcDir) {
               testFile: tags.testFile,
               storyId: tags.storyId,
               issues: issues.filter(i => i.severity === 'ERROR').map(i => i.msg),
-              compliant
+              compliant,
+              // v1.1: AC 追蹤
+              acIds: acIds.length > 0 ? acIds : undefined
             });
           }
         }
@@ -503,6 +534,7 @@ module.exports = {
   detectFunctionEndLine,
   detectArrowFunctionEndLine,
   findGEMSComment,
+  findACLines,
   generateReadCommand,
   generateFunctionIndex
 };

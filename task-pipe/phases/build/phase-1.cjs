@@ -462,6 +462,45 @@ modules/[module-name]/
     const failed = checks.filter(c => !c.pass);
 
     if (failed.length === 0) {
+      // v3.2: 骨架偵測 — 如果 draft-to-plan 已預生成骨架，直接提示進 Phase 2
+      if (!isFoundation && manifest.hasManifest && manifest.functions.length > 0) {
+        const scaffoldFiles = manifest.functions
+          .filter(fn => fn.file)
+          .map(fn => path.join(target, fn.file));
+        const existingScaffolds = scaffoldFiles.filter(f => fs.existsSync(f));
+
+        if (existingScaffolds.length > 0 && existingScaffolds.length === scaffoldFiles.length) {
+          // 所有骨架檔案都已存在（由 draft-to-plan 預生成）
+          console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在（draft-to-plan 預生成）`);
+          console.log(`   骨架包含完整 GEMS 標籤 + AC + STEP 錨點，可直接進 Phase 2`);
+
+          writeCheckpoint(target, iteration, story, '1', {
+            verdict: 'PASS',
+            projectType,
+            srcFiles: srcFiles.length,
+            checks: checks.map(c => c.name),
+            isFoundation,
+            scaffoldMode: true,
+            scaffoldCount: existingScaffolds.length
+          });
+
+          emitPass({
+            scope: 'BUILD Phase 1',
+            summary: `骨架模式: ${existingScaffolds.length} 個骨架檔案已存在 | ${projectType}`,
+            nextCmd: getNextCmd('BUILD', '1', { story, level, target: relativeTarget, iteration })
+          }, {
+            projectRoot: target,
+            iteration: parseInt(iteration.replace('iter-', '')),
+            phase: 'build',
+            step: 'phase-1',
+            story
+          });
+          return { verdict: 'PASS', scaffoldMode: true };
+        } else if (existingScaffolds.length > 0) {
+          // 部分骨架存在
+          console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在（部分預生成）`);
+        }
+      }
       // v3.1: Story-1.0 範圍檢查 - 偵測 Plan 外的多餘檔案
       if (isFoundation && manifest.hasManifest) {
         const extraFiles = detectExtraFiles(srcDir, manifest, typeConfig.extensions);

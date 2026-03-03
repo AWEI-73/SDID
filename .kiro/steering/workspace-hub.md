@@ -3,7 +3,7 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-01 08:21:40 UTC
+**更新**: 2026-03-02 14:36:39 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
@@ -44,14 +44,14 @@ Strategy Roadmap v2.8，最後更新 2026-02-16
 - `claude/vigilant-heyrovsky` → C:/Users/user/Desktop/SDID/.claude/worktrees/vigilant-heyrovsky
 
 **最近 commits**:
-- 70b60ab fix(phase-2): filepath-error 和 flow-step-error 補印 @LOG 路徑
-- d0a7f20 feat(phase-2): v2.6 整合 gems-scanner-v2 AST 精確定位
-- 9094d23 docs(architecture): SDID 系統架構全景 v4.1
-- 61ab14b refactor(state-guide): 路線 marker 改為 requirement-draft / requirement-spec
-- 4be5485 fix(state-guide): 路線偵測改用入口文件識別
-- 4d61c3d feat(state-guide): Wave 2 完成 — AI 進入指令包
-- b58df98 feat(dict-sync): Wave 3 完成 — lineRange 同步 + status 只升不降
-- 9625bad feat(gems-scanner-v2): AST + 雙格式 + gemsId 連結 + phase-2 routing
+- fe77886 feat(mcp): add sdid-build + sdid-scan tools (runner.cjs integration)
+- 90f1f58 feat(mcp): SDID MCP Server — 7 tools via stdio transport
+- a06ca17 fix(phase-2): STUB-001 升級 — effectiveLines 取代 nonTagLines，防 STEP 灌水逃脫
+- 89267fd fix(spec-gen): flowToSteps Return step should use "TODO" not empty string
+- 803e76c feat(spec-gen): implement dictionary generator (M10 — formerly Skill A)
+- 43ac515 docs(roadmap): rewrite - remove POC Quick (hallucinated), correct route names, add M10 Skill A, update CYNEFIN/M3/M5 status
+- f95f5fd docs(roadmap): session 5 - scanner bug fix, SCAN modernize, convergence target = dict loop
+- 3aff5d8 fix(scanner): gems-scanner-v2 支援 VariableStatement + SCAN phase 統一走 v2 降級鏈
 
 ## 專案狀態（SDID 管理中）
 

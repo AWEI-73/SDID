@@ -168,6 +168,60 @@ function getLeadingComment(ts, node, sourceFile) {
 }
 
 /**
+ * Wave 3.1: Extract all GEMS comment blocks from file content (position-independent).
+ * Returns Map<functionName, commentText> for floating GEMS tags not adjacent to their node.
+ */
+function extractAllGemsComments(content) {
+  const result = new Map();
+  // Match JSDoc blocks containing GEMS:
+  const jsdocPattern = /\/\*\*[\s\S]*?\*\//g;
+  let m;
+  while ((m = jsdocPattern.exec(content)) !== null) {
+    const block = m[0];
+    // Old format: GEMS: funcName | P0 | ...
+    const oldMatch = block.match(/\*\s*GEMS:\s*(\S+)\s*\|/);
+    if (oldMatch) {
+      result.set(oldMatch[1], block);
+      continue;
+    }
+    // New format: @GEMS [P0] Domain.Action
+    const newMatch = block.match(/@GEMS\s*\[P[0-3]\]\s*(\S+)/);
+    if (newMatch) {
+      const gid = newMatch[1];
+      const shortName = gid.split('.').pop();
+      if (shortName) result.set(shortName, block);
+    }
+  }
+  // Also match consecutive // comments containing GEMS
+  const lines = content.split('\n');
+  let commentBlock = [];
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('//') && (inBlock || trimmed.includes('GEMS:') || trimmed.includes('@GEMS'))) {
+      commentBlock.push(line);
+      inBlock = true;
+    } else {
+      if (commentBlock.length > 0) {
+        const block = commentBlock.join('\n');
+        if (block.includes('GEMS:') || block.includes('@GEMS')) {
+          const oldMatch = block.match(/GEMS:\s*(\S+)\s*\|/);
+          if (oldMatch) result.set(oldMatch[1], block);
+          const newMatch = block.match(/@GEMS\s*\[P[0-3]\]\s*(\S+)/);
+          if (newMatch) {
+            const shortName = newMatch[1].split('.').pop();
+            if (shortName) result.set(shortName, block);
+          }
+        }
+        commentBlock = [];
+        inBlock = false;
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * AST 解析單個 .ts/.tsx 檔案
  * @returns {{ functions, untagged }}
  */
@@ -180,6 +234,9 @@ function parseFile(ts, filePath, projectRoot) {
   const untagged = [];
   const seen = new Set();
 
+  // Wave 3.1: Pre-scan all GEMS comments in file (position-independent)
+  const floatingGems = extractAllGemsComments(content);
+
   function visit(node) {
     if (isFunctionNode(ts, node)) {
       const name = getFunctionName(ts, node, sourceFile);
@@ -191,13 +248,26 @@ function parseFile(ts, filePath, projectRoot) {
 
       const lineNum = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
       const endLineNum = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
-      const commentText = getLeadingComment(ts, node, sourceFile);
-      const parsed = parseComment(commentText);
+      let commentText = getLeadingComment(ts, node, sourceFile);
+      let parsed = parseComment(commentText);
+
+      // Wave 3.1: If no GEMS tag from leading comment, try file-wide match by name
+      if (!parsed.format && floatingGems.has(name)) {
+        commentText = floatingGems.get(name);
+        parsed = parseComment(commentText);
+        floatingGems.delete(name); // consume so it's not matched again
+      }
+      // If leading comment already matched, still consume from floating to avoid double-count
+      if (parsed.format && floatingGems.has(name)) {
+        floatingGems.delete(name);
+      }
 
       if (parsed.format) {
         // 有 GEMS 標籤
+        const resolvedName = parsed.functionName || name;
+        seen.add(`${relFile}::${resolvedName}`); // also mark parsed name as seen
         functions.push({
-          name: parsed.functionName || name,
+          name: resolvedName,
           file: relFile,
           startLine: lineNum,
           endLine: endLineNum,

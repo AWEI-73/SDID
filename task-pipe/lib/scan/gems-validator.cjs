@@ -151,6 +151,46 @@ function scanGemsTags(srcDir) {
     }
   }
 
+  // v2.1 fallback: if regex scanner found 0 tagged functions, try gems-scanner-v2 (AST-based)
+  if (result.stats.tagged === 0 && result.stats.total > 0) {
+    try {
+      const scannerV2Path = path.join(__dirname, '..', '..', '..', 'sdid-tools', 'gems-scanner-v2.cjs');
+      if (fs.existsSync(scannerV2Path)) {
+        const { scanV2 } = require(scannerV2Path);
+        // Resolve projectRoot from srcDir (go up until we find .gems or package.json)
+        let projectRoot = path.resolve(srcDir, '..');
+        for (let i = 0; i < 5; i++) {
+          if (fs.existsSync(path.join(projectRoot, '.gems')) || fs.existsSync(path.join(projectRoot, 'package.json'))) break;
+          projectRoot = path.resolve(projectRoot, '..');
+        }
+        const v2Result = scanV2(srcDir, projectRoot);
+        if (v2Result && v2Result.functions && v2Result.functions.length > 0) {
+          // Convert v2 format to v1 format
+          result.functions = v2Result.functions.map(f => ({
+            name: f.name,
+            file: f.file,
+            priority: f.priority,
+            status: f.status || '✓✓',
+            signature: f.signature || '',
+            storyId: f.storyId || null,
+            description: f.description || '',
+            flow: f.flow || null,
+            deps: f.deps || [],
+            depsRisk: f.depsRisk || null,
+            test: f.test || null,
+            testFile: f.testFile || null,
+            fraudIssues: []
+          }));
+          result.stats.tagged = v2Result.functions.length;
+          result.stats.p0 = v2Result.functions.filter(f => f.priority === 'P0').length;
+          result.stats.p1 = v2Result.functions.filter(f => f.priority === 'P1').length;
+          result.stats.p2 = v2Result.functions.filter(f => f.priority === 'P2').length;
+          result.stats.p3 = v2Result.functions.filter(f => f.priority === 'P3').length;
+        }
+      }
+    } catch (e) { /* scanner-v2 not available, continue with regex results */ }
+  }
+
   return result;
 }
 

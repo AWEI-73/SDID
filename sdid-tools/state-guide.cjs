@@ -1,400 +1,337 @@
 #!/usr/bin/env node
 /**
- * state-guide.cjs  (Wave 2 — AI 進入指令包)
- *
- * AI 每次進入時執行，輸出「狀態指令包」：
- *   📍 現在在哪  📖 該讀什麼  ⚠️ 歷史提示  🎯 下一步  🚫 施工紅線
- *
- * 資料來源:
- *   .gems/last_step_result.json     ← 上一步 phase/step/verdict
- *   .gems/iterations/{iter}/.state.json  ← 完整流程狀態 (stories)
- *   .gems/function-index-v2.json    ← gemsId → specFile/line/flow
- *   .gems/specs/*.json              ← allowedImports / storyRef
- *   .gems/project-memory.json       ← pitfalls / 歷史錯誤
- *
- * 用法:
- *   node sdid-tools/state-guide.cjs --project=ExamForge
- *   node sdid-tools/state-guide.cjs --project=ExamForge --iter=iter-11
- *   node sdid-tools/state-guide.cjs --project=ExamForge --story=Story-11.1
- *   node sdid-tools/state-guide.cjs --project=ExamForge --gems=PDF.ParseBufferWithImages
- *
- * 退出碼:
- *   0 = 成功輸出
- *   1 = 找不到 project
+ * state-guide.cjs (Wave 3.1 - Blueprint + Task-Pipe unified navigation)
+ * STATUS / @READ / @HINTS / @NEXT / @GUARD
  */
-
 'use strict';
-
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
+const SDID_ROOT = path.resolve(__dirname, '..');
 
-// ─────────────────────────────────────────────────────────────
-// 工具
-// ─────────────────────────────────────────────────────────────
-
-function tryJson(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
-  catch { return null; }
+function tryJson(fp) {
+  if (!fs.existsSync(fp)) return null;
+  try { return JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { return null; }
 }
-
-// ─────────────────────────────────────────────────────────────
-// 步驟 → 腳本路徑 映射
-// ─────────────────────────────────────────────────────────────
 
 const PHASE_SCRIPT_MAP = {
-  POC:   (step) => `task-pipe/phases/poc/step-${step}.cjs`,
-  PLAN:  (step) => `task-pipe/phases/plan/step-${step}.cjs`,
-  BUILD: (step) => `task-pipe/phases/build/phase-${step}.cjs`,
-  SCAN:  (step) => `task-pipe/phases/scan/step-${step}.cjs`,
+  POC: (s) => `task-pipe/phases/poc/step-${s}.cjs`,
+  PLAN: (s) => `task-pipe/phases/plan/step-${s}.cjs`,
+  BUILD: (s) => `task-pipe/phases/build/phase-${s}.cjs`,
+  SCAN: () => 'task-pipe/phases/scan/scan.cjs',
 };
-
 function getPhaseScript(phase, step) {
   const fn = PHASE_SCRIPT_MAP[phase?.toUpperCase()];
-  return fn ? fn(step) : `task-pipe/phases/${phase?.toLowerCase()}/step-${step}.cjs`;
+  return fn ? fn(step) : null;
 }
 
-// ─────────────────────────────────────────────────────────────
-// 路線偵測
-// ─────────────────────────────────────────────────────────────
-
+// ── Route detection ──
 function detectRoute(projectRoot) {
-  // 優先看入口文件（比 .gems/specs 更準確）
-  // Blueprint  → requirement-draft.md    (REQUIREMENT DRAFT)
-  // Task-Pipe  → requirement-spec.md     (REQUIREMENT SPEC)
-  // POC-FIX    → poc-consolidation-log.md (POC 整合輸出)
   const iterDirs = path.join(projectRoot, '.gems', 'iterations');
   if (fs.existsSync(iterDirs)) {
-    for (const iter of fs.readdirSync(iterDirs)) {
-      const pocLog = path.join(iterDirs, iter, 'poc', 'poc-consolidation-log.md');
-      if (fs.existsSync(pocLog)) return 'POC-FIX';
+    for (const it of fs.readdirSync(iterDirs)) {
+      if (fs.existsSync(path.join(iterDirs, it, 'poc', 'poc-consolidation-log.md'))) return 'POC-FIX';
     }
   }
-  // 根目錄直接放的 consolidation log（ExamForge 舊位置）
-  const rootPocLog = path.join(projectRoot, '.gems', 'poc-consolidation-log.md');
-  if (fs.existsSync(rootPocLog)) return 'POC-FIX';
-
-  if (fs.existsSync(path.join(projectRoot, 'requirement-draft.md'))) return 'Blueprint';
-  if (fs.existsSync(path.join(projectRoot, 'requirement-spec.md')))  return 'Task-Pipe (LEGACY)';
-
-  // fallback：看 .gems/specs 有沒有字典（有的話視為 POC-FIX）
-  const specsDir = path.join(projectRoot, '.gems', 'specs');
-  if (fs.existsSync(specsDir)) {
-    const specFiles = fs.readdirSync(specsDir).filter(f => f.endsWith('.json') && f !== '_index.json');
-    if (specFiles.length > 0) return 'POC-FIX';
+  if (fs.existsSync(path.join(projectRoot, '.gems', 'poc-consolidation-log.md'))) return 'POC-FIX';
+  if (fs.existsSync(iterDirs)) {
+    for (const it of fs.readdirSync(iterDirs)) {
+      const pocDir = path.join(iterDirs, it, 'poc');
+      if (fs.existsSync(pocDir) && fs.readdirSync(pocDir).some(f => f.startsWith('requirement_draft_')))
+        return 'Blueprint';
+    }
   }
-  return 'Task-Pipe (LEGACY)';
+  if (fs.existsSync(path.join(projectRoot, 'requirement-draft.md'))) return 'Blueprint';
+  if (fs.existsSync(path.join(projectRoot, 'requirement-spec.md'))) return 'Task-Pipe';
+  const specsDir = path.join(projectRoot, '.gems', 'specs');
+  if (fs.existsSync(specsDir) && fs.readdirSync(specsDir).some(f => f.endsWith('.json') && f !== '_index.json'))
+    return 'POC-FIX';
+  return 'Unknown';
 }
 
-// ─────────────────────────────────────────────────────────────
-// 迭代偵測
-// ─────────────────────────────────────────────────────────────
-
+// ── Blueprint helpers ──
+function findDraft(pp, n) {
+  const d = path.join(pp, '.gems', 'iterations', `iter-${n}`, 'poc');
+  if (!fs.existsSync(d)) return null;
+  const f = fs.readdirSync(d).filter(x => x.startsWith('requirement_draft_'));
+  return f.length ? path.join(d, f[0]) : null;
+}
+function findPlannedStories(pp, n) {
+  const d = path.join(pp, '.gems', 'iterations', `iter-${n}`, 'plan');
+  if (!fs.existsSync(d)) return [];
+  return fs.readdirSync(d).filter(f => f.startsWith('implementation_plan_'))
+    .map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; })
+    .filter(Boolean).sort();
+}
+function findCompletedStories(pp, n) {
+  const d = path.join(pp, '.gems', 'iterations', `iter-${n}`, 'build');
+  if (!fs.existsSync(d)) return [];
+  return fs.readdirSync(d).filter(f => f.startsWith('Fillback_'))
+    .map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; })
+    .filter(Boolean).sort();
+}
 function detectActiveIter(projectRoot) {
-  const itersDir = path.join(projectRoot, '.gems', 'iterations');
-  if (!fs.existsSync(itersDir)) return 'iter-1';
-
-  const dirs = fs.readdirSync(itersDir)
-    .filter(d => /^iter-\d+$/.test(d))
-    .sort((a, b) => {
-      const na = parseInt(a.replace('iter-', ''));
-      const nb = parseInt(b.replace('iter-', ''));
-      return nb - na; // 降序
-    });
-
-  if (dirs.length === 0) return 'iter-1';
-
-  for (const d of dirs) {
-    const st = tryJson(path.join(itersDir, d, '.state.json'));
+  const dir = path.join(projectRoot, '.gems', 'iterations');
+  if (!fs.existsSync(dir)) return 'iter-1';
+  const ds = fs.readdirSync(dir).filter(d => /^iter-\d+$/.test(d))
+    .sort((a, b) => parseInt(b.replace('iter-', '')) - parseInt(a.replace('iter-', '')));
+  if (!ds.length) return 'iter-1';
+  for (const d of ds) {
+    const st = tryJson(path.join(dir, d, '.state.json'));
     if (st && st.status === 'active') return d;
   }
-
-  return dirs[0]; // 返回最新迭代
+  return ds[0];
 }
 
-// ─────────────────────────────────────────────────────────────
-// 目標函式解析 (從 function-index-v2.json + specs)
-// ─────────────────────────────────────────────────────────────
+// ── Log-based state inference (BUG-002 fix) ──
+function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStories) {
+  const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+  if (!fs.existsSync(logsDir)) return null;
+  const logs = fs.readdirSync(logsDir).sort();
+  const has = (prefix) => logs.some(f => f.startsWith(prefix));
 
-/**
- * 找出與 storyId 相關的 gemsId 列表
- * @param {string} projectRoot
- * @param {string|null} storyId    — 如 "Story-11.1"
- * @param {string|null} filterGems — 指定單一 gemsId（--gems=）
- */
-function resolveTargetGems(projectRoot, storyId, filterGems) {
-  const indexPath = path.join(projectRoot, '.gems', 'function-index-v2.json');
-  const index     = tryJson(indexPath);
-  if (!index) return [];
+  // Check from most advanced state backward
+  if (has('gate-verify-pass-')) {
+    const nextDraft = findDraft(projectRoot, iterNum + 1);
+    return nextDraft
+      ? { phase: 'NEXT_ITER', step: null, story: null }
+      : { phase: 'COMPLETE', step: null, story: null };
+  }
+  if (has('gate-shrink-pass-')) {
+    const allDone = plannedStories.length > 0 && plannedStories.every(s => completedStories.includes(s));
+    if (allDone) return { phase: 'VERIFY', step: null, story: null };
+    const ns = plannedStories.find(s => !completedStories.includes(s));
+    return ns ? { phase: 'BUILD', step: '1', story: ns } : { phase: 'VERIFY', step: null, story: null };
+  }
+  // Find highest BUILD phase pass
+  let maxPhase = 0, latestStory = null;
+  for (const f of logs) {
+    const m = f.match(/^build-phase-(\d+)-Story-([\d.]+)-pass-/);
+    if (m) { const p = parseInt(m[1]); if (p > maxPhase) { maxPhase = p; latestStory = `Story-${m[2]}`; } }
+  }
+  if (maxPhase > 0) {
+    if (maxPhase >= 8) {
+      const ns = plannedStories.find(s => !completedStories.includes(s));
+      return ns ? { phase: 'BUILD', step: '1', story: ns } : { phase: 'SHRINK', step: null, story: null };
+    }
+    return { phase: 'BUILD', step: String(maxPhase + 1), story: latestStory };
+  }
+  if (has('gate-plan-pass-')) return { phase: 'BUILD', step: '1', story: plannedStories[0] || null };
+  if (has('gate-check-pass-')) return { phase: 'PLAN', step: null, story: null };
+  return null;
+}
 
-  const specsDir  = path.join(projectRoot, '.gems', 'specs');
-  const specCache = new Map(); // relPath → data
+// ── Unified state detection (Wave 3 core) ──
+function detectFullState(projectRoot, iter, storyOpt) {
+  const iterNum = parseInt(iter.replace('iter-', ''), 10);
+  const route = detectRoute(projectRoot);
+  let sm = null;
+  try { sm = require(path.join(SDID_ROOT, 'task-pipe', 'lib', 'shared', 'state-manager-v3.cjs')); } catch {}
+  const draftPath = findDraft(projectRoot, iterNum);
+  const plannedStories = findPlannedStories(projectRoot, iterNum);
+  const completedStories = findCompletedStories(projectRoot, iterNum);
+  const lastStep = tryJson(path.join(projectRoot, '.gems', 'last_step_result.json'));
+  let state = sm ? sm.readState(projectRoot, iter) : null;
+  let phase = null, step = null, story = storyOpt || null;
 
-  function loadSpec(relPath) {
-    if (specCache.has(relPath)) return specCache.get(relPath);
-    const abs = path.join(projectRoot, '.gems', relPath);
-    const d   = tryJson(abs);
-    specCache.set(relPath, d);
-    return d;
+  if (state && sm) {
+    if (state.status === 'completed' || state.status === 'abandoned') {
+      return { phase: 'COMPLETE', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, reason: `${iter} ${state.status}` };
+    }
+    if (state.flow && state.flow.currentNode && state.flow.currentNode !== 'COMPLETE') {
+      const p = sm.parseNode(state.flow.currentNode);
+      phase = p.phase; step = p.step;
+    }
+    if (!story && state.stories) {
+      story = Object.keys(state.stories).find(s => state.stories[s].status === 'in-progress')
+           || Object.keys(state.stories).find(s => state.stories[s].status === 'pending') || null;
+    }
+    if (phase === 'SHRINK') {
+      const ns = plannedStories.find(s => !completedStories.includes(s));
+      if (ns) { phase = 'BUILD'; step = '1'; story = ns; }
+    }
+    if (phase === 'NEXT_ITER') {
+      const nd = findDraft(projectRoot, iterNum + 1);
+      return nd
+        ? { phase: 'NEXT_ITER', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, nextIter: `iter-${iterNum+1}`, reason: 'next iter' }
+        : { phase: 'COMPLETE', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, reason: 'all done' };
+    }
+  }
+  if (!phase && lastStep) { phase = lastStep.phase || null; step = lastStep.step || null; }
+  if (phase === 'BUILD' && !story) { story = plannedStories.find(s => !completedStories.includes(s)) || null; }
+
+  // Log-based inference: when no state-manager/lastStep, infer from logs/
+  if (!phase || phase === 'GATE') {
+    const inferred = inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStories);
+    if (inferred) { phase = inferred.phase; step = inferred.step; if (inferred.story) story = inferred.story; }
   }
 
+  if (!phase && draftPath) { phase = 'GATE'; step = 'check'; }
+  return { phase, step, story, route, iter, draftPath, plannedStories, completedStories, projectRoot,
+    reason: phase ? `${state ? 'ledger' : 'fallback'}: ${phase}${step ? '-'+step : ''}` : 'no state' };
+}
+
+// ── NEXT command builder ──
+function buildNextCommand(st) {
+  const { phase, step, story, iter, draftPath, projectRoot } = st;
+  const iterNum = parseInt((iter || 'iter-1').replace('iter-', ''), 10);
+  const da = draftPath ? `--draft=${draftPath}` : '--draft=<draft>';
+  const ta = projectRoot ? `--target=${projectRoot}` : '--target=<project>';
+  if (!phase) return '(unknown)';
+  switch (phase) {
+    case 'GATE': return `node sdid-tools/blueprint-gate.cjs ${da} ${ta} --iter=${iterNum}`;
+    case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
+    case 'PLAN': return `node sdid-tools/draft-to-plan.cjs ${da} --iter=${iterNum} ${ta}`;
+    case 'BUILD': return story
+      ? `node task-pipe/runner.cjs --phase=BUILD --step=${step||1} --story=${story} ${ta} --iteration=${iter}`
+      : `node task-pipe/runner.cjs --phase=BUILD --step=${step||1} ${ta} --iteration=${iter}`;
+    case 'SHRINK': return `node sdid-tools/blueprint-shrink.cjs ${da} --iter=${iterNum} ${ta}`;
+    case 'SCAN': return `node task-pipe/runner.cjs --phase=SCAN ${ta} --iteration=${iter}`;
+    case 'VERIFY': return `node sdid-tools/blueprint-verify.cjs ${da} ${ta} --iter=${iterNum}`;
+    case 'NEXT_ITER': {
+      const ni = st.nextIter || `iter-${iterNum+1}`;
+      return `node sdid-tools/blueprint-expand.cjs ${da} --iter=${parseInt(ni.replace('iter-',''),10)} ${ta}`;
+    }
+    case 'COMPLETE': return 'done';
+    case 'POC': return `node task-pipe/runner.cjs --phase=POC --step=${step||1} ${ta} --iteration=${iter}`;
+    default: return `node task-pipe/runner.cjs --phase=${phase} --step=${step||1} ${ta} --iteration=${iter}`;
+  }
+}
+
+// ── Target GEMS resolution ──
+function resolveTargetGems(projectRoot, storyId, filterGems) {
+  const index = tryJson(path.join(projectRoot, '.gems', 'function-index-v2.json'));
+  if (!index) return [];
+  const specCache = new Map();
+  function loadSpec(rel) {
+    if (specCache.has(rel)) return specCache.get(rel);
+    const d = tryJson(path.join(projectRoot, '.gems', rel));
+    specCache.set(rel, d); return d;
+  }
   const results = [];
-  const byGemsId = index.byGemsId || {};
-
-  for (const [gemsId, entry] of Object.entries(byGemsId)) {
-    // --gems 過濾
+  for (const [gemsId, entry] of Object.entries(index.byGemsId || {})) {
     if (filterGems && gemsId !== filterGems) continue;
-
-    const specData  = entry.specFile ? loadSpec(entry.specFile) : null;
+    const specData = entry.specFile ? loadSpec(entry.specFile) : null;
     const dictEntry = specData ? specData[gemsId] : null;
-
-    // storyRef 過濾（--story 或 auto-detect）
     if (storyId && !filterGems) {
       const ref = dictEntry?.storyRef;
       if (ref && ref !== storyId) continue;
     }
-
-    // lineRange 優先從 dict spec 取（L589-653），fallback 到 index 的 line
-    const lineRange  = dictEntry?.lineRange || (entry.line ? `L${entry.line}` : null);
-
     results.push({
-      gemsId,
-      name:           entry.name,
-      file:           entry.file,
-      lineRange,
-      priority:       entry.priority,
-      flow:           entry.flow,
-      specFile:       entry.specFile,
-      dictBacked:     entry.dictBacked,
+      gemsId, name: entry.name, file: entry.file,
+      lineRange: dictEntry?.lineRange || (entry.line ? `L${entry.line}` : null),
+      priority: entry.priority, flow: entry.flow,
+      specFile: entry.specFile, dictBacked: entry.dictBacked,
       allowedImports: dictEntry?.allowedImports || [],
-      storyRef:       dictEntry?.storyRef || null,
-      status:         dictEntry?.status || null,
+      storyRef: dictEntry?.storyRef || null,
+      status: dictEntry?.status || null,
     });
   }
-
   return results;
 }
 
-// ─────────────────────────────────────────────────────────────
-// 歷史提示 (project-memory)
-// ─────────────────────────────────────────────────────────────
-
+// ── History hints ──
 function resolveHints(projectRoot, phase, step, story) {
-  const memPath = path.join(projectRoot, '.gems', 'project-memory.json');
-  const mem     = tryJson(memPath);
+  const mem = tryJson(path.join(projectRoot, '.gems', 'project-memory.json'));
   if (!mem) return { pitfalls: [], histHint: null, resumeCtx: null };
-
   const s = mem.summary || {};
-
-  // 取最近 2 個 pitfall
   const pitfalls = (s.knownPitfalls || []).slice(-2);
-
-  // 同相位同步驟的歷史失敗
   const phaseStep = `${phase}-${step}`;
   const pastErrors = (mem.entries || []).filter(e =>
-    `${e.phase}-${e.step}` === phaseStep &&
-    e.verdict !== 'PASS' &&
-    (!story || e.story !== story)
-  );
-
+    `${e.phase}-${e.step}` === phaseStep && e.verdict !== 'PASS' && (!story || e.story !== story));
   let histHint = null;
   if (pastErrors.length > 0) {
-    const last    = pastErrors[pastErrors.length - 1];
+    const last = pastErrors[pastErrors.length - 1];
     const missing = last.missing || [];
-    if (missing.length > 0) {
-      histHint = `上次 ${phaseStep} 在 ${last.story || '?'} 失敗：${missing.join(', ')}`;
-    } else {
-      histHint = `此步驟曾失敗 ${pastErrors.length} 次（最近: ${last.story || '?'}）`;
-    }
+    histHint = missing.length > 0
+      ? `${phaseStep} failed at ${last.story || '?'}: ${missing.join(', ')}`
+      : `step failed ${pastErrors.length} times (last: ${last.story || '?'})`;
   }
-
-  // 簡短 resume ctx
   const total = `${s.totalPasses || 0}P/${s.totalErrors || 0}E`;
   const resumeCtx = `${mem.project || '?'} | ${s.currentIteration || '?'} | ${total}`;
-
   return { pitfalls, histHint, resumeCtx };
 }
 
-// ─────────────────────────────────────────────────────────────
-// 輸出組裝
-// ─────────────────────────────────────────────────────────────
-
+// ── Output formatter ──
 function formatGuide(opts) {
-  const {
-    phase, step, story, iter, route, resumeCtx,
-    scriptPath, gems, pitfalls, histHint,
-    phase2Script,
-  } = opts;
-
-  const SEP = '═'.repeat(47);
-  const lines = [];
-
-  lines.push('');
-  lines.push(SEP);
-  lines.push('  SDID State Guide');
-  lines.push(SEP);
-  lines.push('');
-
-  // 📍 狀態
-  const phaseLabel = phase ? `${phase} Phase, Step ${step}` : '（未知）';
-  lines.push(`📍 狀態: ${phaseLabel}, ${story || '（無 Story）'}, ${iter}`);
-
-  // memory 統計
-  if (resumeCtx) lines.push(`   memory: ${resumeCtx}`);
-
-  lines.push(`📂 路線: ${route}`);
-  lines.push('');
-
-  // 📖 該讀的
-  lines.push('📖 該讀的:');
-  if (scriptPath)   lines.push(`   腳本規則: ${scriptPath}`);
-  if (phase2Script) lines.push(`   GEMS 驗收: ${phase2Script}（可提前確認標籤）`);
-
+  const { phase, step, story, iter, route, resumeCtx, scriptPath, gems: gemsRaw, pitfalls, histHint, phase2Script, fullState } = opts;
+  const gems = gemsRaw || [];
+  const SEP = '='.repeat(50);
+  const L = [];
+  L.push('', SEP, '  SDID State Guide', SEP, '');
+  const label = phase ? `${phase}${step ? ' '+step : ''}` : '(unknown)';
+  L.push(`STATUS: ${label}, ${story || '(no story)'}, ${iter}`);
+  if (resumeCtx) L.push(`  memory: ${resumeCtx}`);
+  L.push(`ROUTE: ${route}`);
+  const planned = fullState?.plannedStories || [];
+  const completed = fullState?.completedStories || [];
+  if (planned.length > 0) {
+    L.push('', `STORIES: ${completed.length}/${planned.length}`);
+    for (const s of planned) {
+      const done = completed.includes(s);
+      L.push(`  ${s}: ${done ? 'DONE' : (s === story ? 'ACTIVE' : 'PENDING')}`);
+    }
+  }
+  L.push('', '@READ:');
+  if (scriptPath) L.push(`  script: ${scriptPath}`);
+  if (phase2Script) L.push(`  gems-check: ${phase2Script}`);
   if (gems.length > 0) {
-    // 收集不重複的 specFile
     const specFiles = [...new Set(gems.map(g => g.specFile).filter(Boolean))];
-    for (const sf of specFiles) {
-      lines.push(`   字典規格: .gems/${sf}`);
-    }
-    lines.push('');
-    lines.push('   目標函式:');
+    for (const sf of specFiles) L.push(`  dict: .gems/${sf}`);
+    L.push('', '  targets:');
     for (const g of gems) {
-      const filePart = g.file ? `${g.file.replace(/\\/g, '/')} ${g.lineRange || ''}`.trim() : '';
-      lines.push(`   • ${g.gemsId} [${g.priority || '?'}] ${g.status ? `(${g.status})` : ''}`);
-      if (filePart) lines.push(`     → ${filePart}`);
-      if (g.flow)   lines.push(`     flow: ${g.flow}`);
+      const fp = g.file ? `${g.file.replace(/\\\\/g, '/')} ${g.lineRange || ''}`.trim() : '';
+      L.push(`  - ${g.gemsId} [${g.priority || '?'}] ${g.status ? '('+g.status+')' : ''}`);
+      if (fp) L.push(`    -> ${fp}`);
+      if (g.flow) L.push(`    flow: ${g.flow}`);
     }
-  } else {
-    lines.push('   目標函式: （本迭代無 GEMS dict 條目匹配）');
-  }
-
-  lines.push('');
-
-  // ⚠️ 歷史提示
-  lines.push('⚠️  歷史提示:');
-  if (pitfalls.length > 0) {
-    for (const p of pitfalls) lines.push(`   @PITFALL: ${p}`);
-  } else {
-    lines.push('   （無已知 pitfall）');
-  }
-  if (histHint) {
-    lines.push(`   @HINT: ${histHint}`);
-  }
-  lines.push('');
-
-  // 🎯 下一步
-  lines.push('🎯 下一步:');
-  if (phase && step && story) {
-    lines.push(`   @NEXT_COMMAND: node task-pipe/runner.cjs --phase=${phase} --step=${step} --story=${story}`);
-  } else {
-    lines.push('   @NEXT_COMMAND: （請先確認 phase/step/story）');
-  }
-  lines.push('');
-
-  // 🚫 施工紅線
-  lines.push('🚫 施工紅線:');
-  const hasImports = gems.some(g => g.allowedImports && g.allowedImports.length > 0);
+  } else { L.push('  targets: (none)'); }
+  L.push('', '@HINTS:');
+  if (pitfalls.length > 0) { for (const p of pitfalls) L.push(`  @PITFALL: ${p}`); }
+  else { L.push('  (no pitfalls)'); }
+  if (histHint) L.push(`  @HINT: ${histHint}`);
+  L.push('', 'NEXT: ' + (fullState ? buildNextCommand(fullState) : '(confirm state first)'));
+  L.push('', '@GUARD:');
+  const hasImports = gems.some(g => g.allowedImports?.length > 0);
   if (hasImports) {
     for (const g of gems) {
-      if (g.allowedImports && g.allowedImports.length > 0) {
-        lines.push(`   @GUARD [${g.gemsId}]: allowedImports = [${g.allowedImports.join(', ')}]`);
-      }
+      if (g.allowedImports?.length > 0) L.push(`  [${g.gemsId}]: allowedImports = [${g.allowedImports.join(', ')}]`);
     }
-    lines.push('   @GUARD: 禁止新增 allowedImports 以外的 import');
-  } else {
-    lines.push('   @GUARD: 禁止新增 allowedImports 以外的 import（dict 未設定白名單）');
   }
-  lines.push('   @GUARD: 禁止修改 src/shared/types（型別異動須走 Skill A 字典更新）');
-  lines.push('');
-  lines.push(SEP);
-  lines.push('');
-
-  return lines.join('\n');
+  L.push('  no imports outside allowedImports');
+  L.push('  no modifying src/shared/types');
+  L.push('', SEP, '');
+  return L.join('\n');
 }
 
-// ─────────────────────────────────────────────────────────────
-// CLI
-// ─────────────────────────────────────────────────────────────
-
+// ── CLI ──
 if (require.main === module) {
   const argv = process.argv.slice(2);
   let projectRoot = process.cwd();
-  let iterOpt     = null;
-  let storyOpt    = null;
-  let gemsOpt     = null;
-
+  let iterOpt = null, storyOpt = null, gemsOpt = null;
   for (const a of argv) {
     if (a.startsWith('--project=')) projectRoot = path.resolve(a.split('=')[1]);
-    if (a.startsWith('--iter='))    iterOpt     = a.split('=')[1];
-    if (a.startsWith('--story='))   storyOpt    = a.split('=')[1];
-    if (a.startsWith('--gems='))    gemsOpt     = a.split('=')[1];
+    if (a.startsWith('--iter=')) iterOpt = a.split('=')[1];
+    if (a.startsWith('--story=')) storyOpt = a.split('=')[1];
+    if (a.startsWith('--gems=')) gemsOpt = a.split('=')[1];
     if (a === '--help' || a === '-h') {
       console.log('Usage: node sdid-tools/state-guide.cjs --project=<dir> [--iter=iter-N] [--story=Story-N.N] [--gems=Domain.Action]');
       process.exit(0);
     }
   }
-
-  if (!fs.existsSync(projectRoot)) {
-    console.error(`✗ 找不到專案: ${projectRoot}`);
-    process.exit(1);
-  }
-
-  // ── 1. 迭代 ──
+  if (!fs.existsSync(projectRoot)) { console.error('error: not found: ' + projectRoot); process.exit(1); }
   const iter = iterOpt || detectActiveIter(projectRoot);
-
-  // ── 2. 路線 ──
-  const route = detectRoute(projectRoot);
-
-  // ── 3. 狀態 ──
-  const lastStep = tryJson(path.join(projectRoot, '.gems', 'last_step_result.json'));
-  const state    = tryJson(path.join(projectRoot, '.gems', 'iterations', iter, '.state.json'));
-
-  // ── 4. Story 先決定（才能正確取 phase/step）──
-  let story = storyOpt;
-  let phase = null;
-  let step  = null;
-
-  if (!story && state?.stories) {
-    const inProg = Object.values(state.stories).filter(s => s.status === 'in-progress');
-    if (inProg.length > 0) {
-      inProg.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      story = inProg[0].id;
-      // 從 story 取 phase/step（最準確）
-      phase = inProg[0].currentPhase || null;
-      step  = inProg[0].currentStep  || null;
-    }
-  }
-
-  // 若 story state 沒有 phase/step，fallback 到 flow.currentNode
-  if (!phase && state?.flow?.currentNode && state.flow.currentNode !== 'COMPLETE') {
-    const m = state.flow.currentNode.match(/^([A-Z]+)-(\d+)$/);
-    if (m) { phase = m[1]; step = m[2]; }
-  }
-
-  // 最終 fallback: last_step_result
-  if (!phase) { phase = lastStep?.phase || null; step = lastStep?.step || null; }
-
-  // ── 5. 腳本路徑 ──
-  const scriptPath  = phase && step ? getPhaseScript(phase, step) : null;
-  const phase2Script = (phase === 'BUILD' && parseInt(step) !== 2)
-    ? 'task-pipe/phases/build/phase-2.cjs'
-    : null;
-
-  // ── 6. 目標函式 ──
+  const fullState = detectFullState(projectRoot, iter, storyOpt);
+  const { phase, step, story } = fullState;
+  const scriptPath = phase && step ? getPhaseScript(phase, step) : null;
+  const phase2Script = (phase === 'BUILD' && parseInt(step) !== 2) ? 'task-pipe/phases/build/phase-2.cjs' : null;
   const gems = resolveTargetGems(projectRoot, story, gemsOpt);
-
-  // ── 7. 歷史提示 ──
   const { pitfalls, histHint, resumeCtx } = resolveHints(projectRoot, phase, step, story);
-
-  // ── 8. 輸出 ──
-  const guide = formatGuide({
-    phase, step, story, iter, route, resumeCtx,
-    scriptPath, phase2Script,
-    gems, pitfalls, histHint,
-  });
-
-  process.stdout.write(guide);
+  process.stdout.write(formatGuide({ phase, step, story, iter, route: fullState.route, resumeCtx, scriptPath, phase2Script, gems, pitfalls, histHint, fullState }));
   process.exit(0);
 }
 
-module.exports = { detectRoute, detectActiveIter, resolveTargetGems, resolveHints, formatGuide };
+module.exports = {
+  detectRoute, detectActiveIter, detectFullState,
+  resolveTargetGems, resolveHints, formatGuide, buildNextCommand,
+  findDraft, findPlannedStories, findCompletedStories,
+};

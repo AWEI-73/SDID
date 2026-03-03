@@ -6,13 +6,16 @@
  * Transport: stdio（Claude Code 原生支持）
  *
  * Tools:
- *   sdid-state-guide     — 路由大腦（狀態/該讀/歷史/下一步/紅線）
+ *   sdid-state-guide     — 路由大腦（狀態/該讀/歷史/下一步/紅線）— Wave 3: 支援 Blueprint 全流程
+ *   sdid-run             — 通用 CLI 執行器（安全白名單限 sdid-tools/ + task-pipe/）
  *   sdid-spec-gen        — 字典生成（Draft → specs/*.json）
  *   sdid-spec-gate       — 字典品質驗證（5 項檢查）
  *   sdid-dict-sync       — 行號回寫（源碼 → specs lineRange）
  *   sdid-scanner          — GEMS 標籤掃描（覆蓋率報告）
  *   sdid-blueprint-gate  — 藍圖品質驗證
  *   sdid-micro-fix-gate  — 小修驗收 gate
+ *   sdid-build           — BUILD/POC/PLAN runner
+ *   sdid-scan            — SCAN runner
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -85,7 +88,7 @@ server.registerTool(
   'sdid-state-guide',
   {
     title: 'SDID State Guide',
-    description: '取得專案目前的 SDID 狀態指令包（📍狀態/📖該讀什麼/⚠️歷史提示/🎯下一步/🚫紅線）。每次進入專案時應優先呼叫此工具。',
+    description: '取得專案目前的 SDID 狀態指令包（📍狀態/📖該讀什麼/⚠️歷史提示/🎯下一步/🚫紅線）。每次進入專案時應優先呼叫此工具。支援 Blueprint 和 Task-Pipe 兩條路線的完整狀態偵測。',
     inputSchema: {
       project: z.string().describe('專案根目錄路徑（如 ExamForge）'),
       iter: z.string().optional().describe('指定迭代（如 iter-11），省略則自動偵測'),
@@ -101,28 +104,45 @@ server.registerTool(
         return { content: [{ type: 'text', text: `ERROR: 找不到專案目錄: ${projectRoot}` }] };
       }
 
-      const route = stateGuide.detectRoute(projectRoot);
       const activeIter = iter || stateGuide.detectActiveIter(projectRoot);
-      const targetGems = stateGuide.resolveTargetGems(projectRoot, story, gems);
-      const hints = stateGuide.resolveHints(projectRoot, null, null, story);
+
+      // Wave 3: 使用 detectFullState 統一偵測
+      const fullState = stateGuide.detectFullState(projectRoot, activeIter, story || null);
+      const { phase, step, route } = fullState;
+      const resolvedStory = story || fullState.story;
+
+      const targetGems = stateGuide.resolveTargetGems(projectRoot, resolvedStory, gems);
+      const hints = stateGuide.resolveHints(projectRoot, phase, step, resolvedStory);
+
+      // 腳本路徑
+      const PHASE_SCRIPT_MAP = {
+        POC: (s) => `task-pipe/phases/poc/step-${s}.cjs`,
+        PLAN: (s) => `task-pipe/phases/plan/step-${s}.cjs`,
+        BUILD: (s) => `task-pipe/phases/build/phase-${s}.cjs`,
+        SCAN: (s) => `task-pipe/phases/scan/step-${s}.cjs`,
+      };
+      const scriptFn = PHASE_SCRIPT_MAP[phase?.toUpperCase()];
+      const scriptPath = scriptFn && step ? scriptFn(step) : null;
+      const phase2Script = (phase === 'BUILD' && parseInt(step) !== 2)
+        ? 'task-pipe/phases/build/phase-2.cjs' : null;
 
       const output = stateGuide.formatGuide({
-        phase: hints.phase || null,
-        step: hints.step || null,
-        story: story || hints.story || null,
+        phase, step,
+        story: resolvedStory,
         iter: activeIter,
         route,
         resumeCtx: hints.resumeCtx || null,
-        scriptPath: hints.scriptPath || null,
+        scriptPath,
         gems: targetGems,
         pitfalls: hints.pitfalls || [],
         histHint: hints.histHint || null,
-        phase2Script: hints.phase2Script || null,
+        phase2Script,
+        fullState,
       });
 
       return { content: [{ type: 'text', text: output }] };
     } catch (err) {
-      return { content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
+      return { content: [{ type: 'text', text: `ERROR: ${err.message}\n${err.stack}` }] };
     }
   }
 );
@@ -396,6 +416,75 @@ server.registerTool(
 
     const result = await runRunner(args);
     return { content: [{ type: 'text', text: result.output }] };
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
+// Tool 10: sdid-run (Wave 3 — 通用 CLI 執行器)
+// ═══════════════════════════════════════════════════════════════
+
+/** 安全白名單：只允許執行 sdid-tools/ 和 task-pipe/ 下的腳本 */
+const ALLOWED_PREFIXES = ['sdid-tools/', 'task-pipe/'];
+
+function isAllowedCommand(cmd) {
+  // 格式: node <script> [args...]
+  const trimmed = cmd.trim();
+  // 移除開頭的 node 
+  const withoutNode = trimmed.replace(/^node\s+/, '');
+  return ALLOWED_PREFIXES.some(prefix => withoutNode.startsWith(prefix));
+}
+
+server.registerTool(
+  'sdid-run',
+  {
+    title: 'SDID CLI Runner',
+    description: '通用 SDID CLI 執行器 — 執行任何 sdid-tools/ 或 task-pipe/ 下的腳本命令，回傳 stdout（含 anchor 標籤）。搭配 sdid-state-guide 的 NEXT: 命令使用。',
+    inputSchema: {
+      command: z.string().describe('完整的 node 命令（如 "node sdid-tools/blueprint-gate.cjs --draft=... --target=..."）'),
+      project: z.string().optional().describe('專案根目錄路徑（用於替換命令中的 --target=<project>）'),
+    },
+  },
+  async ({ command, project }) => {
+    try {
+      // 替換 <project> 佔位符
+      let cmd = command;
+      if (project) {
+        const resolved = resolvePath(project);
+        cmd = cmd.replace(/--target=<project>/g, `--target=${resolved}`);
+        cmd = cmd.replace(/<project>/g, resolved);
+      }
+
+      // 安全檢查
+      if (!isAllowedCommand(cmd)) {
+        return {
+          content: [{
+            type: 'text',
+            text: `ERROR: 安全限制 — 只允許執行 sdid-tools/ 和 task-pipe/ 下的腳本。\n收到: ${cmd}`
+          }]
+        };
+      }
+
+      // 解析命令
+      const trimmed = cmd.trim().replace(/^node\s+/, '');
+      const parts = trimmed.split(/\s+/);
+      const scriptRelative = parts[0];
+      const args = parts.slice(1);
+
+      const SDID_ROOT = path.resolve(TOOLS_DIR, '..');
+      const scriptPath = path.join(SDID_ROOT, scriptRelative);
+
+      const { stdout, stderr } = await execFileAsync('node', [scriptPath, ...args], {
+        cwd: SDID_ROOT,
+        timeout: 120000,
+        env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+      });
+
+      const output = stripAnsi(stdout + (stderr ? '\n' + stderr : ''));
+      return { content: [{ type: 'text', text: output }] };
+    } catch (err) {
+      const output = stripAnsi((err.stdout || '') + '\n' + (err.stderr || err.message || ''));
+      return { content: [{ type: 'text', text: output }] };
+    }
   }
 );
 

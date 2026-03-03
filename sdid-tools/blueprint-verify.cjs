@@ -377,6 +377,38 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
   }
 
   if (!fs.existsSync(functionsPath)) {
+    // Wave 3.1: Auto-scan if functions.json missing (Blueprint Flow doesn't require SCAN)
+    const scannerV2Path = path.resolve(__dirname, 'gems-scanner-v2.cjs');
+    if (args.target && fs.existsSync(scannerV2Path)) {
+      try {
+        const { scanV2 } = require(scannerV2Path);
+        const srcDir = path.join(args.target, 'src');
+        if (fs.existsSync(srcDir)) {
+          console.log('   ℹ️  functions.json 不存在，自動掃描源碼...');
+          const scanResult = scanV2(srcDir, args.target);
+          const docsDir = path.dirname(functionsPath);
+          if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true });
+          const output = {
+            functions: scanResult.functions.map(f => ({
+              name: f.name, file: f.file, startLine: f.startLine, endLine: f.endLine,
+              priority: f.priority, flow: f.flow, deps: f.deps, depsRisk: f.depsRisk,
+              test: f.test, testFile: f.testFile, description: f.description,
+              gemsId: f.gemsId || null, storyId: null,
+            })),
+            stats: scanResult.stats,
+            generatedBy: 'blueprint-verify auto-scan',
+            generatedAt: new Date().toISOString(),
+          };
+          fs.writeFileSync(functionsPath, JSON.stringify(output, null, 2), 'utf8');
+          console.log(`   ✅ 自動產出: ${functionsPath} (${scanResult.functions.length} 函式)`);
+        }
+      } catch (e) {
+        console.log(`   ⚠️ 自動掃描失敗: ${e.message}`);
+      }
+    }
+  }
+
+  if (!fs.existsSync(functionsPath)) {
     const logProjectRoot = args.target || null;
     const logOptions = logProjectRoot ? {
       projectRoot: logProjectRoot,

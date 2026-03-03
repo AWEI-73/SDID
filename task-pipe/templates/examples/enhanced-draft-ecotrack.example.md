@@ -2,7 +2,7 @@
 
 **迭代**: iter-1  
 **日期**: 2026-02-08  
-**藍圖狀態**: [~] ACTIVE  
+**草稿狀態**: [x] DONE  
 **規模**: M  
 **方法論**: SDID v2.0
 
@@ -167,12 +167,12 @@ src/
 
 ### Iter 1: shared [CURRENT]
 
-| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 狀態 |
-|---------|------|---------|---|------|------|------|
-| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | ○○ |
-| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT | 無 | ○○ |
-| 資料庫連線 | LIB | dbClient | P0 | CONNECT→POOL→HEALTH_CHECK→EXPORT | [Internal.ENV_CONFIG] | ○○ |
-| 排放係數 CRUD | SVC | factorService | P1 | VALIDATE→PERSIST→CACHE→RETURN | [Internal.CoreTypes, Internal.dbClient] | ○○ |
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC | 狀態 |
+|---------|------|---------|---|------|------|-----|------|
+| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | AC-1.0 | ○○ |
+| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT | 無 | - | ○○ |
+| 資料庫連線 | LIB | dbClient | P0 | CONNECT→POOL→HEALTH_CHECK→EXPORT | [Internal.ENV_CONFIG] | AC-1.1 | ○○ |
+| 排放係數 CRUD | SVC | factorService | P1 | VALIDATE→PERSIST→CACHE→RETURN | [Internal.CoreTypes, Internal.dbClient] | AC-1.2 | ○○ |
 
 ### Iter 2: data-entry [STUB]
 
@@ -191,6 +191,25 @@ src/
 > PDF 報告生成模組，依賴 shared + data-entry + dashboard
 > 預估: 2-3 個動作
 > 公開 API: generateReport
+
+---
+
+## ✅ 驗收條件
+
+### AC-1.0: CoreTypes 型別定義
+- Given: 專案初始化完成
+- When: import CoreTypes
+- Then: Organization, EmissionRecord, EmissionFactor 型別可用，TypeScript 編譯通過
+
+### AC-1.1: dbClient 資料庫連線
+- Given: ENV_CONFIG 已載入
+- When: 呼叫 dbClient.query()
+- Then: 成功連線 PostgreSQL 並回傳結果，連線池正常運作
+
+### AC-1.2: factorService 排放係數 CRUD
+- Given: dbClient 已連線，CoreTypes 已定義
+- When: 呼叫 factorService.create/read/update/delete
+- Then: 排放係數資料正確寫入/讀取/更新/刪除，快取機制生效
 
 ---
 
@@ -236,4 +255,4 @@ src/
 
 ---
 
-**藍圖狀態**: [~] ACTIVE
+**草稿狀態**: [x] DONE

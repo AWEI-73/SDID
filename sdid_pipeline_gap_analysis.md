@@ -369,11 +369,11 @@ Phase 2 新增檢查：
   - phase-8: 改用 scanner `acIds` 映射，AC_NOT_TAGGED（源碼未標記）+ AC_UNCOVERED（測試未覆蓋）
   - blueprint-verify: `checkACCoverage()` + `extractPlanAcIds()`，報告 AC 標記率
   - 改動: `task-pipe/phases/build/phase-2.cjs` 加骨架比對邏輯 ✅
-- [ ] **AC 穿透後續**: Phase 8 真檢查 + VERIFY AC 比對
+- [x] **AC 穿透後續**: Phase 8 真檢查 + VERIFY AC 比對 (commit 70183c0)
   - 改動: `task-pipe/phases/build/phase-8.cjs` AC 覆蓋改用標籤映射（acIds）
   - 改動: `sdid-tools/blueprint-verify.cjs` 加 AC 覆蓋比對
-- [ ] 標籤 Shrink 腳本（SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點）
-- [ ] Scanner 支援 shrink 格式解析（三格版）
+- [x] 標籤 Shrink 腳本（SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點）(commit e443b34)
+- [x] Scanner 支援 shrink 格式解析（三格版）(commit e443b34)
 - [ ] 文件更新: output reference v3 移除 sdid-tools 獨立 API 表 + 補 v3.1 Emit 函式
-- [ ] plan-schema 加 AC_FIELD 規則（等 AC 穿透後）
+- [x] plan-schema 加 AC_FIELD 規則（等 AC 穿透後）
 - [ ] DEPS 從模組定義推導到 action（低優先）

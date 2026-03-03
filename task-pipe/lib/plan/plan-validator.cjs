@@ -149,6 +149,27 @@ function validatePlan(planPath) {
     }
   }
 
+  // ── Rule 10: AC_FIELD — P0/P1 函式建議有 AC 行 ──
+  // AC 格式: // AC-X.Y (摘要)，放在 GEMS 標籤 */ 之後、[STEP] 之前
+  // 找所有 P0/P1 的 Item 區塊，檢查是否有 AC 行
+  const itemBlocks = content.split(/(?=###\s+Item\s+\d+)/);
+  for (const block of itemBlocks) {
+    if (!/###\s+Item\s+\d+/.test(block)) continue;
+    // 只檢查 P0/P1
+    const isP0P1 = /GEMS:\s*\S+\s*\|\s*P[01]/.test(block) ||
+                   /\|\s*P[01]\s*\|/.test(block);
+    if (!isP0P1) continue;
+    // 跳過 Modify 類型（不生成骨架，AC 不強制）
+    if (/\|\s*Modify\s*\|/i.test(block)) continue;
+    // 檢查是否有 AC 行
+    const hasAC = /\/\/\s*AC-[\d.]+/.test(block);
+    if (!hasAC) {
+      const fnName = block.match(/GEMS:\s*(\S+)/)?.[1] ||
+                     block.match(/###\s+Item\s+(\d+)/)?.[1];
+      warnings.push({ rule: 'AC_FIELD', message: `P0/P1 函式 ${fnName} 缺少 AC 行 (// AC-X.Y 摘要)` });
+    }
+  }
+
   // ── Rule 9 (P8): Plan 檔案路徑驗證 ──
   // 掃描 plan 中所有 FILE 欄位引用的路徑，驗證是否存在
   if (planPath) {

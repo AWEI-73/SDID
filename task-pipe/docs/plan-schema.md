@@ -91,6 +91,32 @@ Priority 欄位只允許: `P0`, `P1`, `P2`, `P3`
 
 P0 優先級的函式建議有 `GEMS-FLOW:` 標籤。缺少不阻擋 BUILD。
 
+### Rule 10: AC_FIELD — P0/P1 函式的 AC 行 (WARNING)
+
+P0/P1 優先級的函式（非 Modify 類型）建議在 GEMS 標籤後有 `// AC-X.Y (摘要)` 行。
+
+```markdown
+### Item 1: createFactor [P0]
+
+```typescript
+/**
+ * GEMS: createFactor | P0 | ○○ | (args)→Result | Story-1.1 | 建立係數
+ * GEMS-FLOW: Validate→Save→Return
+ */
+// AC-1.1 (Given 係數存在 → CRUD 操作成功回傳)   ✅
+// [STEP] Validate
+```
+
+```typescript
+/**
+ * GEMS: createFactor | P0 | ○○ | (args)→Result | Story-1.1 | 建立係數
+ * GEMS-FLOW: Validate→Save→Return
+ */
+// [STEP] Validate                                ⚠️ 缺少 AC 行
+```
+
+缺少不阻擋 BUILD，但表示 AC 穿透鏈斷裂（Phase 8 和 VERIFY 無法追蹤驗收覆蓋率）。
+
 ---
 
 ## 嚴重度定義
@@ -119,3 +145,4 @@ node task-pipe/lib/plan/plan-validator.cjs --all --target=<project> --iteration=
 | 版本 | 日期 | 變更 |
 |------|------|------|
 | v1.0 | 2026-02-15 | 初版，8 條規則，從 3 個真實專案的 de facto schema 提煉 |
+| v1.1 | 2026-03-04 | Rule 10 AC_FIELD — P0/P1 函式 AC 行 WARNING（AC 穿透閉環） |

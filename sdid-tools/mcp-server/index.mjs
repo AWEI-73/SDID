@@ -38,6 +38,7 @@ const TOOLS_DIR = path.resolve(__dirname, '..');
 // ─────────────────────────────────────────────────────────────
 
 const stateGuide = require(path.join(TOOLS_DIR, 'state-guide.cjs'));
+const stateMachine = require(path.join(TOOLS_DIR, '..', 'sdid-core', 'state-machine.cjs'));
 const scanner = require(path.join(TOOLS_DIR, 'gems-scanner-v2.cjs'));
 const dictSync = require(path.join(TOOLS_DIR, 'dict-sync.cjs'));
 
@@ -86,103 +87,26 @@ const server = new McpServer({
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * 確保 .gems iteration 目錄結構完整
+ * 確保 .gems iteration 目錄結構完整（委派給 state-machine）
  */
 function ensureIterStructure(projectRoot, iterNum) {
-  const fs = require('fs');
-  const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
-  const dirs = ['poc', 'plan', 'build', 'logs'];
-  for (const d of dirs) {
-    const dp = path.join(iterPath, d);
-    if (!fs.existsSync(dp)) fs.mkdirSync(dp, { recursive: true });
-  }
+  stateMachine.ensureIterStructure(projectRoot, iterNum);
 }
 
 /**
- * 從 logs 目錄推斷 Blueprint Flow 當前狀態
+ * 從 logs 目錄推斷 Blueprint Flow 當前狀態（委派給 state-machine）
  */
 function inferBlueprintState(projectRoot, iterNum) {
-  const fs = require('fs');
-  const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
-  const planDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'plan');
-  const buildDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'build');
-  const pocDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc');
-
-  // Find draft
-  let draftPath = null;
-  if (fs.existsSync(pocDir)) {
-    const drafts = fs.readdirSync(pocDir).filter(f => f.startsWith('requirement_draft_'));
-    if (drafts.length) draftPath = path.join(pocDir, drafts[0]);
-  }
-  // Fallback: check root for requirement_draft.md (non-standard but common in MCP runs)
-  if (!draftPath) {
-    const rootDraft = path.join(projectRoot, 'requirement_draft.md');
-    if (fs.existsSync(rootDraft)) draftPath = rootDraft;
-  }
-
-  // Find planned stories
-  const plannedStories = [];
-  if (fs.existsSync(planDir)) {
-    for (const f of fs.readdirSync(planDir)) {
-      const m = f.match(/implementation_plan_Story-([\d.]+)\.md/);
-      if (m) plannedStories.push(`Story-${m[1]}`);
-    }
-    plannedStories.sort();
-  }
-
-  // Find completed stories (have Fillback)
-  const completedStories = [];
-  if (fs.existsSync(buildDir)) {
-    for (const f of fs.readdirSync(buildDir)) {
-      const m = f.match(/Fillback_Story-([\d.]+)\.md/);
-      if (m) completedStories.push(`Story-${m[1]}`);
-    }
-    completedStories.sort();
-  }
-
-  // Infer from logs
-  if (!fs.existsSync(logsDir)) {
+  const plannedStories = stateMachine.findPlannedStories(projectRoot, iterNum);
+  const completedStories = stateMachine.findCompletedStories(projectRoot, iterNum);
+  const draftPath = stateMachine.findDraft(projectRoot, iterNum);
+  const inferred = stateMachine.inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStories);
+  if (!inferred) {
     return { phase: draftPath ? 'GATE' : 'NO_DRAFT', draftPath, plannedStories, completedStories };
   }
-
-  const logs = fs.readdirSync(logsDir).sort();
-  const has = (prefix) => logs.some(f => f.startsWith(prefix));
-
-  if (has('gate-verify-pass-')) return { phase: 'COMPLETE', draftPath, plannedStories, completedStories };
-  if (has('gate-shrink-pass-')) {
-    const allDone = plannedStories.length > 0 && plannedStories.every(s => completedStories.includes(s));
-    if (allDone) return { phase: 'VERIFY', draftPath, plannedStories, completedStories };
-    const next = plannedStories.find(s => !completedStories.includes(s));
-    return { phase: 'BUILD', step: 1, story: next, draftPath, plannedStories, completedStories };
-  }
-
-  // Find highest BUILD phase pass
-  let maxPhase = 0, latestStory = null;
-  for (const f of logs) {
-    const m = f.match(/^build-phase-(\d+)-Story-([\d.]+)-pass-/);
-    if (m) { const p = parseInt(m[1]); if (p > maxPhase) { maxPhase = p; latestStory = `Story-${m[2]}`; } }
-  }
-  if (maxPhase > 0) {
-    if (maxPhase >= 8) {
-      const next = plannedStories.find(s => !completedStories.includes(s));
-      return next
-        ? { phase: 'BUILD', step: 1, story: next, draftPath, plannedStories, completedStories }
-        : { phase: 'SHRINK', draftPath, plannedStories, completedStories };
-    }
-    return { phase: 'BUILD', step: maxPhase + 1, story: latestStory, draftPath, plannedStories, completedStories };
-  }
-
-  if (has('gate-plan-pass-')) {
-    return { phase: 'BUILD', step: 1, story: plannedStories[0] || null, draftPath, plannedStories, completedStories };
-  }
-  if (has('gate-check-pass-')) return { phase: 'PLAN', draftPath, plannedStories, completedStories };
-
-  // Check for error logs to determine retry
-  if (has('gate-check-error-')) return { phase: 'GATE', draftPath, plannedStories, completedStories, hasError: true };
-  if (has('gate-plan-error-')) return { phase: 'PLAN', draftPath, plannedStories, completedStories, hasError: true };
-
-  return { phase: draftPath ? 'GATE' : 'NO_DRAFT', draftPath, plannedStories, completedStories };
+  return { ...inferred, draftPath, plannedStories, completedStories };
 }
+
 
 server.registerTool(
   'sdid-loop',

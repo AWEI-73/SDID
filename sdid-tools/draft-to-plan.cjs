@@ -74,26 +74,16 @@ function inferTestFile(techName, type) {
   }
 }
 
-/** 根據 type 推導檔案路徑 */
+/** 根據 type 推導檔案路徑（委派給 Architecture Contract） */
 function inferFilePath(techName, type, moduleName) {
   const kebab = techName
     .replace(/([a-z])([A-Z])/g, '$1-$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
     .toLowerCase();
 
-  const isShared = moduleName === 'shared';
-  const base = isShared ? 'src/shared' : `src/modules/${moduleName}`;
-
-  switch (type) {
-    case 'CONST': return `${base}/${isShared ? 'types/' : ''}${kebab}.ts`;
-    case 'LIB': return `${base}/${isShared ? 'storage/' : 'lib/'}${kebab}.ts`;
-    case 'API': return `${base}/api/${kebab}.ts`;
-    case 'SVC': return `${base}/services/${kebab}.ts`;
-    case 'HOOK': return `${base}/hooks/${kebab}.ts`;
-    case 'UI': return `${base}/components/${kebab}.tsx`;
-    case 'ROUTE': return `${base}/pages/${kebab}.tsx`;
-    default: return `${base}/${kebab}.ts`;
-  }
+  // 使用 Architecture Contract 統一路徑規則，確保與 phase-1 一致
+  const contract = require('../sdid-core/architecture-contract.cjs');
+  return contract.inferFilePath(type, moduleName, kebab);
 }
 
 /** 從 flow 字串生成 [STEP] 錨點 */

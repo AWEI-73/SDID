@@ -1,202 +1,30 @@
 #!/usr/bin/env node
 /**
- * state-guide.cjs (Wave 3.1 - Blueprint + Task-Pipe unified navigation)
+ * state-guide.cjs (Wave 3.2 - delegates to sdid-core/state-machine)
  * STATUS / @READ / @HINTS / @NEXT / @GUARD
+ *
+ * 狀態推斷邏輯已移至 sdid-core/state-machine.cjs（單一真相源）。
+ * 此檔保留：CLI 格式化、GEMS 解析、歷史提示、phase script 對應。
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const SDID_ROOT = path.resolve(__dirname, '..');
 
-function tryJson(fp) {
-  if (!fs.existsSync(fp)) return null;
-  try { return JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { return null; }
-}
+// 委派狀態推斷給 state-machine
+const sm = require('../sdid-core/state-machine.cjs');
+const { tryJson, detectRoute, detectActiveIter, detectFullState, buildNextCommand,
+        findDraft, findPlannedStories, findCompletedStories } = sm;
 
 const PHASE_SCRIPT_MAP = {
-  POC: (s) => `task-pipe/phases/poc/step-${s}.cjs`,
+  POC:  (s) => `task-pipe/phases/poc/step-${s}.cjs`,
   PLAN: (s) => `task-pipe/phases/plan/step-${s}.cjs`,
-  BUILD: (s) => `task-pipe/phases/build/phase-${s}.cjs`,
-  SCAN: () => 'task-pipe/phases/scan/scan.cjs',
+  BUILD:(s) => `task-pipe/phases/build/phase-${s}.cjs`,
+  SCAN: ()  => 'task-pipe/phases/scan/scan.cjs',
 };
 function getPhaseScript(phase, step) {
   const fn = PHASE_SCRIPT_MAP[phase?.toUpperCase()];
   return fn ? fn(step) : null;
 }
-
-// ── Route detection ──
-function detectRoute(projectRoot) {
-  const iterDirs = path.join(projectRoot, '.gems', 'iterations');
-  if (fs.existsSync(iterDirs)) {
-    for (const it of fs.readdirSync(iterDirs)) {
-      if (fs.existsSync(path.join(iterDirs, it, 'poc', 'poc-consolidation-log.md'))) return 'POC-FIX';
-    }
-  }
-  if (fs.existsSync(path.join(projectRoot, '.gems', 'poc-consolidation-log.md'))) return 'POC-FIX';
-  if (fs.existsSync(iterDirs)) {
-    for (const it of fs.readdirSync(iterDirs)) {
-      const pocDir = path.join(iterDirs, it, 'poc');
-      if (fs.existsSync(pocDir) && fs.readdirSync(pocDir).some(f => f.startsWith('requirement_draft_')))
-        return 'Blueprint';
-    }
-  }
-  if (fs.existsSync(path.join(projectRoot, 'requirement-draft.md'))) return 'Blueprint';
-  if (fs.existsSync(path.join(projectRoot, 'requirement-spec.md'))) return 'Task-Pipe';
-  const specsDir = path.join(projectRoot, '.gems', 'specs');
-  if (fs.existsSync(specsDir) && fs.readdirSync(specsDir).some(f => f.endsWith('.json') && f !== '_index.json'))
-    return 'POC-FIX';
-  return 'Unknown';
-}
-
-// ── Blueprint helpers ──
-function findDraft(pp, n) {
-  const d = path.join(pp, '.gems', 'iterations', `iter-${n}`, 'poc');
-  if (!fs.existsSync(d)) return null;
-  const f = fs.readdirSync(d).filter(x => x.startsWith('requirement_draft_'));
-  return f.length ? path.join(d, f[0]) : null;
-}
-function findPlannedStories(pp, n) {
-  const d = path.join(pp, '.gems', 'iterations', `iter-${n}`, 'plan');
-  if (!fs.existsSync(d)) return [];
-  return fs.readdirSync(d).filter(f => f.startsWith('implementation_plan_'))
-    .map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; })
-    .filter(Boolean).sort();
-}
-function findCompletedStories(pp, n) {
-  const d = path.join(pp, '.gems', 'iterations', `iter-${n}`, 'build');
-  if (!fs.existsSync(d)) return [];
-  return fs.readdirSync(d).filter(f => f.startsWith('Fillback_'))
-    .map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; })
-    .filter(Boolean).sort();
-}
-function detectActiveIter(projectRoot) {
-  const dir = path.join(projectRoot, '.gems', 'iterations');
-  if (!fs.existsSync(dir)) return 'iter-1';
-  const ds = fs.readdirSync(dir).filter(d => /^iter-\d+$/.test(d))
-    .sort((a, b) => parseInt(b.replace('iter-', '')) - parseInt(a.replace('iter-', '')));
-  if (!ds.length) return 'iter-1';
-  for (const d of ds) {
-    const st = tryJson(path.join(dir, d, '.state.json'));
-    if (st && st.status === 'active') return d;
-  }
-  return ds[0];
-}
-
-// ── Log-based state inference (BUG-002 fix) ──
-function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStories) {
-  const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
-  if (!fs.existsSync(logsDir)) return null;
-  const logs = fs.readdirSync(logsDir).sort();
-  const has = (prefix) => logs.some(f => f.startsWith(prefix));
-
-  // Check from most advanced state backward
-  if (has('gate-verify-pass-')) {
-    const nextDraft = findDraft(projectRoot, iterNum + 1);
-    return nextDraft
-      ? { phase: 'NEXT_ITER', step: null, story: null }
-      : { phase: 'COMPLETE', step: null, story: null };
-  }
-  if (has('gate-shrink-pass-')) {
-    const allDone = plannedStories.length > 0 && plannedStories.every(s => completedStories.includes(s));
-    if (allDone) return { phase: 'VERIFY', step: null, story: null };
-    const ns = plannedStories.find(s => !completedStories.includes(s));
-    return ns ? { phase: 'BUILD', step: '1', story: ns } : { phase: 'VERIFY', step: null, story: null };
-  }
-  // Find highest BUILD phase pass
-  let maxPhase = 0, latestStory = null;
-  for (const f of logs) {
-    const m = f.match(/^build-phase-(\d+)-Story-([\d.]+)-pass-/);
-    if (m) { const p = parseInt(m[1]); if (p > maxPhase) { maxPhase = p; latestStory = `Story-${m[2]}`; } }
-  }
-  if (maxPhase > 0) {
-    if (maxPhase >= 8) {
-      const ns = plannedStories.find(s => !completedStories.includes(s));
-      return ns ? { phase: 'BUILD', step: '1', story: ns } : { phase: 'SHRINK', step: null, story: null };
-    }
-    return { phase: 'BUILD', step: String(maxPhase + 1), story: latestStory };
-  }
-  if (has('gate-plan-pass-')) return { phase: 'BUILD', step: '1', story: plannedStories[0] || null };
-  if (has('gate-check-pass-')) return { phase: 'PLAN', step: null, story: null };
-  return null;
-}
-
-// ── Unified state detection (Wave 3 core) ──
-function detectFullState(projectRoot, iter, storyOpt) {
-  const iterNum = parseInt(iter.replace('iter-', ''), 10);
-  const route = detectRoute(projectRoot);
-  let sm = null;
-  try { sm = require(path.join(SDID_ROOT, 'task-pipe', 'lib', 'shared', 'state-manager-v3.cjs')); } catch {}
-  const draftPath = findDraft(projectRoot, iterNum);
-  const plannedStories = findPlannedStories(projectRoot, iterNum);
-  const completedStories = findCompletedStories(projectRoot, iterNum);
-  const lastStep = tryJson(path.join(projectRoot, '.gems', 'last_step_result.json'));
-  let state = sm ? sm.readState(projectRoot, iter) : null;
-  let phase = null, step = null, story = storyOpt || null;
-
-  if (state && sm) {
-    if (state.status === 'completed' || state.status === 'abandoned') {
-      return { phase: 'COMPLETE', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, reason: `${iter} ${state.status}` };
-    }
-    if (state.flow && state.flow.currentNode && state.flow.currentNode !== 'COMPLETE') {
-      const p = sm.parseNode(state.flow.currentNode);
-      phase = p.phase; step = p.step;
-    }
-    if (!story && state.stories) {
-      story = Object.keys(state.stories).find(s => state.stories[s].status === 'in-progress')
-           || Object.keys(state.stories).find(s => state.stories[s].status === 'pending') || null;
-    }
-    if (phase === 'SHRINK') {
-      const ns = plannedStories.find(s => !completedStories.includes(s));
-      if (ns) { phase = 'BUILD'; step = '1'; story = ns; }
-    }
-    if (phase === 'NEXT_ITER') {
-      const nd = findDraft(projectRoot, iterNum + 1);
-      return nd
-        ? { phase: 'NEXT_ITER', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, nextIter: `iter-${iterNum+1}`, reason: 'next iter' }
-        : { phase: 'COMPLETE', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, reason: 'all done' };
-    }
-  }
-  if (!phase && lastStep) { phase = lastStep.phase || null; step = lastStep.step || null; }
-  if (phase === 'BUILD' && !story) { story = plannedStories.find(s => !completedStories.includes(s)) || null; }
-
-  // Log-based inference: when no state-manager/lastStep, infer from logs/
-  if (!phase || phase === 'GATE') {
-    const inferred = inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStories);
-    if (inferred) { phase = inferred.phase; step = inferred.step; if (inferred.story) story = inferred.story; }
-  }
-
-  if (!phase && draftPath) { phase = 'GATE'; step = 'check'; }
-  return { phase, step, story, route, iter, draftPath, plannedStories, completedStories, projectRoot,
-    reason: phase ? `${state ? 'ledger' : 'fallback'}: ${phase}${step ? '-'+step : ''}` : 'no state' };
-}
-
-// ── NEXT command builder ──
-function buildNextCommand(st) {
-  const { phase, step, story, iter, draftPath, projectRoot } = st;
-  const iterNum = parseInt((iter || 'iter-1').replace('iter-', ''), 10);
-  const da = draftPath ? `--draft=${draftPath}` : '--draft=<draft>';
-  const ta = projectRoot ? `--target=${projectRoot}` : '--target=<project>';
-  if (!phase) return '(unknown)';
-  switch (phase) {
-    case 'GATE': return `node sdid-tools/blueprint-gate.cjs ${da} ${ta} --iter=${iterNum}`;
-    case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
-    case 'PLAN': return `node sdid-tools/draft-to-plan.cjs ${da} --iter=${iterNum} ${ta}`;
-    case 'BUILD': return story
-      ? `node task-pipe/runner.cjs --phase=BUILD --step=${step||1} --story=${story} ${ta} --iteration=${iter}`
-      : `node task-pipe/runner.cjs --phase=BUILD --step=${step||1} ${ta} --iteration=${iter}`;
-    case 'SHRINK': return `node sdid-tools/blueprint-shrink.cjs ${da} --iter=${iterNum} ${ta}`;
-    case 'SCAN': return `node task-pipe/runner.cjs --phase=SCAN ${ta} --iteration=${iter}`;
-    case 'VERIFY': return `node sdid-tools/blueprint-verify.cjs ${da} ${ta} --iter=${iterNum}`;
-    case 'NEXT_ITER': {
-      const ni = st.nextIter || `iter-${iterNum+1}`;
-      return `node sdid-tools/blueprint-expand.cjs ${da} --iter=${parseInt(ni.replace('iter-',''),10)} ${ta}`;
-    }
-    case 'COMPLETE': return 'done';
-    case 'POC': return `node task-pipe/runner.cjs --phase=POC --step=${step||1} ${ta} --iteration=${iter}`;
-    default: return `node task-pipe/runner.cjs --phase=${phase} --step=${step||1} ${ta} --iteration=${iter}`;
-  }
-}
-
 // ── Target GEMS resolution ──
 function resolveTargetGems(projectRoot, storyId, filterGems) {
   const index = tryJson(path.join(projectRoot, '.gems', 'function-index-v2.json'));

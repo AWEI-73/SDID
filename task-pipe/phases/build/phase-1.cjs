@@ -439,7 +439,7 @@ modules/[module-name]/
         isFoundation ? '⚠️ 只建立 Plan 定義的檔案，禁止預建後續 Story 的模組目錄或檔案' : null,
         isFoundation ? '⚠️ src/modules/ 只建空目錄，不要在裡面建任何子模組' : null
       ].filter(Boolean),
-      output: getNextCmd('BUILD', '1', { story, level })
+      output: getNextCmd('BUILD', '1', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -467,7 +467,7 @@ modules/[module-name]/
         const extraFiles = detectExtraFiles(srcDir, manifest, typeConfig.extensions);
         if (extraFiles.length > 0) {
           const iterNum = parseInt(iteration.replace('iter-', ''));
-          const retryCmd = getRetryCmd('BUILD', '1', { story });
+          const retryCmd = getRetryCmd('BUILD', '1', { story, target: relativeTarget, iteration });
           const tasks = extraFiles.map(f => ({
             action: 'DELETE_FILE',
             file: path.relative(target, f),
@@ -525,7 +525,7 @@ modules/[module-name]/
       emitPass({
         scope: 'BUILD Phase 1',
         summary: `${srcFiles.length} 個源碼檔案 | ${projectType} | ${isFoundation ? 'Module 0' : 'Module N'}`,
-        nextCmd: getNextCmd('BUILD', '1', { story, level })
+        nextCmd: getNextCmd('BUILD', '1', { story, level, target: relativeTarget, iteration })
       }, {
         projectRoot: target,
         iteration: parseInt(iteration.replace('iter-', '')),
@@ -539,7 +539,7 @@ modules/[module-name]/
       const attempt = errorHandler.recordError('E5', `缺少: ${failed.map(c => c.name).join(', ')}`);
 
       const iterNum = parseInt(iteration.replace('iter-', ''));
-      const retryCmd = getRetryCmd('BUILD', '1', { story });
+      const retryCmd = getRetryCmd('BUILD', '1', { story, target: relativeTarget, iteration });
 
       if (errorHandler.shouldBlock()) {
         // 達到重試上限 - 仍然用指令式輸出，但標記為 BLOCKER
@@ -683,7 +683,7 @@ src/modules/[module-name]/
  * GEMS-DEPS: [Type.Name (說明)], [Type.Name (說明)]
  * ...
  */`),
-    output: getNextCmd('BUILD', '1', { story, level })
+    output: getNextCmd('BUILD', '1', { story, level, target: relativeTarget, iteration })
   }, {
     projectRoot: target,
     iteration: parseInt(iteration.replace('iter-', '')),
@@ -821,12 +821,17 @@ function validateModule0Structure(target, srcDir, projectType) {
   const hasFrontend = detectHasFrontend(target, srcDir);
   const hasRouting = detectHasRouting(target, srcDir);
 
+  // 從 Architecture Contract 讀取必要 layers（單一真相源）
+  const contract = require('../../lib/shared/architecture-contract-proxy.cjs');
+  const requiredLayers = contract.getRequiredLayers();
+
   // 必要目錄（所有專案）
   const checks = [
     { name: '專案設定 (package.json)', pass: fs.existsSync(path.join(target, 'package.json')) },
-    { name: 'Config Layer', pass: fs.existsSync(path.join(srcDir, 'config')) },
-    { name: 'Shared Layer', pass: fs.existsSync(path.join(srcDir, 'shared')) },
-    { name: 'Modules Layer', pass: fs.existsSync(path.join(srcDir, 'modules')) },
+    ...requiredLayers.map(layer => ({
+      name: `${layer.name.charAt(0).toUpperCase() + layer.name.slice(1)} Layer`,
+      pass: fs.existsSync(path.join(srcDir, layer.name)),
+    })),
   ];
 
   // 可選目錄（根據專案特徵）
@@ -902,6 +907,11 @@ function detectExtraFiles(srcDir, manifest, extensions) {
 
       // 跳過測試檔案
       if (relPath.includes('__tests__') || relPath.includes('.test.') || relPath.includes('.spec.')) continue;
+
+      // 跳過 Architecture Contract 認定的基礎建設檔案（如 src/config/*）
+      // 即使 Plan 沒明列，這些路徑也是合法的
+      const contract = require('../../lib/shared/architecture-contract-proxy.cjs');
+      if (contract.isInfraFile(relPath)) continue;
 
       // 檢查是否在 Plan 定義中
       if (!plannedPaths.has(relPath)) {

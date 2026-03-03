@@ -76,6 +76,162 @@ function extractACLines(planContent, funcName) {
 }
 
 // ============================================
+// 按 type 生成對應的程式碼主體
+// ============================================
+
+/**
+ * 根據 action type 決定副檔名
+ * UI / HOOK / ROUTE → .tsx，其餘 → .ts
+ * 但如果 filePath 已有副檔名，以 filePath 為準
+ */
+function resolveExt(type, filePath) {
+  if (filePath && (filePath.endsWith('.tsx') || filePath.endsWith('.ts'))) {
+    return filePath.endsWith('.tsx') ? 'tsx' : 'ts';
+  }
+  const frontendTypes = ['UI', 'HOOK', 'ROUTE'];
+  return frontendTypes.includes((type || '').toUpperCase()) ? 'tsx' : 'ts';
+}
+
+/**
+ * 根據 type 生成程式碼
+ * @returns {{ imports: string[], body: string[] }}
+ *   imports — 放在 GEMS 標籤之前的 import 行
+ *   body    — 放在 GEMS 標籤（含 AC 行）之後的程式碼
+ */
+function generateBody(name, type, storyId, stepLines) {
+  const notImpl = `throw new Error('Not implemented — ${storyId}');`;
+  const t = (type || 'SVC').toUpperCase();
+
+  switch (t) {
+    // ── 前端 ──────────────────────────────────────────────
+    case 'UI': {
+      return {
+        imports: [`import React from 'react';`],
+        body: [
+          `interface ${name}Props {`,
+          `  // TODO: define props`,
+          `}`,
+          '',
+          ...stepLines,
+          `export default function ${name}({ }: ${name}Props) {`,
+          `  ${notImpl}`,
+          `}`,
+          '',
+        ],
+      };
+    }
+    case 'HOOK': {
+      const hookName = name.startsWith('use') ? name : `use${name}`;
+      return {
+        imports: [`import { useState, useEffect } from 'react';`],
+        body: [
+          ...stepLines,
+          `export function ${hookName}(/* TODO */) {`,
+          `  const [state, setState] = useState(null);`,
+          '',
+          `  ${notImpl}`,
+          '',
+          `  return { state };`,
+          `}`,
+          '',
+        ],
+      };
+    }
+    case 'ROUTE': {
+      // 名稱本身可能已含 Page，不重複加
+      const pageName = name.endsWith('Page') ? name : `${name}Page`;
+      return {
+        imports: [`import React from 'react';`],
+        body: [
+          ...stepLines,
+          `export default function ${pageName}() {`,
+          `  ${notImpl}`,
+          `}`,
+          '',
+        ],
+      };
+    }
+    // ── 後端 / 共用 ───────────────────────────────────────
+    case 'API': {
+      return {
+        imports: [],
+        body: [
+          ...stepLines,
+          `export async function ${name}(/* TODO: params */): Promise<unknown> {`,
+          `  ${notImpl}`,
+          `}`,
+          '',
+        ],
+      };
+    }
+    case 'SVC': {
+      return {
+        imports: [],
+        body: [
+          ...stepLines,
+          `export function ${name}(/* TODO: params */): unknown {`,
+          `  ${notImpl}`,
+          `}`,
+          '',
+        ],
+      };
+    }
+    case 'LIB': {
+      return {
+        imports: [],
+        body: [
+          ...stepLines,
+          `export function ${name}(/* TODO: params */): unknown {`,
+          `  ${notImpl}`,
+          `}`,
+          '',
+        ],
+      };
+    }
+    case 'CONST': {
+      return {
+        imports: [],
+        body: [
+          ...stepLines,
+          `export const ${name} = {`,
+          `  // TODO`,
+          `} as const;`,
+          '',
+          `export type ${name}Type = typeof ${name};`,
+          '',
+        ],
+      };
+    }
+    case 'SCRIPT': {
+      return {
+        imports: [],
+        body: [
+          ...stepLines,
+          `async function ${name}() {`,
+          `  ${notImpl}`,
+          `}`,
+          '',
+          `${name}().catch(console.error);`,
+          '',
+        ],
+      };
+    }
+    default: {
+      return {
+        imports: [],
+        body: [
+          ...stepLines,
+          `export function ${name}(/* TODO */) {`,
+          `  ${notImpl}`,
+          `}`,
+          '',
+        ],
+      };
+    }
+  }
+}
+
+// ============================================
 // 骨架生成
 // ============================================
 function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
@@ -91,13 +247,23 @@ function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
 
   // 從 plan 提取完整 GEMS 規格（含 flow, deps, test, testFile）
   const spec = extractPlanSpec(planPath);
-  // 從 plan 提取精確檔案路徑（Item 的檔案表格）
+  // 從 plan 提取精確檔案路徑 + type（Item 的檔案表格 + 工作項目表格）
   const fileManifest = extractFileManifest(planPath);
 
-  // 建立 funcName → filePath 映射
+  // 建立 funcName → { filePath, type } 映射
+  // fileManifest.files 有 functionName + path
+  // spec.functions 有 name + type（從工作項目表格）
   const fileMap = {};
   for (const f of fileManifest.files) {
-    fileMap[f.functionName.toLowerCase()] = f.path;
+    fileMap[f.functionName.toLowerCase()] = { filePath: f.path, action: f.action };
+  }
+
+  // type 從 plan 工作項目表格提取（| Item | 名稱 | Type | Priority |）
+  const typeMap = {};
+  const typePattern = /\|\s*\d+\s*\|\s*(\w+)\s*\|\s*(CONST|LIB|API|SVC|HOOK|UI|ROUTE|SCRIPT|FEATURE|MODIFY)\s*\|\s*(P[0-3])/gi;
+  let tm;
+  while ((tm = typePattern.exec(planContent)) !== null) {
+    typeMap[tm[1].toLowerCase()] = tm[2].toUpperCase();
   }
 
   // 從 plan 檔名推導 storyId
@@ -110,13 +276,21 @@ function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
   }
 
   for (const fn of spec.functions) {
-    const filePath = fileMap[fn.name.toLowerCase()] || '';
+    const mapped = fileMap[fn.name.toLowerCase()];
 
-    if (!filePath) {
+    if (!mapped || !mapped.filePath) {
       result.skipped.push(`${fn.name} (找不到檔案路徑)`);
       continue;
     }
 
+    // Modify 類型跳過（改既有檔案，不生成骨架）
+    if (mapped.action && mapped.action.toLowerCase() === 'modify') {
+      result.skipped.push(`${fn.name} (Modify — 跳過)`);
+      continue;
+    }
+
+    const actionType = typeMap[fn.name.toLowerCase()] || 'SVC';
+    const filePath = mapped.filePath;
     const fullPath = path.join(targetDir, filePath);
 
     // 已存在就跳過（不覆蓋）
@@ -125,18 +299,13 @@ function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
       continue;
     }
 
-    const isTsx = filePath.endsWith('.tsx');
-
     // AC 行
     const acLines = extractACLines(planContent, fn.name);
-
     // STEP 錨點
     const stepLines = flowToStepLines(fn.flow);
 
-    // 組裝骨架
-    const lines = [
-      `// ${filePath} (由 plan-to-scaffold 自動生成)`,
-      '',
+    // GEMS 標籤區塊
+    const gemsBlock = [
       '/**',
       ` * GEMS: ${fn.name} | ${fn.priority} | ○○ | (args)→Result | ${storyId} | ${fn.description || fn.name}`,
       ` * GEMS-FLOW: ${fn.flow || 'TODO'}`,
@@ -146,27 +315,26 @@ function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
       ` * GEMS-TEST-FILE: ${fn.testFile || 'TODO.test.ts'}`,
       ' */',
       ...acLines,
-      ...stepLines,
     ];
 
-    if (isTsx) {
-      lines.push(`export default function ${fn.name}() {`);
-      lines.push(`  throw new Error('Not implemented — ${storyId}');`);
-      lines.push('}');
-    } else {
-      lines.push(`export function ${fn.name}(/* TODO */) {`);
-      lines.push(`  throw new Error('Not implemented — ${storyId}');`);
-      lines.push('}');
-    }
-    lines.push('');
+    // 程式碼主體（按 type 分支）
+    const { imports, body } = generateBody(fn.name, actionType, storyId, stepLines);
+
+    const lines = [
+      `// ${filePath} (由 plan-to-scaffold 自動生成 | type: ${actionType})`,
+      '',
+      ...(imports.length > 0 ? [...imports, ''] : []),
+      ...gemsBlock,
+      ...body,
+    ];
 
     if (dryRun) {
-      result.generated.push(`${fn.name} → ${filePath} (dry-run)`);
+      result.generated.push(`${fn.name} [${actionType}] → ${filePath} (dry-run)`);
     } else {
       const dir = path.dirname(fullPath);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(fullPath, lines.join('\n'), 'utf8');
-      result.generated.push(`${fn.name} → ${filePath}`);
+      result.generated.push(`${fn.name} [${actionType}] → ${filePath}`);
     }
   }
 

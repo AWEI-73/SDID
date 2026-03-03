@@ -32,6 +32,9 @@ try {
 // Regex fallback 永遠可用
 const validator = require('./gems-validator.cjs');
 
+// AC 行解析（from enhanced scanner）
+const { findACLines } = require('./gems-scanner-enhanced.cjs');
+
 // ── 統一掃描 API ──
 
 /**
@@ -44,6 +47,7 @@ const validator = require('./gems-validator.cjs');
  */
 function scan(srcDir, projectRoot, options = {}) {
   const mode = options.mode || 'auto';
+  let result;
 
   // AST 模式（v2）
   if ((mode === 'ast' || mode === 'auto') && scannerV2) {
@@ -51,7 +55,7 @@ function scan(srcDir, projectRoot, options = {}) {
       const root = projectRoot || inferProjectRoot(srcDir);
       const v2Result = scannerV2.scanV2(srcDir, root);
       if (v2Result && (v2Result.functions?.length > 0 || v2Result.tagged?.length > 0)) {
-        return normalizeV2Result(v2Result);
+        result = normalizeV2Result(v2Result);
       }
     } catch (e) {
       if (mode === 'ast') {
@@ -61,21 +65,81 @@ function scan(srcDir, projectRoot, options = {}) {
     }
   }
 
-  // Regex fallback
-  const regexResult = validator.scanGemsTags(srcDir);
-  return {
-    functions: regexResult.functions || [],
-    stats: {
-      total: regexResult.stats?.total || 0,
-      tagged: regexResult.stats?.tagged || 0,
-      p0: regexResult.stats?.p0 || 0,
-      p1: regexResult.stats?.p1 || 0,
-      p2: regexResult.stats?.p2 || 0,
-      p3: regexResult.stats?.p3 || 0,
-    },
-    untagged: [],
-    scannerVersion: 'regex-6.0',
-  };
+  if (!result) {
+    // Regex fallback
+    const regexResult = validator.scanGemsTags(srcDir);
+    result = {
+      functions: regexResult.functions || [],
+      stats: {
+        total: regexResult.stats?.total || 0,
+        tagged: regexResult.stats?.tagged || 0,
+        p0: regexResult.stats?.p0 || 0,
+        p1: regexResult.stats?.p1 || 0,
+        p2: regexResult.stats?.p2 || 0,
+        p3: regexResult.stats?.p3 || 0,
+      },
+      untagged: [],
+      scannerVersion: 'regex-6.0',
+    };
+  }
+
+  // AC 後處理：為每個函式補上 acIds（如果 scanner 沒提供）
+  enrichWithACIds(result.functions, srcDir);
+
+  return result;
+}
+
+/**
+ * 為函式補上 acIds — 讀取源碼中 GEMS 標籤結束後、STEP 前的 AC-X.Y 行
+ * @param {Array} functions - 函式陣列（會被 mutate）
+ * @param {string} srcDir - 源碼目錄
+ */
+function enrichWithACIds(functions, srcDir) {
+  // 按檔案分組，避免重複讀取
+  const byFile = new Map();
+  for (const fn of functions) {
+    if (fn.acIds) continue; // 已有就跳過
+    if (!fn.file) continue;
+    if (!byFile.has(fn.file)) byFile.set(fn.file, []);
+    byFile.get(fn.file).push(fn);
+  }
+
+  for (const [relFile, fns] of byFile) {
+    // 嘗試解析檔案路徑
+    let fullPath = relFile;
+    if (!path.isAbsolute(relFile)) {
+      // 嘗試從 srcDir 的父目錄解析（因為 file 通常是 src/... 相對路徑）
+      const projectRoot = inferProjectRoot(srcDir);
+      fullPath = path.join(projectRoot, relFile);
+    }
+    if (!fs.existsSync(fullPath)) continue;
+
+    try {
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const lines = content.split('\n');
+
+      for (const fn of fns) {
+        // 找 GEMS 標籤結束行（ */ 行）
+        // 從函式的 startLine 往上找
+        const funcLine = fn.startLine || 0;
+        if (funcLine <= 0) continue;
+
+        let gemsEndLine = 0;
+        for (let i = funcLine - 2; i >= Math.max(0, funcLine - 50); i--) {
+          if (lines[i] && lines[i].trim() === '*/') {
+            gemsEndLine = i + 1; // 轉 1-based
+            break;
+          }
+        }
+        if (gemsEndLine === 0) continue;
+
+        const acIds = findACLines(lines, gemsEndLine, funcLine);
+        if (acIds.length > 0) {
+          fn.acIds = acIds;
+        }
+      }
+    } catch { /* 讀取失敗就跳過 */ }
+  }
 }
 
 /**
@@ -89,6 +153,8 @@ function normalizeV2Result(v2Result) {
     functions: tagged.map(f => ({
       name: f.name,
       file: f.file,
+      startLine: f.startLine || null,
+      endLine: f.endLine || null,
       priority: f.priority,
       status: f.status || '✓✓',
       signature: f.signature || '',

@@ -212,9 +212,60 @@ function compareActions(blueprintActions, codeFunctions) {
 }
 
 // ============================================
+// AC 覆蓋比對
+// ============================================
+/**
+ * 比對 plan 中定義的 AC ID vs 源碼函式已標記的 AC ID
+ * @param {string[]} planAcIds - 從 plan 文件提取的 AC ID 清單
+ * @param {Array} codeFunctions - scanner 掃出的函式（含 acIds 欄位）
+ * @returns {{ tagged: string[], untagged: string[], total: number }}
+ */
+function checkACCoverage(planAcIds, codeFunctions) {
+  // 收集源碼中已標記的 AC ID
+  const taggedAcIds = new Set();
+  for (const fn of codeFunctions) {
+    if (fn.acIds && fn.acIds.length > 0) {
+      for (const id of fn.acIds) taggedAcIds.add(id);
+    }
+  }
+
+  const tagged = [];
+  const untagged = [];
+  for (const acId of planAcIds) {
+    if (taggedAcIds.has(acId)) {
+      tagged.push(acId);
+    } else {
+      untagged.push(acId);
+    }
+  }
+
+  return { tagged, untagged, total: planAcIds.length };
+}
+
+/**
+ * 從 plan 目錄提取所有 AC ID（格式: AC-X.Y 或 AC-X.Y.Z）
+ * @param {string} planDir - plan 目錄路徑
+ * @returns {string[]}
+ */
+function extractPlanAcIds(planDir) {
+  if (!fs.existsSync(planDir)) return [];
+  const acIds = new Set();
+  const planFiles = fs.readdirSync(planDir).filter(f => f.startsWith('implementation_plan_'));
+  for (const planFile of planFiles) {
+    const content = fs.readFileSync(path.join(planDir, planFile), 'utf8');
+    const pattern = /\bAC-([\d]+\.[\d.]+)\b/g;
+    let m;
+    while ((m = pattern.exec(content)) !== null) {
+      acIds.add(`AC-${m[1]}`);
+    }
+  }
+  return [...acIds];
+}
+
+// ============================================
 // 報告生成: JSON
 // ============================================
-function generateVerifyJson(draft, comparison, args) {
+function generateVerifyJson(draft, comparison, args, acCoverage) {
   const stats = parser.calculateStats(draft);
   return {
     $schema: 'blueprint-verify-v1.0',
@@ -231,11 +282,15 @@ function generateVerifyJson(draft, comparison, args) {
       coverage: comparison.matched.length > 0
         ? Math.round(comparison.matched.length / (comparison.matched.length + comparison.missing.length) * 100)
         : 0,
+      acTotal: acCoverage ? acCoverage.total : 0,
+      acTagged: acCoverage ? acCoverage.tagged.length : 0,
+      acUntagged: acCoverage ? acCoverage.untagged.length : 0,
     },
     matched: comparison.matched,
     missing: comparison.missing,
     extra: comparison.extra,
     mismatches: comparison.mismatches,
+    acCoverage: acCoverage || null,
   };
 }
 
@@ -262,8 +317,21 @@ function generateVerifyMarkdown(verifyJson) {
     `| ⚠️ 多餘 (碼有、藍圖沒有) | ${s.extra} |`,
     `| 🔄 屬性不一致 | ${s.mismatches} |`,
     `| 覆蓋率 | ${s.coverage}% |`,
+    `| AC 總數 | ${s.acTotal} |`,
+    `| AC 已標記 | ${s.acTagged} |`,
+    `| AC 未標記 | ${s.acUntagged} |`,
     ``,
   ];
+
+  // AC 未標記
+  if (verifyJson.acCoverage && verifyJson.acCoverage.untagged.length > 0) {
+    lines.push(`## ⚠️ AC 未標記（源碼函式缺少 // AC-X.Y 行）`);
+    lines.push(``);
+    for (const acId of verifyJson.acCoverage.untagged) {
+      lines.push(`- ${acId}`);
+    }
+    lines.push(``);
+  }
 
   // Missing
   if (verifyJson.missing.length > 0) {
@@ -493,8 +561,19 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
   // 比對
   const comparison = compareActions(blueprintActions, codeFunctions);
 
+  // AC 覆蓋比對
+  let acCoverage = null;
+  if (args.target) {
+    const planDir = path.join(args.target, '.gems', 'iterations', `iter-${args.iter}`, 'plan');
+    const planAcIds = extractPlanAcIds(planDir);
+    if (planAcIds.length > 0) {
+      acCoverage = checkACCoverage(planAcIds, codeFunctions);
+      console.log(`   AC 覆蓋: ${acCoverage.tagged.length}/${acCoverage.total} 已標記${acCoverage.untagged.length > 0 ? ` (未標記: ${acCoverage.untagged.join(', ')})` : ' ✅'}`);
+    }
+  }
+
   // 生成報告
-  const verifyJson = generateVerifyJson(draft, comparison, args);
+  const verifyJson = generateVerifyJson(draft, comparison, args, acCoverage);
   const verifyMd = generateVerifyMarkdown(verifyJson);
 
   // 輸出
@@ -514,6 +593,9 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
   const s = verifyJson.summary;
   console.log(`\n📊 結果: ${s.matched} 匹配 | ${s.missing} 缺失 | ${s.extra} 多餘 | ${s.mismatches} 不一致`);
   console.log(`   覆蓋率: ${s.coverage}%`);
+  if (s.acTotal > 0) {
+    console.log(`   AC 標記: ${s.acTagged}/${s.acTotal}${s.acUntagged > 0 ? ` ⚠️ ${s.acUntagged} 個未標記` : ' ✅'}`);
+  }
 
   // log 存檔
   const logProjectRoot = args.target || null;
@@ -562,6 +644,8 @@ module.exports = {
   loadFunctions,
   extractBlueprintActions,
   compareActions,
+  checkACCoverage,
+  extractPlanAcIds,
   generateVerifyJson,
   generateVerifyMarkdown,
   normalize,

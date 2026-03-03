@@ -25,8 +25,8 @@ const { getNextCmd, getRetryCmd, getPassCmd } = require('../../lib/shared/next-c
 
 // Note: validateExecutability is loaded dynamically in checkProjectExecutability()
 
-// v2.1: 統一使用 gems-scanner-unified（內建 AST + Regex fallback）
-const { scanGemsTags } = require('../../lib/scan/gems-scanner-unified.cjs');
+// v2.1: 統一使用 gems-scanner-unified（內建 AST + Regex fallback + AC 後處理）
+const { scan: scanUnified, scanGemsTags } = require('../../lib/scan/gems-scanner-unified.cjs');
 
 function run(options) {
 
@@ -527,8 +527,8 @@ function autoGenerateOutputs(target, iteration, story, buildPath, storyContext) 
       return { success: false, error: `源碼目錄不存在: ${srcPath}` };
     }
 
-    // 掃描 GEMS 標籤
-    const scanResult = scanGemsTags(srcPath);
+    // 掃描 GEMS 標籤（使用 unified scan，含 AC 後處理）
+    const scanResult = scanUnified(srcPath, target);
 
     // 過濾屬於此 Story 的函式
     const storyFunctions = scanResult.functions.filter(f => f.storyId === story);
@@ -576,38 +576,58 @@ function autoGenerateOutputs(target, iteration, story, buildPath, storyContext) 
       }
     }
 
-    // Check 2: AC 覆蓋檢查 — plan AC vs 實際測試
+    // Check 2: AC 覆蓋檢查 v2 — 基於源碼標籤映射（// AC-X.Y 行）
+    // 策略：
+    //   1. 從 plan 提取本 Story 的 AC ID 清單（// AC-X.Y 格式）
+    //   2. 從 scanner 結果收集源碼函式的 acIds（已標記的 AC）
+    //   3. 比對：plan 有但源碼沒標記 → AC_NOT_TAGGED（WARNING）
+    //   4. 已標記的 AC → 再確認測試檔案有 AC-X.Y 字串 → AC_UNCOVERED（WARNING）
     if (fs.existsSync(planPath)) {
       const planContent = fs.readFileSync(planPath, 'utf8');
-      // 提取 AC (Acceptance Criteria) 項目
-      const acPattern = /(?:AC|驗收條件|Acceptance)[- ]?(\d+)[.:：]\s*(.+)/gi;
+
+      // 從 plan 提取 AC ID（格式: AC-X.Y 或 AC-X.Y.Z）
+      const planAcPattern = /\bAC-([\d]+\.[\d.]+)\b/g;
       let acMatch;
-      const acItems = [];
-      while ((acMatch = acPattern.exec(planContent)) !== null) {
-        acItems.push({ id: `AC-${acMatch[1]}`, description: acMatch[2].trim() });
+      const planAcIds = new Set();
+      while ((acMatch = planAcPattern.exec(planContent)) !== null) {
+        planAcIds.add(`AC-${acMatch[1]}`);
       }
 
-      if (acItems.length > 0) {
-        // 掃描測試檔案內容，看哪些 AC 有被覆蓋
+      if (planAcIds.size > 0) {
+        // 從 scanner 結果收集源碼中已標記的 AC ID
+        const taggedAcIds = new Set();
+        for (const fn of storyFunctions) {
+          if (fn.acIds && fn.acIds.length > 0) {
+            for (const id of fn.acIds) taggedAcIds.add(id);
+          }
+        }
+
+        // 掃描測試檔案，確認 AC ID 有出現在測試中
         const testFiles = findTestFilesForStory(srcPath, story);
         const testContent = testFiles.map(f => {
           try { return fs.readFileSync(f, 'utf8'); } catch { return ''; }
         }).join('\n');
 
-        for (const ac of acItems) {
-          // 簡單匹配: AC 描述的關鍵字是否出現在測試中
-          const keywords = ac.description
-            .replace(/[^\w\u4e00-\u9fa5]/g, ' ')
-            .split(/\s+/)
-            .filter(w => w.length > 2);
-          const covered = keywords.some(kw => testContent.toLowerCase().includes(kw.toLowerCase()));
-          if (!covered) {
+        for (const acId of planAcIds) {
+          if (!taggedAcIds.has(acId)) {
+            // 源碼函式沒有標記這個 AC
             qualityIssues.push({
-              type: 'AC_UNCOVERED',
+              type: 'AC_NOT_TAGGED',
               severity: 'WARNING',
-              ac: ac.id,
-              message: `${ac.description} — 無對應測試覆蓋`,
+              ac: acId,
+              message: `${acId} — plan 中定義但源碼函式未標記（缺少 // ${acId} 行）`,
             });
+          } else {
+            // 已標記，確認測試有覆蓋
+            const coveredInTest = testContent.includes(acId);
+            if (!coveredInTest) {
+              qualityIssues.push({
+                type: 'AC_UNCOVERED',
+                severity: 'WARNING',
+                ac: acId,
+                message: `${acId} — 源碼已標記但測試檔案中找不到對應的 ${acId} 字串`,
+              });
+            }
           }
         }
       }

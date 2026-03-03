@@ -227,7 +227,7 @@ function extractAllGemsComments(content) {
  */
 function parseFile(ts, filePath, projectRoot) {
   const content = fs.readFileSync(filePath, 'utf8');
-  const relFile = path.relative(process.cwd(), filePath);
+  const relFile = path.relative(projectRoot, filePath);
   const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
 
   const functions = [];

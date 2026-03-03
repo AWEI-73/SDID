@@ -1,18 +1,8 @@
 #!/usr/bin/env node
 /**
- * SDID Blueprint Loop Proxy
- * 轉發到實際的 blueprint-loop.cjs
+ * @deprecated — 請改用 MCP sdid-loop tool
+ * blueprint-loop.cjs 已被 sdid-loop MCP tool 取代（支援四路線自動偵測）。
+ * 此腳本保留僅供歷史參考，不再維護。
  */
-const path = require('path');
-const { spawnSync } = require('child_process');
-
-const ACTUAL_SCRIPT = path.resolve(__dirname, '../../blueprint-loop/scripts/loop.cjs');
-const args = process.argv.slice(2);
-
-const result = spawnSync('node', [ACTUAL_SCRIPT, ...args], {
-  stdio: 'inherit',
-  cwd: process.cwd(),
-  encoding: 'utf-8'
-});
-
-process.exit(result.status || 0);
+console.warn('[DEPRECATED] blueprint-loop.cjs 已廢棄，請改用 MCP sdid-loop tool');
+process.exit(1);

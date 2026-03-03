@@ -68,7 +68,9 @@ node task-pipe/skills/sdid-loop/scripts/loop.cjs --new --project=my-app
 node task-pipe/skills/sdid-loop/scripts/loop.cjs --project=./my-app
 
 # Blueprint 路線
-node .agent/skills/sdid/scripts/blueprint-loop.cjs --project=./my-app
+# 使用 MCP sdid-loop tool（自動偵測路線）
+# 或直接執行：
+node sdid-tools/state-guide.cjs --project=./my-app
 
 # 監控 UI
 node sdid-monitor/server.cjs

@@ -15,18 +15,19 @@ description: SDID 統一開發框架 — 從需求設計到程式碼交付的完
 | **客製化/第三方/特化模組開發**（「跑 POC」「原型驗證」「串接」「調整」「第三方」「客製」+ 非標準 CRUD） | **POC-FIX** | 開 POC 資料夾 → 反覆驗證 → 整合清除 → BUILD + 必寫測試 |
 | 有專案 + 主藍圖 ACTIVE + 有 [STUB]/[CURRENT] | BLUEPRINT-CONTINUE | 讀 [blueprint-design.md](references/blueprint-design.md) → CONTINUE 段落 |
 | 無專案 + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話 |
-| 無專案 + 使用者需求明確 | DESIGN-TASKPIPE | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --new --project=[name]` |
+| 無專案 + 使用者需求明確 | DESIGN-TASKPIPE | 呼叫 MCP `sdid-loop` tool，`project=[name]`（自動走 Task-Pipe 路線） |
 | 有專案但無 draft + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話（迭代號自動遞增） |
-| 有專案但無 draft + 使用者需求明確 | DESIGN-TASKPIPE | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]`（進入新迭代） |
+| 有專案但無 draft + 使用者需求明確 | DESIGN-TASKPIPE | 呼叫 MCP `sdid-loop` tool，`project=[path]`（進入新迭代） |
 | 有 draft，無 plan | BUILD-AUTO | 看 draft 類型自動選路線（見下方） |
 | 有 implementation_plan | BUILD-AUTO | 自動偵測路線繼續 BUILD |
-| 使用者說「快速建」「練習」「小專案」 | QUICKSTART | 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs --new --project=[name] --type=[type]` |
+| 使用者說「快速建」「練習」「小專案」 | QUICKSTART | 呼叫 MCP `sdid-loop` tool，`project=[name]`（自動走 Task-Pipe 路線） |
 
 ### Draft 類型自動判斷（BUILD-AUTO 進入時）
 
 ```
-Enhanced Draft 格式（模組動作表、迭代規劃表）→ Blueprint 路線 → blueprint-loop.cjs
-簡單 requirement_draft → Task-Pipe 路線 → taskpipe-loop.cjs
+Enhanced Draft 格式（模組動作表、迭代規劃表）→ Blueprint 路線 → 呼叫 MCP sdid-loop tool
+簡單 requirement_draft → Task-Pipe 路線 → 呼叫 MCP sdid-loop tool
+（sdid-loop 會自動偵測路線，不需要手動選擇腳本）
 ```
 
 ### 路線選擇優先問題
@@ -103,7 +104,7 @@ Task-Pipe:  POC Step 5 完成    → CYNEFIN-CHECK → @PASS → PLAN Step 1 →
 
 ### DESIGN-TASKPIPE 模式
 - 讀 [references/taskpipe-design.md](references/taskpipe-design.md) 取得 POC-PLAN 規則
-- 執行 `node .agent/skills/sdid/scripts/taskpipe-loop.cjs`，按 output 指示操作
+- 呼叫 MCP `sdid-loop` tool（`project=[path]`），按 output 指示操作
 
 ### BUILD-AUTO 模式
 - 讀 [references/build-execution.md](references/build-execution.md) 取得 BUILD 規則

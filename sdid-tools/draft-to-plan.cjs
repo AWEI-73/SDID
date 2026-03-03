@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const parser = require('./lib/draft-parser-standalone.cjs');
-const logOutput = require('./lib/log-output.cjs');
+const logOutput = require('../task-pipe/lib/shared/log-output.cjs');
 const { validatePlan, formatResult } = require('../task-pipe/lib/plan/plan-validator.cjs');
 
 // ============================================

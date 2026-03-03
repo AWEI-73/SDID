@@ -8,19 +8,16 @@
  * 4. anchorErrorSpec 終端不印 EXAMPLE / GATE_SPEC
  * 5. anchorTemplatePending 終端不印完整模板
  * 
- * 用法: node task-pipe/tests/dryrun-log-output-v3.cjs [--sdid]
+ * 用法: node task-pipe/tests/dryrun-log-output-v3.cjs
  */
 
 const path = require('path');
 const fs = require('fs');
 
-const isSDID = process.argv.includes('--sdid');
-const label = isSDID ? 'sdid-tools' : 'task-pipe';
+const label = 'task-pipe';
 
-// 載入目標模組
-const logOutput = isSDID
-  ? require('../../sdid-tools/lib/log-output.cjs')
-  : require('../lib/shared/log-output.cjs');
+// 載入目標模組 (P2: 統一為 task-pipe 版，sdid-tools 版已移除)
+const logOutput = require('../lib/shared/log-output.cjs');
 
 // 建立臨時測試目錄
 const testRoot = path.join(__dirname, '..', '_test-dryrun-tmp');

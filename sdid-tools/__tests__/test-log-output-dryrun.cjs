@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const logOutput = require('../lib/log-output.cjs');
+const logOutput = require('../../task-pipe/lib/shared/log-output.cjs');
 
 // ============================================
 // 測試用臨時專案

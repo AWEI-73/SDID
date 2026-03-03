@@ -355,21 +355,13 @@ Phase 2 新增檢查：
 
 ### 待實作項目
 
-- [ ] **骨架預生成**: draft-to-plan 加 `generateScaffold()` — 產出 .ts 骨架檔（標籤+AC+STEP+簽名）
-  - 改動: `sdid-tools/draft-to-plan.cjs` 加生成邏輯
-  - 改動: `sdid-core/architecture-contract.cjs` 確認 `inferFilePath` 覆蓋所有 type
-  - 改動: `task-pipe/phases/build/phase-1.cjs` 從「建骨架」改為「驗證骨架存在」
-- [ ] **AC 格式**: `// AC-X.Y (摘要)` 卡在標籤 `*/` 後、`[STEP]` 前
-  - 改動: `sdid-tools/draft-to-plan.cjs` 的 plan 模板 + 骨架生成
-  - 改動: `task-pipe/lib/scan/gems-scanner-enhanced.cjs` 支援 `// AC-X.Y` 解析
-  - 改動: `sdid-tools/lib/draft-parser-standalone.cjs` 解析 AC 完整內容（不只 ID）
-- [ ] **Phase 2 骨架比對**: 契約函式標籤鎖死，新增函式必須 P3
-  - 改動: `task-pipe/phases/build/phase-2.cjs` 加骨架比對邏輯
-- [ ] **AC 穿透後續**: Phase 8 真檢查 + VERIFY AC 比對
-  - 改動: `task-pipe/phases/build/phase-8.cjs` AC 覆蓋改用標籤映射
-  - 改動: `sdid-tools/blueprint-verify.cjs` 加 AC 覆蓋比對
-- [ ] 標籤 Shrink 腳本（SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點）
-- [ ] Scanner 支援 shrink 格式解析（三格版）
-- [ ] 文件更新: output reference v3 移除 sdid-tools 獨立 API 表 + 補 v3.1 Emit 函式
-- [ ] plan-schema 加 AC_FIELD 規則（等 AC 穿透後）
+- [x] **骨架預生成**: draft-to-plan generateScaffold() (commit 3373a66)
+- [x] **AC 格式**: // AC-X.Y (摘要) 標籤外掛行 (commit 3373a66)
+- [x] **Phase 2 骨架比對**: 契約函式標籤鎖死 (commit 3373a66)
+- [x] **plan-to-scaffold v1.1**: type-aware 骨架 CONST/API/SVC/HOOK/UI/ROUTE/SCRIPT (commit 0596054)
+- [x] **AC 穿透後續**: Phase 8 AC 標籤映射 + VERIFY AC 覆蓋 + unified scanner AC 後處理 (commit 70183c0)
+- [ ] **標籤 Shrink 腳本** (P2): SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點
+- [ ] **Scanner 支援 shrink 格式** (P2): 三格版解析
+- [ ] 文件更新 (P3): output reference v3 移除 sdid-tools 獨立 API 表 + 補 v3.1 Emit 函式
+- [ ] plan-schema 加 AC_FIELD 規則（AC 穿透已完成，可以加了）
 - [ ] DEPS 從模組定義推導到 action（低優先）

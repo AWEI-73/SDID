@@ -86,6 +86,27 @@ function scan(srcDir, projectRoot, options = {}) {
   // AC 後處理：為每個函式補上 acIds（如果 scanner 沒提供）
   enrichWithACIds(result.functions, srcDir);
 
+  // Shrink 格式後處理：掃描 shrink 格式標籤（/** GEMS: name | P | FLOW */）
+  // v2 scanner 和 regex scanner 都不認識 shrink 格式，需要額外掃描
+  const shrinkFns = parseShrinkFormat(srcDir);
+  if (shrinkFns.length > 0) {
+    // 合併：shrink 函式如果已在 result.functions 中就跳過（以 name 去重）
+    const existingNames = new Set(result.functions.map(f => f.name));
+    for (const fn of shrinkFns) {
+      if (!existingNames.has(fn.name)) {
+        result.functions.push(fn);
+        // 更新 stats
+        const p = fn.priority;
+        if (p === 'P0') result.stats.p0 = (result.stats.p0 || 0) + 1;
+        else if (p === 'P1') result.stats.p1 = (result.stats.p1 || 0) + 1;
+        else if (p === 'P2') result.stats.p2 = (result.stats.p2 || 0) + 1;
+        else if (p === 'P3') result.stats.p3 = (result.stats.p3 || 0) + 1;
+        result.stats.tagged = (result.stats.tagged || 0) + 1;
+        result.stats.total = (result.stats.total || 0) + 1;
+      }
+    }
+  }
+
   return result;
 }
 
@@ -197,6 +218,79 @@ function inferProjectRoot(srcDir) {
     dir = path.resolve(dir, '..');
   }
   return path.resolve(srcDir, '..');
+}
+
+/**
+ * 解析 shrink 格式標籤（/** GEMS: name | P | FLOW *\/）
+ * v2 scanner 和 regex scanner 都不認識此格式，需要額外掃描
+ * @param {string} srcDir
+ * @returns {Array} 函式陣列
+ */
+function parseShrinkFormat(srcDir) {
+  const results = [];
+  if (!fs.existsSync(srcDir)) return results;
+
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory() && entry.name !== 'node_modules' && !entry.name.startsWith('.')) {
+        walk(full);
+      } else if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
+        parseFileShrink(full, results);
+      }
+    }
+  }
+  walk(srcDir);
+  return results;
+}
+
+function parseFileShrink(filePath, results) {
+  let content;
+  try { content = fs.readFileSync(filePath, 'utf8'); } catch { return; }
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    // 匹配 shrink 格式：/** GEMS: name | P0 | FLOW */
+    const m = trimmed.match(/^\/\*\*\s*GEMS:\s*(\w+)\s*\|\s*(P[0-3])(?:\s*\|\s*([^*]+))?\s*\*\//);
+    if (!m) continue;
+
+    const name = m[1];
+    const priority = m[2];
+    const flow = m[3] ? m[3].trim() : null;
+
+    // 收集後續的 AC 行和 STEP 行
+    const acIds = [];
+    let j = i + 1;
+    // 跳過路徑行（// src/...）
+    while (j < lines.length && lines[j].trim().startsWith('// src/')) j++;
+    // 收集 AC 行
+    while (j < lines.length) {
+      const t = lines[j].trim();
+      const acM = t.match(/^\/\/\s*(AC-[\d.]+)/);
+      if (acM) { acIds.push(acM[1]); j++; }
+      else break;
+    }
+
+    results.push({
+      name,
+      file: filePath,
+      startLine: i + 1,
+      priority,
+      flow,
+      acIds: acIds.length > 0 ? acIds : undefined,
+      status: '✓✓',
+      description: '',
+      storyId: null,
+      deps: [],
+      depsRisk: null,
+      test: null,
+      testFile: null,
+      gemsId: null,
+      fraudIssues: [],
+      shrinkFormat: true,
+    });
+  }
 }
 
 // ── Re-export gems-validator API（向後相容）──

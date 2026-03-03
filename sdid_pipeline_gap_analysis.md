@@ -331,19 +331,18 @@ export function createFactor(/* TODO */): /* TODO */ {
 - 骨架不寫 import — AI 填肉時自然會加
 - 用 `--scaffold` flag 控制（預設開啟），`--no-scaffold` 可關閉
 
-### 決策 6: 非契約函式的自由新增（P3 規則）（2026-03-04）
+### 決策 6: 非契約函式的自由新增（不限 Priority）（2026-03-04）
 
-骨架預生成後，契約函式（P0/P1/P2）的標籤是鎖死的。但 AI 開發過程中可能需要新增 helper/utility。
+骨架預生成後，契約函式的標籤是鎖死的。但 AI 開發過程中可能需要新增 helper/utility。
 
 規則：
-- 契約函式（骨架生成的 P0/P1/P2）：標籤不能改，Phase 2 比對骨架驗證
-- AI 自由新增的函式：必須有標籤，Priority 只能是 P3
+- 契約函式（骨架生成的）：標籤不能改，Phase 2 比對骨架驗證
+- AI 自由新增的函式：必須有標籤，Priority 不限（AI 自己判斷）
 - 沒標籤的函式：FAIL（跟現在一樣）
 
 Phase 2 新增檢查：
 - 骨架函式的標籤被篡改 → BLOCKER（比對 plan manifest）
 - 新增函式沒標籤 → BLOCKER
-- 新增函式標籤 Priority > P3 → WARNING（提醒可能該回去改 plan）
 
 ### 決策 7: 標籤降級（備忘，暫不實作）（2026-03-04）
 
@@ -354,14 +353,27 @@ Phase 2 新增檢查：
 ---
 
 ### 待實作項目
+### 待實作項目
 
-- [x] **骨架預生成**: draft-to-plan generateScaffold() (commit 3373a66)
-- [x] **AC 格式**: // AC-X.Y (摘要) 標籤外掛行 (commit 3373a66)
-- [x] **Phase 2 骨架比對**: 契約函式標籤鎖死 (commit 3373a66)
-- [x] **plan-to-scaffold v1.1**: type-aware 骨架 CONST/API/SVC/HOOK/UI/ROUTE/SCRIPT (commit 0596054)
-- [x] **AC 穿透後續**: Phase 8 AC 標籤映射 + VERIFY AC 覆蓋 + unified scanner AC 後處理 (commit 70183c0)
-- [ ] **標籤 Shrink 腳本** (P2): SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點
-- [ ] **Scanner 支援 shrink 格式** (P2): 三格版解析
-- [ ] 文件更新 (P3): output reference v3 移除 sdid-tools 獨立 API 表 + 補 v3.1 Emit 函式
-- [ ] plan-schema 加 AC_FIELD 規則（AC 穿透已完成，可以加了）
+- [x] **骨架預生成**: draft-to-plan 加 `generateScaffold()` — 產出 .ts 骨架檔（標籤+AC+STEP+簽名）（commit 3373a66）
+- [x] **AC 格式**: `// AC-X.Y (摘要)` 卡在標籤 `*/` 後、`[STEP]` 前（commit 3373a66）
+- [x] **Phase 2 骨架比對**: 契約函式標籤鎖死，新增函式必須 P3（commit 3373a66）
+- [x] **plan-to-scaffold v1.1**: type-aware 骨架生成（CONST/A骨架存在」
+- [x] **plan-to-scaffold v1.1**: type-aware 骨架生成（CONST/API/SVC/HOOK/UI/ROUTE/SCRIPT）
+- [x] **標籤 Shrink 腳本** (P2): SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點 (commit e443b34)
+- [x] **Scanner 支援 shrink 格式** (P2): 三格版解析 (commit e443b34)
+  - Modify 類型跳過不生成接 PASS ✅
+- [x] **AC 格式**: `// AC-X.Y (摘要)` 卡在標籤 `*/` 後、`[STEP]` 前
+  - 改動: `sdid-tools/draft-to-plan.cjs` 的 plan 模板 + 骨架生成 ✅
+- [x] **AC 穿透後續** (P1): Phase 8 真檢查 + VERIFY AC 比對（commit 77e4a0a）
+  - phase-8: 改用 scanner `acIds` 映射，AC_NOT_TAGGED（源碼未標記）+ AC_UNCOVERED（測試未覆蓋）
+  - blueprint-verify: `checkACCoverage()` + `extractPlanAcIds()`，報告 AC 標記率
+  - 改動: `task-pipe/phases/build/phase-2.cjs` 加骨架比對邏輯 ✅
+- [ ] **AC 穿透後續**: Phase 8 真檢查 + VERIFY AC 比對
+  - 改動: `task-pipe/phases/build/phase-8.cjs` AC 覆蓋改用標籤映射（acIds）
+  - 改動: `sdid-tools/blueprint-verify.cjs` 加 AC 覆蓋比對
+- [ ] 標籤 Shrink 腳本（SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點）
+- [ ] Scanner 支援 shrink 格式解析（三格版）
+- [ ] 文件更新: output reference v3 移除 sdid-tools 獨立 API 表 + 補 v3.1 Emit 函式
+- [ ] plan-schema 加 AC_FIELD 規則（等 AC 穿透後）
 - [ ] DEPS 從模組定義推導到 action（低優先）

@@ -40,9 +40,23 @@ function parseArgs() {
 // GEMS 標籤自動推導
 // ============================================
 
+/**
+ * 解析 action 的 deps 字串
+ * 如果 action 本身沒有 deps（'無'），從模組級 deps 推導
+ * 模組 deps 格式: ['shared/types', 'shared/storage'] → '[Module.shared/types], [Module.shared/storage]'
+ */
+function resolveDeps(actionDeps, moduleDeps) {
+  if (actionDeps && actionDeps !== '無') return actionDeps;
+  if (!moduleDeps || moduleDeps.length === 0) return '無';
+  // 過濾掉空字串，轉成 [Module.xxx] 格式
+  const formatted = moduleDeps
+    .filter(d => d && d !== '無')
+    .map(d => `[Module.${d}]`);
+  return formatted.length > 0 ? formatted.join(', ') : '無';
+}
+
 /** 根據 deps 中 Module/Internal 的數量推導風險 */
-function inferDepsRisk(depsStr) {
-  if (!depsStr || depsStr === '無') return 'LOW';
+function inferDepsRisk(depsStr) {  if (!depsStr || depsStr === '無') return 'LOW';
   const deps = depsStr.split(',').map(d => d.trim());
   const moduleDeps = deps.filter(d => /\[(?:Module|Internal|External)\./i.test(d));
   if (moduleDeps.length >= 3) return 'HIGH';
@@ -124,8 +138,8 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
 
     const testStrategy = inferTestStrategy(a.priority);
     const testFile = inferTestFile(cleanName, a.type);
-    const depsRisk = inferDepsRisk(a.deps);
-    const depsStr = (!a.deps || a.deps === '無') ? '無' : a.deps;
+    const depsStr = resolveDeps(a.deps, moduleInfo.deps);
+    const depsRisk = inferDepsRisk(depsStr);
     const stepAnchors = generateStepAnchors(a.flow);
     const filePath = inferFilePath(cleanName, a.type, moduleName);
     const acRef = (a.ac || a['AC'] || '').trim();
@@ -253,6 +267,7 @@ ${integrationSpec}
 function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, options = {}) {
   const storyId = `Story-${iterNum}.${storyIndex}`;
   const result = { generated: [], skipped: [] };
+  const moduleDeps = options.moduleDeps || [];
 
   for (const a of actions) {
     const isModify = (a.techName || '').includes('[Modify]');
@@ -278,8 +293,8 @@ function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, o
     }
 
     const isTsx = filePath.endsWith('.tsx');
-    const depsStr = (!a.deps || a.deps === '無') ? '無' : a.deps;
-    const depsRisk = inferDepsRisk(a.deps);
+    const depsStr = resolveDeps(a.deps, moduleDeps);
+    const depsRisk = inferDepsRisk(depsStr);
     const testStrategy = inferTestStrategy(a.priority);
     const testFile = inferTestFile(cleanName, a.type);
 
@@ -507,7 +522,7 @@ Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
 
       const scaffoldResult = generateScaffold(
         args.target, args.iter, scaffoldIdx, mod.id, mod.actions,
-        { dryRun: args.dryRun }
+        { dryRun: args.dryRun, moduleDeps: mod.deps }
       );
 
       for (const g of scaffoldResult.generated) {
@@ -532,7 +547,7 @@ Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
 
       const scaffoldResult = generateScaffold(
         args.target, args.iter, scaffoldIdx, mod.id, mod.actions,
-        { dryRun: true }
+        { dryRun: true, moduleDeps: mod.deps }
       );
 
       for (const g of scaffoldResult.generated) {

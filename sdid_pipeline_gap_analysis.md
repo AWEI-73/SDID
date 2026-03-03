@@ -374,6 +374,6 @@ Phase 2 新增檢查：
   - 改動: `sdid-tools/blueprint-verify.cjs` 加 AC 覆蓋比對
 - [x] 標籤 Shrink 腳本（SCAN 後自動執行，三格: 名稱|P|FLOW + 路徑行 + STEP 錨點）(commit e443b34)
 - [x] Scanner 支援 shrink 格式解析（三格版）(commit e443b34)
-- [ ] 文件更新: output reference v3 移除 sdid-tools 獨立 API 表 + 補 v3.1 Emit 函式
+- [x] 文件更新: output reference v3 移除 sdid-tools 獨立 API 表 + 補 v3.1 Emit 函式
 - [x] plan-schema 加 AC_FIELD 規則（等 AC 穿透後）
-- [ ] DEPS 從模組定義推導到 action（低優先）
+- [x] DEPS 從模組定義推導到 action（低優先）

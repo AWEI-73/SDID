@@ -506,18 +506,66 @@ NEXT: {command}
 | `outputError(opts)` | 精簡錯誤 | `@{type}` + `NEXT:` + `@READ:` |
 | `saveLog(opts)` | 存檔 | 回傳相對路徑 |
 
-### sdid-tools/lib/log-output.cjs
+### v3.1 統一 Emit 函式（推薦新 Phase 使用）
 
-| 函式 | 用途 | 終端輸出 |
+| 函式 | 用途 | 終端信號 |
 |------|------|---------|
-| `anchorPass(phase, step, summary, nextCmd, opts)` | 成功 | `@PASS` + `NEXT:` |
-| `anchorError(type, summary, nextCmd, opts)` | 錯誤 | `@{type}` + `NEXT:` + `@READ:` + `@GUARD` |
-| `anchorErrorSpec(spec, opts)` | 精準錯誤 | `@ERROR_SPEC` + `TARGET:` + `MISSING:` + `@READ:` + `NEXT:` + `@GUARD` |
-| `anchorTemplatePending(spec, opts)` | 模板填寫 | `@TEMPLATE_PENDING` + `TARGET:` + `FILL_ITEMS:` + `@READ:` + `NEXT:` + `@GUARD` |
-| `anchorOutput(sections, opts)` | 完整輸出 | `@CONTEXT` + `@INFO` + `@GUARD` (error 時) |
-| `outputPass(nextCmd, summary)` | 精簡成功 | `@PASS` + `NEXT:` |
-| `outputError(opts)` | 精簡錯誤 | `@{type}` + `NEXT:` + `@READ:` |
-| `saveLog(opts)` | 存檔 | 回傳相對路徑 |
+| `emitPass(spec, opts)` | 成功 + 進度提示 | `@PASS` + `PROGRESS:` + `NEXT:` |
+| `emitFix(spec, opts)` | 可修復錯誤（合併 anchorError + anchorErrorSpec + emitTaskBlock） | `@FIX` + `TARGET:` + `@READ:` + `NEXT:` |
+| `emitFill(spec, opts)` | 需填空模板（合併 outputTemplate + anchorTemplatePending） | `@FILL` + `TARGET:` + `FILL_ITEMS:` + `@READ:` + `NEXT:` |
+| `emitBlock(spec, opts)` | 結構性阻擋，需架構審查 | `@BLOCK` + `TARGET:` + `@READ:` + `NEXT:` |
+
+**emitPass spec:**
+```javascript
+emitPass({
+  scope: 'BUILD Phase 2',   // 階段標識
+  summary: '標籤驗收通過',   // 一句話摘要
+  nextCmd: 'node task-pipe/runner.cjs --phase=BUILD --step=3 ...',
+  progress: 'Story-1.0 [Phase 2/8]',  // 可選
+  nextHint: 'Phase 3: 測試腳本',       // 可選
+}, { projectRoot, iteration, phase, step, story });
+```
+
+**emitFix spec:**
+```javascript
+emitFix({
+  scope: 'BUILD Phase 2 | Story-1.0',
+  summary: '缺少 GEMS-FLOW',
+  targetFile: 'src/modules/xxx/services/yyy.ts',
+  missing: ['GEMS-FLOW', 'GEMS-DEPS'],
+  nextCmd: 'node task-pipe/runner.cjs --phase=BUILD --step=2 ...',
+  example: '/** GEMS: ... */\n// [STEP] ...',  // 存 log
+  gateSpec: { checks: [{ name: 'GEMS-FLOW', pass: false }] },
+  attempt: 1, maxAttempts: 3,
+  tasks: [{ action: '修復', file: 'src/...', expected: '加入 GEMS-FLOW' }],  // 可選
+}, { projectRoot, iteration, phase, step, story });
+```
+
+**emitFill spec:**
+```javascript
+emitFill({
+  scope: 'PLAN Step 2 | Story-1.0',
+  summary: '需建立 Implementation Plan',
+  targetFile: '.gems/iterations/iter-1/plan/implementation_plan_Story-1.0.md',
+  fillItems: ['Story 目標', '工作項目表格', '規格注入'],
+  nextCmd: 'node task-pipe/runner.cjs --phase=PLAN --step=2 ...',
+  templateContent: '# Implementation Plan ...',  // 存 log
+}, { projectRoot, iteration, phase, step, story });
+```
+
+**emitBlock spec:**
+```javascript
+emitBlock({
+  scope: 'BUILD Phase 7 | Story-1.0',
+  summary: '路由整合失敗，需架構審查',
+  nextCmd: 'node task-pipe/runner.cjs --phase=BUILD --step=7 ...',
+  targetFile: 'src/app.tsx',
+  missing: ['路由註冊'],
+  details: '詳細說明...',  // 存 log
+}, { projectRoot, iteration, phase, step, story });
+```
+
+> ⚠️ `sdid-tools/lib/log-output.cjs` 已於 P2 重構時統一到 `task-pipe/lib/shared/log-output.cjs`，不再獨立存在。
 
 ---
 

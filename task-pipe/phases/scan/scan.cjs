@@ -255,6 +255,12 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
     }
     console.log(`[SCAN] ${shrinkNote}`);
 
+    // SCAN 完成 → 標記 iteration 為 completed，讓 loop 下次正確偵測到新 iter
+    try {
+      const stateManager = require('../../lib/shared/state-manager-v3.cjs');
+      stateManager.completeIteration(absTarget, iteration);
+    } catch (e) { /* state-manager 不可用時靜默跳過 */ }
+
     anchorPass('SCAN', 'Enhanced Scan v7.0',
       `SCAN 完成 | Funcs: ${scanResult.functions.length} | 平均 ${scanResult.stats.avgFunctionLines || '?'} 行/函式`,
       `位置: ${path.relative(process.cwd(), docsPath) || docsPath}`,

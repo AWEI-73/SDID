@@ -430,6 +430,27 @@ Blueprint Shrink v1.0 - 活藍圖收縮器
     console.log(`\n✅ 藍圖已更新: ${path.relative(process.cwd(), outPath)}`);
   }
 
+  // 注入既有函式快照（讓 AI 展開下一個 iter 時知道已有什麼）
+  if (args.target) {
+    const functionsPath = path.join(args.target, '.gems', 'docs', 'functions.json');
+    if (fs.existsSync(functionsPath)) {
+      try {
+        const fj = JSON.parse(fs.readFileSync(functionsPath, 'utf8'));
+        const fns = fj.functions || [];
+        if (fns.length > 0) {
+          console.log('');
+          console.log(`📦 既有函式快照 (${fns.length} 個) — 展開下一個 iter 時請勿重複定義:`);
+          for (const fn of fns) {
+            const risk = fn.risk || fn.priority || '?';
+            const story = fn.storyId ? ` [${fn.storyId}]` : '';
+            console.log(`  - ${fn.name} | ${risk}${story} | ${fn.file}`);
+          }
+          console.log('');
+        }
+      } catch { /* 忽略 */ }
+    }
+  }
+
   // log 存檔
   const logProjectRoot = args.target || null;
   if (logProjectRoot) {

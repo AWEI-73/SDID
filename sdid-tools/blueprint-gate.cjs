@@ -860,6 +860,31 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
 // ============================================
 // 報告生成
 // ============================================
+/**
+ * 讀取 functions.json 並輸出既有函式快照
+ * 讓 AI 在寫/修藍圖時知道之前 iter 已有哪些函式，避免重複定義
+ */
+function printExistingFunctionsSnapshot(projectRoot, currentIter) {
+  if (!projectRoot) return;
+  const functionsPath = path.join(projectRoot, '.gems', 'docs', 'functions.json');
+  if (!fs.existsSync(functionsPath)) return;
+
+  let fj;
+  try { fj = JSON.parse(fs.readFileSync(functionsPath, 'utf8')); } catch { return; }
+
+  const fns = fj.functions || [];
+  if (fns.length === 0) return;
+
+  console.log('');
+  console.log(`📦 既有函式快照 (functions.json, ${fns.length} 個) — 寫藍圖時請勿重複定義:`);
+  for (const fn of fns) {
+    const risk = fn.risk || fn.priority || '?';
+    const story = fn.storyId ? ` [${fn.storyId}]` : '';
+    console.log(`  - ${fn.name} | ${risk}${story} | ${fn.file} | ${fn.flow || '?'}`);
+  }
+  console.log('');
+}
+
 function generateReport(draft, allIssues, args) {
   const stats = parser.calculateStats(draft);
   const blockers = allIssues.filter(i => i.level === 'BLOCKER');
@@ -914,6 +939,9 @@ function generateReport(draft, allIssues, args) {
   }
 
   const details = detailLines.join('\n');
+
+  // 注入既有函式快照（讓 AI 在修藍圖時知道之前已有什麼）
+  printExistingFunctionsSnapshot(projectRoot, args.iter || 1);
 
   if (finalPass) {
     const nextCmd = `node sdid-tools/draft-to-plan.cjs --draft=${args.draft} --iter=${args.iter || 1} --target=<project>`;

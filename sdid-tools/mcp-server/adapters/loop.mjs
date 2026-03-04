@@ -117,7 +117,14 @@ export async function handler({ project, iter, story, forceStart }) {
     lines.push('');
     lines.push('@BLOCKER: 找不到 requirement_draft');
     lines.push(`請先建立活藍圖: ${projectRoot}/.gems/iterations/iter-${iterNum}/poc/requirement_draft_iter-${iterNum}.md`);
-    lines.push('參考模板: sdid-tools/../task-pipe/templates/enhanced-draft-golden.template.v2.md');
+    lines.push('參考模板: task-pipe/templates/enhanced-draft-golden.template.v2.md');
+    lines.push('');
+    lines.push('⚠️ 寫 draft 注意事項:');
+    lines.push('  - UI/HOOK/ROUTE 的 flow 必須描述業務行為，不是 React 機制');
+    lines.push('  - ✅ UI: FETCH_DATA→RENDER→BIND_EVENTS  ❌ 禁止: CONFIG→MOUNT→RENDER');
+    lines.push('  - ✅ HOOK: CALL_API→UPDATE_STATE→RETURN  ❌ 禁止: USESTATE→USEEFFECT→RETURN');
+    lines.push('  - ✅ ROUTE: CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT  ❌ 禁止: MOUNT→RENDER');
+    lines.push('  - 詳細詞彙表: .agent/skills/sdid/references/action-type-mapping.md');
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
 

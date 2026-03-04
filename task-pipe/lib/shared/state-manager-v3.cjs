@@ -107,6 +107,14 @@ function writeState(target, iteration, state) {
     fs.mkdirSync(iterPath, { recursive: true });
   }
 
+  // 注入 hints：偵測 functions.json 路徑，讓 AI 讀 state.json 時知道去哪找函式索引
+  const functionsJsonPath = path.join(target, '.gems', 'docs', 'functions.json');
+  if (fs.existsSync(functionsJsonPath)) {
+    state.hints = state.hints || {};
+    state.hints.functionsIndex = '.gems/docs/functions.json';
+    state.hints.functionsIndexNote = '既有函式索引，寫新程式前請先讀取，避免重複定義';
+  }
+
   state.lastUpdated = new Date().toISOString();
   fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), 'utf8');
 

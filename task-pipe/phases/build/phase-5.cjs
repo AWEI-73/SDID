@@ -20,7 +20,7 @@ const { writeCheckpoint } = require('../../lib/checkpoint.cjs');
 const { createErrorHandler, handlePhaseSuccess, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
 const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
-const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePending, saveLog, emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cjs');
+const { saveLog, emitPass, emitFix, emitFill, emitBlock } = require('../../lib/shared/log-output.cjs');
 const { getNextCmd, getRetryCmd } = require('../../lib/shared/next-command-helper.cjs');
 
 
@@ -482,13 +482,15 @@ function run(options) {
   // Step 1: 檢查測試檔案存在
   // ========================================
   if (testFiles.length === 0) {
-    anchorOutput({
-      context: `Phase 5 | ${story}`,
-      error: {
-        type: 'BLOCKER',
-        summary: '未找到測試檔案'
-      },
-      output: `NEXT: node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story}`
+    emitBlock({
+      scope: `BUILD Phase 5 | ${story}`,
+      summary: '未找到測試檔案，請先執行 Phase 3 建立測試',
+      nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=3 --story=${story} --target=${relativeTarget}`,
+      tasks: [{
+        action: 'CHECK_PHASE_3',
+        file: `src/**/__tests__/*.test.ts`,
+        expected: 'Phase 3 應已建立測試檔案，確認 src 目錄下有 *.test.ts'
+      }]
     }, {
       projectRoot: target,
       iteration: iterNum,
@@ -516,27 +518,17 @@ function run(options) {
     // 產生安裝指引
     const installGuide = generateInstallGuide(envInfo, target);
 
-    anchorOutput({
-      context: `Phase 5 | ${story} | 測試環境未就緒`,
-      info: {
-        '測試框架': envInfo.testFramework || 'none',
-        '已安裝': envInfo.frameworkInstalled ? '是' : '否',
-        'Test Script': envInfo.hasTestScript ? '已配置' : '未配置'
-      },
-      error: {
-        type: 'TACTICAL_FIX',
-        summary: `測試環境問題: ${envInfo.issues.join(', ')}`
-      },
-      template: {
-        title: 'INSTALL_HOOK',
-        content: installGuide
-      },
-      task: [
+    emitFill({
+      scope: `BUILD Phase 5 | ${story}`,
+      summary: `測試環境問題: ${envInfo.issues.join(', ')}`,
+      targetFile: 'package.json / jest.config.js',
+      fillItems: [
         '執行安裝指令 (如需要)',
         '配置 package.json test script',
         '重新執行 Phase 5'
       ],
-      output: `NEXT: ${getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration })}`
+      nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
+      templateContent: installGuide,
     }, {
       projectRoot: target,
       iteration: iterNum,
@@ -567,27 +559,29 @@ function run(options) {
     // NOTICE-002 修復: total=0 表示 jest 沒找到測試，不應靜默 PASS
     if (testResult.stats.total === 0 && testFiles.length > 0) {
       const attempt = errorHandler.recordError('E7', 'jest 執行成功但 0 個測試被執行');
-      anchorOutput({
-        context: `Phase 5 | ${story} | 測試未執行`,
-        error: {
-          type: 'TACTICAL_FIX',
-          summary: `jest 跑完但 0 個測試被執行 (找到 ${testFiles.length} 個測試檔案)`,
-          attempt,
-          maxAttempts: MAX_ATTEMPTS
-        },
-        guide: {
-          title: 'JEST_CONFIG_FIX',
-          content: `可能原因：
-1. jest.config.js 的 testMatch/testRegex 與測試檔案路徑不符
-2. ts-jest transform 未正確配置，TypeScript 測試無法被識別
-3. 測試檔案命名不符合 jest 預設規則 (*.test.ts / *.spec.ts)
-
-建議修復：
-- 確認 jest.config.js 的 testMatch 包含測試檔案路徑
-- 確認 transform 有設定 ts-jest
-- 執行 npx jest --listTests 確認 jest 能找到測試`
-        },
-        output: `NEXT: ${getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration })}`
+      emitFix({
+        scope: `BUILD Phase 5 | ${story}`,
+        summary: `jest 跑完但 0 個測試被執行 (找到 ${testFiles.length} 個測試檔案)`,
+        targetFile: 'jest.config.js / package.json',
+        missing: ['testMatch 設定', 'ts-jest transform'],
+        example: [
+          '// jest.config.js',
+          'module.exports = {',
+          "  testMatch: ['**/__tests__/**/*.test.ts', '**/*.test.ts'],",
+          "  transform: { '^.+\\.tsx?$': 'ts-jest' }",
+          '};',
+          '',
+          '// 確認 jest 能找到測試:',
+          'npx jest --listTests'
+        ].join('\n'),
+        nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
+        attempt,
+        maxAttempts: MAX_ATTEMPTS,
+        tasks: [{
+          action: 'FIX_JEST_CONFIG',
+          file: 'jest.config.js',
+          expected: `testMatch 必須能匹配到 ${testFiles.length} 個測試檔案，執行 npx jest --listTests 確認`
+        }]
       }, {
         projectRoot: target,
         iteration: iterNum,
@@ -723,11 +717,36 @@ function run(options) {
 
   // 超過重試上限
   if (errorHandler.shouldBlock()) {
+    const failStats = testResult.stats.total === 0
+      ? `測試執行了 0 個 (jest 找不到測試或設定錯誤)`
+      : `Failed: ${testResult.stats.failed}/${testResult.stats.total}`;
+
+    const blockTasks = testResult.stats.total === 0
+      ? [{
+          action: 'CHECK_JEST_CONFIG',
+          file: 'jest.config.js / package.json',
+          expected: '確認 testMatch 包含測試檔案路徑，執行 npx jest --listTests 確認 jest 能找到測試',
+          reference: `找到 ${testFiles.length} 個測試檔案但 jest 執行了 0 個`
+        }]
+      : testFiles.slice(0, 5).map(f => ({
+          action: 'FIX_TEST',
+          file: path.relative(target, f),
+          expected: '修正測試失敗原因，確保測試通過',
+          reference: `測試失敗: ${testResult.stats.failed} 個`
+        }));
+
     emitBlock({
       scope: `BUILD Phase 5 | ${story}`,
-      summary: `TDD 測試需要進一步完善 (${MAX_ATTEMPTS}/${MAX_ATTEMPTS})`,
-      nextCmd: '建議：架構師協作，分析測試失敗原因',
-      details: `Failed: ${testResult.stats.failed}/${testResult.stats.total}`
+      summary: `TDD 測試連續失敗 (${MAX_ATTEMPTS}/${MAX_ATTEMPTS}) — ${failStats}`,
+      nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
+      details: [
+        `=== 測試統計 ===`,
+        failStats,
+        ``,
+        `=== 測試輸出 (最後 30 行) ===`,
+        testResult.output.split('\n').filter(l => l.trim()).slice(-30).join('\n') || '(無輸出)'
+      ].join('\n'),
+      tasks: blockTasks,
     }, {
       projectRoot: target,
       iteration: iterNum,
@@ -747,26 +766,15 @@ function run(options) {
     .slice(-30)
     .join('\n');
 
-  anchorOutput({
-    context: `Phase 5 | ${story} | TDD 測試失敗`,
-    info: {
-      'Log Dir': `.gems/iterations/${iteration}/logs/`,
-      'Passed': testResult.stats.passed,
-      'Failed': testResult.stats.failed,
-      'Total': testResult.stats.total
-    },
-    error: {
-      type: 'TACTICAL_FIX',
-      summary: `測試未通過 | Failed: ${testResult.stats.failed}`,
-      attempt,
-      maxAttempts: MAX_ATTEMPTS
-    },
-    task: ['閱讀測試報告', '修正程式碼或測試', '重試'],
-    template: {
-      title: `TEST_ERROR (Recovery Level ${recoveryLevel})`,
-      content: errorSummary || '無輸出'
-    },
-    output: `NEXT: ${getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration })}`
+  emitFix({
+    scope: `BUILD Phase 5 | ${story}`,
+    summary: `測試未通過 | Failed: ${testResult.stats.failed}/${testResult.stats.total}`,
+    targetFile: '測試檔案 (見 @READ log)',
+    missing: [`${testResult.stats.failed} 個測試失敗`],
+    nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
+    attempt,
+    maxAttempts: MAX_ATTEMPTS,
+    example: errorSummary || '(無輸出)',
   }, {
     projectRoot: target,
     iteration: iterNum,

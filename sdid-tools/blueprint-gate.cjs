@@ -351,26 +351,13 @@ function checkPlanActionConsistency(draft) {
  * 10. Level 限制檢查 — 僅作為 WARN，不再 BLOCKER
  * v1.3: 移除硬限制，讓藍圖可以容納正常開發量
  */
+/**
+ * 10. Level 限制檢查 — v1.4 完全移除
+ * 藍圖可以自由規劃任意數量的 iter 和模組，不受 Level 約束。
+ * 縮拆由 Shrink 階段處理，不在 Gate 限制。
+ */
 function checkLevelLimits(draft) {
-  const issues = [];
-  const level = draft.level || 'M';
-  // 參考值，僅供提示
-  const refStories = { S: 3, M: 8, L: 15 };
-  const ref = refStories[level] || 8;
-
-  const planModules = new Set(draft.iterationPlan.map(e => e.module));
-  const actionModules = new Set(Object.keys(draft.moduleActions));
-  const allModules = new Set([...planModules, ...actionModules]);
-  const totalModules = allModules.size || parser.calculateStats(draft).totalModules;
-
-  if (totalModules > ref * 1.5) {
-    issues.push({
-      level: 'WARN', code: 'LVL-001',
-      msg: `Level ${level} 參考上限約 ${ref} 個模組，目前有 ${totalModules} 個，建議確認範圍是否合理`
-    });
-  }
-
-  return issues;
+  return [];
 }
 
 /**
@@ -454,33 +441,12 @@ function checkDepsConsistency(draft, targetIter) {
 }
 
 /**
- * 14. 單一迭代模組負載檢查 — 單一 iter 的模組數不應超過 Level 限制
+ * 14. 單一迭代模組負載檢查 — v1.4 移除 Level 限制
+ * iter 大小由業務範圍決定，不受 Level 約束。
+ * Story 小步才是控制複雜度的粒度。
  */
 function checkIterModuleLoad(draft) {
-  const issues = [];
-  const level = draft.level || 'M';
-
-  // 每個 iter 的建議模組上限
-  const maxPerIter = { S: 2, M: 3, L: 4 };
-  const limit = maxPerIter[level] || 3;
-
-  // 統計每個 iter 的模組數
-  const iterModules = {};
-  for (const entry of draft.iterationPlan) {
-    if (!iterModules[entry.iter]) iterModules[entry.iter] = [];
-    iterModules[entry.iter].push(entry.module);
-  }
-
-  for (const [iter, modules] of Object.entries(iterModules)) {
-    if (modules.length > limit) {
-      issues.push({
-        level: 'WARN', code: 'LOAD-001',
-        msg: `iter-${iter} 有 ${modules.length} 個模組 [${modules.join(', ')}]，Level ${level} 建議每個 iter 最多 ${limit} 個，注意範圍蔓延`
-      });
-    }
-  }
-
-  return issues;
+  return []; // 不再限制每個 iter 的模組數
 }
 
 /**
@@ -815,36 +781,36 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
     return lower === 'shared' || lower.includes('foundation') || lower.includes('infra') || lower.includes('config');
   };
 
+  const BACKEND_TYPES = new Set(['SVC', 'API', 'DATA', 'REPO', 'DB']);
+  const FRONTEND_TYPES = new Set(['UI', 'HOOK', 'ROUTE', 'PAGE', 'COMPONENT']);
+
   for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-    if (mod.iter !== targetIter) continue;
+    if (mod.fillLevel === 'done') continue;
+    const isStub = mod.fillLevel === 'stub';
+    const isCurrent = mod.iter === targetIter;
 
     const items = mod.items || [];
     const types = new Set(items.map(i => (i.type || '').toUpperCase()));
     const prefix = `[${modName}]`;
 
     if (isFoundationModule(modName)) {
-      // Foundation 模組：必須有 App 骨架路由殼 (v1.3: 升為 BLOCKER)
-      if (!types.has('ROUTE') && !types.has('APP') && items.length > 0) {
+      // Foundation 模組：只檢查 CURRENT，STUB 的 Foundation 不強制
+      if (isCurrent && !isStub && !types.has('ROUTE') && !types.has('APP') && items.length > 0) {
         issues.push({
           level: 'BLOCKER', code: 'VSC-001',
           msg: `${prefix} Foundation 模組必須包含 ROUTE 類型的前端主入口殼 (AppRouter/Layout)，確保 npm run dev 可看到首頁框架。請在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | ... |`
         });
       }
-    } else {
-      // 功能模組 (X.1+)：必須有完整垂直切片層
-      const missingLayers = [];
+      continue;
+    }
 
-      if (!types.has('ROUTE')) {
-        missingLayers.push('ROUTE (使用者進入點，如 /timer 路徑或 AppRoute)');
-      }
-      if (!types.has('SVC') && !types.has('API')) {
-        missingLayers.push('SVC 或 API (業務邏輯層)');
-      }
+    // ── CURRENT iter：完整 VSC 檢查（BLOCKER）──
+    if (isCurrent && !isStub) {
+      const missingLayers = [];
+      if (!types.has('ROUTE')) missingLayers.push('ROUTE (使用者進入點)');
+      if (!types.has('SVC') && !types.has('API')) missingLayers.push('SVC 或 API (業務邏輯層)');
       const hasFrontend = types.has('HOOK') || types.has('UI') || types.has('ROUTE');
-      if (hasFrontend && !types.has('UI')) {
-        missingLayers.push('UI (前端展示層)');
-      }
+      if (hasFrontend && !types.has('UI')) missingLayers.push('UI (前端展示層)');
 
       if (missingLayers.length > 0) {
         issues.push({
@@ -853,10 +819,7 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
         });
       }
 
-      // VSC-003: 交付類型必須為 FULL（前後端一套）
-      const planEntry = draft.iterationPlan.find(
-        e => e.module === modName && e.iter === mod.iter
-      );
+      const planEntry = draft.iterationPlan.find(e => e.module === modName && e.iter === mod.iter);
       if (planEntry) {
         const delivery = (planEntry.delivery || 'FULL').toUpperCase();
         if (delivery === 'BACKEND' || delivery === 'FRONTEND') {
@@ -865,6 +828,28 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
             msg: `${prefix} 功能模組交付類型為 "${delivery}"，必須為 "FULL"（前後端一套）。不可將前後端拆到不同 iter`
           });
         }
+      }
+    }
+
+    // ── STUB iter：檢查前後端分離反模式（BLOCKER）──
+    // 即使是 STUB，藍圖設計階段就不能把前後端拆成不同 iter
+    if (isStub && items.length > 0) {
+      const hasBackend = [...types].some(t => BACKEND_TYPES.has(t));
+      const hasFrontend = [...types].some(t => FRONTEND_TYPES.has(t));
+
+      // 只有後端類型，沒有任何前端類型
+      if (hasBackend && !hasFrontend) {
+        issues.push({
+          level: 'BLOCKER', code: 'VSC-004',
+          msg: `[Stub: ${modName}] iter-${mod.iter} 只有後端類型 (${[...types].filter(t => BACKEND_TYPES.has(t)).join('/')})，缺少前端層 (UI/ROUTE)。業務功能 iter 必須前後端一套，請將前端合併到同一 iter，或拆成 Story-X.0 後端 + Story-X.1 前端`
+        });
+      }
+      // 只有前端類型，沒有任何後端類型
+      if (hasFrontend && !hasBackend) {
+        issues.push({
+          level: 'BLOCKER', code: 'VSC-005',
+          msg: `[Stub: ${modName}] iter-${mod.iter} 只有前端類型 (${[...types].filter(t => FRONTEND_TYPES.has(t)).join('/')})，缺少後端層 (SVC/API)。業務功能 iter 必須前後端一套，請將後端合併到同一 iter，或拆成 Story-X.0 後端 + Story-X.1 前端`
+        });
       }
     }
   }
@@ -943,11 +928,22 @@ function generateReport(draft, allIssues, args) {
     const nextCmd = `修復藍圖後重跑: node sdid-tools/blueprint-gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
     const summary = `Blueprint Gate 失敗 — ${blockers.length} 個結構性問題必須修復`;
 
+    // 將 blockers 轉成 @TASK 格式，讓 AI 知道要修什麼
+    const tasks = blockers.map(b => ({
+      action: 'FIX_BLUEPRINT',
+      file: path.basename(args.draft),
+      expected: `修復 [${b.code}]: ${b.msg}`,
+      reference: getFixGuidance(b.code)
+    }));
+
     if (projectRoot) {
-      logOutput.anchorError('BLOCKER', summary, nextCmd, {
-        ...logOptions,
+      logOutput.emitBlock({
+        scope: `Blueprint Gate | iter-${args.iter || 1}`,
+        summary,
+        nextCmd,
         details,
-      });
+        tasks,
+      }, logOptions);
     } else {
       logOutput.outputError({
         type: 'BLOCKER',
@@ -1010,6 +1006,8 @@ function getFixGuidance(code) {
     'BUDGET-002': 'Story 動作數超過建議值 6，注意開發品質，必要時拆為 Story-X.0 + Story-X.1',
     'VSC-001': 'Foundation 模組必須加入 ROUTE 類型的前端主入口殼。在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.x |',
     'VSC-003': '功能模組的交付類型必須是 FULL（前後端一套）。將前後端合併到同一個 iter，確保每個 iter 都能展示完整功能',
+    'VSC-004': '此 STUB iter 只有後端類型，缺少前端層。解法：(1) 把前端動作合併到同一個 iter，或 (2) 把這個 iter 拆成 Story-X.0（後端 SVC/API）+ Story-X.1（前端 UI/ROUTE），兩個 Story 在同一個 iter 裡',
+    'VSC-005': '此 STUB iter 只有前端類型，缺少後端層。解法：(1) 把後端動作合併到同一個 iter，或 (2) 把這個 iter 拆成 Story-X.0（後端 SVC/API）+ Story-X.1（前端 UI/ROUTE），兩個 Story 在同一個 iter 裡',
   };
   return guidance[code] || '參考 enhanced-draft-golden.template.v2.md 修正格式';
 }
@@ -1056,6 +1054,7 @@ Blueprint Gate v1.1 - 活藍圖品質門控
   BUDGET-001~002 迭代動作預算 (v1.3, per-Story: WARN>6/BLOCKER>10)
   VSC-001      Foundation 必含前端主入口殼 ROUTE (v1.3: 升為 BLOCKER)
   VSC-003      功能模組交付類型必須 FULL (v1.3)
+  VSC-004/005  STUB iter 前後端分離反模式 (v1.4: 設計階段就擋)
   ACC-001      AC 驗收條件完整性 (v2.2, P0/P1 必填)
 
 輸出:

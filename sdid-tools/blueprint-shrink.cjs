@@ -399,20 +399,52 @@ Blueprint Shrink v1.0 - 活藍圖收縮器
 
   console.log(`\n📊 結果: ${doneCount} 模組收縮, ${fillbackCount} 個 Fillback 附加, ${skipCount} 跳過`);
 
+  // 注入既有函式快照（無論成功或失敗都輸出，讓 AI 知道已有什麼）
+  if (args.target) {
+    const functionsPath = path.join(args.target, '.gems', 'docs', 'functions.json');
+    if (fs.existsSync(functionsPath)) {
+      try {
+        const fj = JSON.parse(fs.readFileSync(functionsPath, 'utf8'));
+        const fns = fj.functions || [];
+        if (fns.length > 0) {
+          const critical = fns.filter(fn => { const r = fn.risk || fn.priority || ''; return r === 'P0' || r === 'P1'; });
+          const others = fns.filter(fn => { const r = fn.risk || fn.priority || ''; return r !== 'P0' && r !== 'P1'; });
+          console.log('');
+          console.log(`📦 既有函式快照 (${fns.length} 個，顯示 P0/P1) — 展開下一個 iter 時請勿重複定義:`);
+          for (const fn of critical) {
+            const risk = fn.risk || fn.priority || '?';
+            const story = fn.storyId ? ` [${fn.storyId}]` : '';
+            console.log(`  - ${fn.name} | ${risk}${story} | ${fn.file} | ${fn.flow || '?'}`);
+          }
+          if (others.length > 0) {
+            console.log(`  ... 另有 ${others.length} 個 P2/P3 函式 (略)`);
+          }
+          console.log('');
+        }
+      } catch { /* 忽略 */ }
+    }
+  }
+
   if (doneCount === 0) {
     const logProjectRoot = args.target || null;
     if (logProjectRoot) {
-      logOutput.anchorError('TACTICAL_FIX',
-        `iter-${args.iter} 沒有模組被收縮 — 可能已是 [DONE]/[STUB] 或找不到動作清單區塊`,
-        `確認藍圖中 iter-${args.iter} 有 [CURRENT] 標記的模組，且 BUILD 已完成`,
-        {
-          projectRoot: logProjectRoot,
-          iteration: args.iter,
-          phase: 'gate',
-          step: 'shrink',
-          details: `收縮結果:\n${changes.map(c => `${c.module}: ${c.status} — ${c.reason || ''}`).join('\n')}\n\n可能原因:\n1. 所有模組已是 [DONE] 或 [STUB]\n2. 動作清單區塊標題格式不匹配\n3. iter 編號錯誤`,
-        }
-      );
+      const details = `收縮結果:\n${changes.map(c => `${c.module}: ${c.status} — ${c.reason || ''}`).join('\n')}\n\n可能原因:\n1. 所有模組已是 [DONE] 或 [STUB]\n2. 動作清單區塊標題格式不匹配\n3. iter 編號錯誤`;
+      logOutput.emitBlock({
+        scope: `Blueprint Shrink | iter-${args.iter}`,
+        summary: `iter-${args.iter} 沒有模組被收縮 — 可能已是 [DONE]/[STUB] 或找不到動作清單區塊`,
+        nextCmd: `node sdid-tools/blueprint-shrink.cjs --draft=${args.draft} --iter=${args.iter} --target=${logProjectRoot}`,
+        tasks: [{
+          action: 'FIX',
+          file: args.draft,
+          expected: `確認藍圖中 iter-${args.iter} 有 [CURRENT] 標記的模組，且 BUILD 已完成`,
+        }],
+        details,
+      }, {
+        projectRoot: logProjectRoot,
+        iteration: args.iter,
+        phase: 'gate',
+        step: 'shrink',
+      });
     } else {
       console.log(`\n⚠️ 沒有模組被收縮 — iter-${args.iter} 可能已經是 [DONE] 或 [STUB]`);
     }
@@ -428,27 +460,6 @@ Blueprint Shrink v1.0 - 活藍圖收縮器
   } else {
     fs.writeFileSync(outPath, content, 'utf8');
     console.log(`\n✅ 藍圖已更新: ${path.relative(process.cwd(), outPath)}`);
-  }
-
-  // 注入既有函式快照（讓 AI 展開下一個 iter 時知道已有什麼）
-  if (args.target) {
-    const functionsPath = path.join(args.target, '.gems', 'docs', 'functions.json');
-    if (fs.existsSync(functionsPath)) {
-      try {
-        const fj = JSON.parse(fs.readFileSync(functionsPath, 'utf8'));
-        const fns = fj.functions || [];
-        if (fns.length > 0) {
-          console.log('');
-          console.log(`📦 既有函式快照 (${fns.length} 個) — 展開下一個 iter 時請勿重複定義:`);
-          for (const fn of fns) {
-            const risk = fn.risk || fn.priority || '?';
-            const story = fn.storyId ? ` [${fn.storyId}]` : '';
-            console.log(`  - ${fn.name} | ${risk}${story} | ${fn.file}`);
-          }
-          console.log('');
-        }
-      } catch { /* 忽略 */ }
-    }
   }
 
   // log 存檔

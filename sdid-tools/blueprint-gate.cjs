@@ -875,12 +875,18 @@ function printExistingFunctionsSnapshot(projectRoot, currentIter) {
   const fns = fj.functions || [];
   if (fns.length === 0) return;
 
+  const critical = fns.filter(fn => { const r = fn.risk || fn.priority || ''; return r === 'P0' || r === 'P1'; });
+  const others = fns.filter(fn => { const r = fn.risk || fn.priority || ''; return r !== 'P0' && r !== 'P1'; });
+
   console.log('');
-  console.log(`📦 既有函式快照 (functions.json, ${fns.length} 個) — 寫藍圖時請勿重複定義:`);
-  for (const fn of fns) {
+  console.log(`📦 既有函式快照 (${fns.length} 個，顯示 P0/P1) — 寫藍圖時請勿重複定義:`);
+  for (const fn of critical) {
     const risk = fn.risk || fn.priority || '?';
     const story = fn.storyId ? ` [${fn.storyId}]` : '';
     console.log(`  - ${fn.name} | ${risk}${story} | ${fn.file} | ${fn.flow || '?'}`);
+  }
+  if (others.length > 0) {
+    console.log(`  ... 另有 ${others.length} 個 P2/P3 函式 (略)`);
   }
   console.log('');
 }

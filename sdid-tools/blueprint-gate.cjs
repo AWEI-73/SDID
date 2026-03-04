@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Blueprint Gate v1.2 - 活藍圖品質門控
+ * Blueprint Gate v1.3 - 活藍圖品質門控
  * 
  * 驗證活藍圖 (Enhanced Draft v2) 的格式完整性、標籤完整性、
  * 依賴無循環、迭代 DAG、佔位符偵測、Stub 最低資訊檢查。
  * v1.1: 新增草稿狀態檢查、依賴一致性檢查、迭代負載檢查、Level 限制升級為 BLOCKER
  * v1.2: 新增公開 API↔動作清單一致性、Flow 精確度偵測、API 簽名完整性
+ * v1.3: Budget 改為 per-Story (每 Story 最多 6 動作 WARN)，移除 per-iter 硬限制
+ *       Level 限制改為 WARN（不再 BLOCKER），Foundation 必含 AppRouter 升為 BLOCKER
+ *       動作清單新增 操作(NEW/MOD) 欄位支援
  * 
  * 獨立工具，不 import task-pipe。
  * 
@@ -345,35 +348,26 @@ function checkPlanActionConsistency(draft) {
 }
 
 /**
- * 10. Level 限制檢查 — 用迭代規劃表的唯一模組數（含 shared）
+ * 10. Level 限制檢查 — 僅作為 WARN，不再 BLOCKER
+ * v1.3: 移除硬限制，讓藍圖可以容納正常開發量
  */
 function checkLevelLimits(draft) {
   const issues = [];
   const level = draft.level || 'M';
-  const maxStories = { S: 3, M: 6, L: 10 };
-  const limit = maxStories[level] || 6;
+  // 參考值，僅供提示
+  const refStories = { S: 3, M: 8, L: 15 };
+  const ref = refStories[level] || 8;
 
-  // 用迭代規劃表的唯一模組數，因為每個模組 = 一個 Story
-  // calculateStats.totalModules 只算 modules（獨立模組），不含 shared
   const planModules = new Set(draft.iterationPlan.map(e => e.module));
   const actionModules = new Set(Object.keys(draft.moduleActions));
   const allModules = new Set([...planModules, ...actionModules]);
   const totalModules = allModules.size || parser.calculateStats(draft).totalModules;
 
-  if (totalModules > limit) {
-    const overRatio = totalModules / limit;
-    if (overRatio > 1.3) {
-      const suggestedLevel = level === 'S' ? 'M' : 'L';
-      issues.push({
-        level: 'BLOCKER', code: 'LVL-001',
-        msg: `Level ${level} 最多 ${limit} 個模組，目前有 ${totalModules} 個 (超過 ${Math.round((overRatio - 1) * 100)}%)，建議升級為 Level ${suggestedLevel}`
-      });
-    } else {
-      issues.push({
-        level: 'WARN', code: 'LVL-001',
-        msg: `Level ${level} 建議最多 ${limit} 個模組，目前有 ${totalModules} 個`
-      });
-    }
+  if (totalModules > ref * 1.5) {
+    issues.push({
+      level: 'WARN', code: 'LVL-001',
+      msg: `Level ${level} 參考上限約 ${ref} 個模組，目前有 ${totalModules} 個，建議確認範圍是否合理`
+    });
   }
 
   return issues;
@@ -490,59 +484,46 @@ function checkIterModuleLoad(draft) {
 }
 
 /**
- * 20. 迭代動作預算檢查 (v1.3) — 每個 iter 的總動作數不可超過 Level 限制
- * 防止一個 iter 塞太多動作導致 stub code
+ * 20. 迭代動作預算檢查 (v1.3) — 改為 per-Story WARN，移除 per-iter 硬限制
+ * 
+ * 每個 Story（模組）最多 6 個動作 → WARN
+ * 超過 10 個動作 → BLOCKER（明顯過大，需要拆 Story）
+ * 
+ * 移除 Level S/M/L 的差異化限制，統一標準。
+ * Foundation iter (全 CONST/LIB/SCRIPT/ROUTE) 豁免。
  */
 function checkIterActionBudget(draft) {
   const issues = [];
-  const level = draft.level || 'M';
 
-  // Action budget per iter by level
-  const maxActions = { S: 3, M: 4, L: 5 };
-  const limit = maxActions[level] || 4;
+  // per-Story 上限
+  const WARN_LIMIT = 6;   // 超過 6 個動作 → WARN
+  const BLOCK_LIMIT = 10; // 超過 10 個動作 → BLOCKER（明顯過大）
 
-  // Count actions per iter
-  const iterActions = {};
   for (const [modName, mod] of Object.entries(draft.moduleActions)) {
     if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
     const iter = mod.iter;
     if (!iter) continue;
-    if (!iterActions[iter]) iterActions[iter] = { count: 0, modules: [] };
-    const actionCount = (mod.items || []).length;
-    iterActions[iter].count += actionCount;
-    if (actionCount > 0) {
-      iterActions[iter].modules.push({ name: modName, count: actionCount });
-    }
-  }
 
-  for (const [iter, data] of Object.entries(iterActions)) {
-    // Foundation iter exemption: if all actions are CONST/LIB/SCRIPT/ROUTE (VSC-004), skip budget check
-    if (parseInt(iter) === 1) {
-      let allInfra = true;
-      for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-        if (mod.iter !== 1 || mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-        for (const item of (mod.items || [])) {
-          const type = (item.type || '').toUpperCase();
-          if (!['CONST', 'LIB', 'SCRIPT', 'ROUTE'].includes(type)) {
-            allInfra = false;
-            break;
-          }
-        }
-        if (!allInfra) break;
-      }
-      if (allInfra) continue;
-    }
+    const items = mod.items || [];
+    const count = items.length;
+    if (count === 0) continue;
 
-    if (data.count > limit) {
-      const breakdown = data.modules.map(m => `${m.name}(${m.count})`).join(' + ');
+    // Foundation iter 豁免：全部是 CONST/LIB/SCRIPT/ROUTE 類型
+    const allInfra = items.every(item => {
+      const type = (item.type || '').toUpperCase();
+      return ['CONST', 'LIB', 'SCRIPT', 'ROUTE'].includes(type);
+    });
+    if (allInfra) continue;
+
+    if (count > BLOCK_LIMIT) {
       issues.push({
         level: 'BLOCKER', code: 'BUDGET-001',
-        msg: `iter-${iter} 總動作數 ${data.count} 超過 Level ${level} 的上限 ${limit} [${breakdown}]。建議拆成多個 Story（不是多個 iter），每個 iter 最多 ${limit} 個動作`
+        msg: `[${modName}] Story 有 ${count} 個動作，超過上限 ${BLOCK_LIMIT}。請拆成多個 Story（不是多個 iter），每個 Story 建議 4-6 個動作`
       });
-    } else if (data.count === limit) {
+    } else if (count > WARN_LIMIT) {
       issues.push({
         level: 'WARN', code: 'BUDGET-002',
-        msg: `iter-${iter} 總動作數 ${data.count} 剛好到 Level ${level} 上限 ${limit}，留意開發品質`
+        msg: `[${modName}] Story 有 ${count} 個動作 (建議上限 ${WARN_LIMIT})，注意開發品質，必要時可拆為 Story-X.0 + Story-X.1`
       });
     }
   }
@@ -843,11 +824,11 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
     const prefix = `[${modName}]`;
 
     if (isFoundationModule(modName)) {
-      // Foundation 模組：建議有 App 骨架路由殼 (WARN 不是 BLOCKER)
+      // Foundation 模組：必須有 App 骨架路由殼 (v1.3: 升為 BLOCKER)
       if (!types.has('ROUTE') && !types.has('APP') && items.length > 0) {
         issues.push({
-          level: 'WARN', code: 'VSC-001',
-          msg: `${prefix} Foundation 模組建議加入 ROUTE 類型的 App 骨架動作，確保路由殼可啟動`
+          level: 'BLOCKER', code: 'VSC-001',
+          msg: `${prefix} Foundation 模組必須包含 ROUTE 類型的前端主入口殼 (AppRouter/Layout)，確保 npm run dev 可看到首頁框架。請在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | ... |`
         });
       }
     } else {
@@ -1013,7 +994,7 @@ function getFixGuidance(code) {
     'EVO-001': '演化層依賴違規: 低層動作不能依賴高層動作，調整依賴方向或演化層標記',
     'EVO-002': 'Modify 動作需要對應的 BASE 動作存在，確認基礎函式已定義',
     'STS-002': '完成所有釐清項目後，將「草稿狀態」從 [~] PENDING 改為 [x] DONE',
-    'LVL-001': '模組數超過 Level 限制，將「規模」欄位升級 (S→M 或 M→L)，或減少模組數',
+    'LVL-001': '模組數超過參考值，確認範圍是否合理，或升級 Level (S→M 或 M→L)',
     'DEPCON-001': '同步迭代規劃表的「依賴」欄位，與模組定義的 deps 保持一致',
     'DEPCON-002': '在動作清單的 deps 欄位標註具體依賴 (例: [Shared.CoreTypes])',
     'LOAD-001': '將部分模組移到下一個 iter，或升級 Level 以容納更多模組',
@@ -1025,8 +1006,9 @@ function getFixGuidance(code) {
     'SIG-002': '公開 API 簽名應包含回傳型別，例如 ): Bookmark[] 或 ): ImportResult',
     'SIG-003': '公開 API 參數應標註型別，例如 (data: string, format: string)',
     'ACC-001': 'P0/P1 動作必須有 AC 欄位。在動作清單的 AC 欄填入編號（如 AC-1.0），並在「## ✅ 驗收條件」區塊定義 Given/When/Then',
-    'BUDGET-001': '動作數超過上限。Level S 每 iter 最多 3 個、M 最多 4 個、L 最多 5 個。超出時拆成多個 Story（不是多個 iter），確保每個 iter 是完整垂直切片',
-    'BUDGET-002': '動作數接近上限，建議檢查每個動作的複雜度是否可以再拆',
+    'BUDGET-001': 'Story 動作數超過上限 10。請拆成多個 Story（不是多個 iter），每個 Story 建議 4-6 個動作',
+    'BUDGET-002': 'Story 動作數超過建議值 6，注意開發品質，必要時拆為 Story-X.0 + Story-X.1',
+    'VSC-001': 'Foundation 模組必須加入 ROUTE 類型的前端主入口殼。在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.x |',
     'VSC-003': '功能模組的交付類型必須是 FULL（前後端一套）。將前後端合併到同一個 iter，確保每個 iter 都能展示完整功能',
   };
   return guidance[code] || '參考 enhanced-draft-golden.template.v2.md 修正格式';
@@ -1071,7 +1053,8 @@ Blueprint Gate v1.1 - 活藍圖品質門控
   EVO-001~002  演化層依賴
   DEPCON-001~002 依賴一致性 (v1.1)
   LOAD-001     迭代模組負載 (v1.1)
-  BUDGET-001~002 迭代動作預算 (v1.3, S:3/M:4/L:5 per iter)
+  BUDGET-001~002 迭代動作預算 (v1.3, per-Story: WARN>6/BLOCKER>10)
+  VSC-001      Foundation 必含前端主入口殼 ROUTE (v1.3: 升為 BLOCKER)
   VSC-003      功能模組交付類型必須 FULL (v1.3)
   ACC-001      AC 驗收條件完整性 (v2.2, P0/P1 必填)
 

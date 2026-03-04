@@ -51,7 +51,7 @@
 | Foundation 含業務邏輯 | Iter 1 有 Mock Service 或計算函式 | 移到功能性 iter |
 | 垂直切片違規 | 功能性 iter 只有後端或只有前端 | 合併為完整垂直切片 |
 | Story 不足 | 功能性 iter 只有 1 個 Story | 拆為 Story-0 (後端) + Story-1 (前端) |
-| Level vs 模組數 | 模組總數 (含 shared) 超過 Level 限制 30%+ | 升級 Level (S→M 或 M→L) |
+| Level vs 模組數 | 模組總數 (含 shared) 超過 Level 參考值 50%+ | 提醒使用者確認範圍，不強制升級 Level |
 | 動作 deps 空白 | 模組有依賴但動作清單 deps 全是「無」 | 在動作清單標註 [Type.Name] |
 | 單一 iter 負載 | 單一 iter 模組數超過建議值 (S:2/M:3/L:4) | 將部分模組移到下一個 iter |
 
@@ -272,7 +272,7 @@ pages/          → 路由頁面入口
 - Foundation 塞 MockService 或業務計算邏輯 → Foundation 只放骨架
 - 每個 iter 只有 Story-0 → iter 粒度太細，應合併
 
-**Round 4 門控**: 迭代規劃表有 Iter/範圍/目標/模組/交付/依賴/狀態 七欄 + 後面的 iter 只依賴更早的 iter + 模組總數 (含 shared) 不超過 Level 限制 (S≤3, M≤6, L≤10)，超過則建議升級 Level + Foundation 含 API 介面契約 + 前端殼 + 每個功能性 iter 是完整垂直切片 → 通過才進入下一輪
+**Round 4 門控**: 迭代規劃表有 Iter/範圍/目標/模組/交付/依賴/狀態 七欄 + 後面的 iter 只依賴更早的 iter + Foundation 含 API 介面契約 + 前端殼 + 每個功能性 iter 是完整垂直切片 → 通過才進入下一輪
 
 ---
 
@@ -316,16 +316,20 @@ pages/          → 路由頁面入口
 ```
 ### Iter 1: shared [CURRENT]
 
-| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 狀態 | 演化 |
-|---------|------|---------|---|------|------|------|------|
-| 核心型別 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | ○○ | BASE |
-| API 介面契約 | CONST | IServiceContracts | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | ○○ | BASE |
-| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | ○○ | BASE |
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 操作 | 狀態 | 演化 |
+|---------|------|---------|---|------|------|------|------|------|
+| 核心型別 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | NEW | ○○ | BASE |
+| API 介面契約 | CONST | IServiceContracts | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | NEW | ○○ | BASE |
+| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE |
 ```
+
+操作欄位說明:
+- `NEW`: 全新建立（draft-to-plan 會生成骨架檔案）
+- `MOD`: 修改既有程式碼（draft-to-plan 不生成骨架，Plan 標注修改目標）
 
 Modify 動作 (修改既有函式):
 ```
-| 計價修改 | SVC | calcWeekly [Modify] | P0 | LOAD→CALC→RETURN | [Internal.Types] | ○○ | L1 |
+| 計價修改 | SVC | calcWeekly | P0 | LOAD→CALC→RETURN | [Internal.Types] | MOD | ○○ | L1 |
 ```
 
 Stub 格式:
@@ -369,8 +373,8 @@ Stub 格式:
 - [ ] 如有變異點分析: 動作清單有「演化」欄位 + Modify 標記正確
 - [ ] 方法論標記為 SDID v2.1
 - [ ] 草稿狀態為 [x] DONE (所有釐清項目已完成)
-- [ ] 模組總數 (含 shared) 不超過 Level 限制 (S≤3, M≤6, L≤10)，超過則升級 Level
 - [ ] 動作清單的 deps 欄位有標註具體依賴 (不要全部寫「無」)
+- [ ] 動作清單有「操作」欄位 (NEW=新建 / MOD=修改既有)
 - [ ] 共用模組有「樣式策略」欄位 (CSS Modules / Tailwind / Global CSS / CSS-in-JS)
 - [ ] Foundation iter 含 API 介面契約 (interface) + 前端主入口殼 (AppRouter/Layout)
 - [ ] Foundation iter 不含業務邏輯實作 (Mock Service、計算函式等)
@@ -382,9 +386,12 @@ Stub 格式:
 ---
 
 ## 規模判斷
-- S (≤3 Stories): 單一功能、工具型應用
-- M (≤6 Stories): 標準 CRUD 應用、中型系統
-- L (≤10 Stories): 多模組企業系統、複雜業務邏輯
+- S: 小型工具、單一功能應用（參考，不強制限制）
+- M: 標準 CRUD 應用、中型系統（參考，不強制限制）
+- L: 多模組企業系統、複雜業務邏輯（參考，不強制限制）
+
+每個 Story 建議 4-6 個動作，超過 6 個考慮拆 Story（不是拆 iter）。
+Foundation iter 豁免動作數限制。
 
 ---
 

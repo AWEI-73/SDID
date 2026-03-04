@@ -358,9 +358,12 @@ node task-pipe/tools/safe-replace.cjs <file> <content>
 **等級限制**:
 | Level | 最大 Stories | Story 0 範圍 | 未驗證功能處理 |
 |-------|-------------|--------------|---------------|
-| S | 3 | 必要型別 + Mock | 自動 DEFERRED |
-| M | 6 | 專案骨架 + 配置 | 標註計畫開發 |
-| L | 10 | 完整基礎建設 | 允許進入 iter-1 |
+| S | 參考值 | 必要型別 + Mock | 自動 DEFERRED |
+| M | 參考值 | 專案骨架 + 配置 | 標註計畫開發 |
+| L | 參考值 | 完整基礎建設 | 允許進入 iter-1 |
+
+每個 Story 建議 4-6 個動作，超過 6 個 WARN，超過 10 個 BLOCKER（需拆 Story）。
+Foundation iter 豁免動作數限制。Level S/M/L 不再限制動作數上限。
 
 ## 🎨 契約設計：@GEMS-CONTRACT
 

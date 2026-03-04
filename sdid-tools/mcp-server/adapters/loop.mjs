@@ -100,6 +100,37 @@ export async function handler({ project, iter, story, forceStart }) {
   lines.push(`📍 路線: ${route}`);
   lines.push(`📍 狀態: ${state.phase}${state.step ? ' Phase ' + state.step : ''}${state.story ? ' ' + state.story : ''}`);
 
+  // ========== HUB: 注入現有程式碼 context ==========
+  const functionsPath = path.join(projectRoot, '.gems', 'docs', 'functions.json');
+  const shouldInjectFull = ['GATE', 'PLAN'].includes(state.phase) ||
+    (state.phase === 'BUILD' && (state.step || 1) === 1);
+  const shouldInjectStory = state.phase === 'BUILD' && (state.step || 1) > 1;
+
+  if (fs.existsSync(functionsPath) && (shouldInjectFull || shouldInjectStory)) {
+    try {
+      const fj = JSON.parse(fs.readFileSync(functionsPath, 'utf8'));
+      const allFns = fj.functions || [];
+      let fnsToShow = allFns;
+
+      if (shouldInjectStory && state.story) {
+        // Phase 2+: 只注入該 Story 相關函式，fallback 全部
+        const storyFns = allFns.filter(fn => fn.storyId === state.story);
+        fnsToShow = storyFns.length > 0 ? storyFns : allFns;
+      }
+
+      if (fnsToShow.length > 0) {
+        lines.push('');
+        lines.push(`📋 現有函式清單 (functions.json, ${fnsToShow.length}/${allFns.length}):`);
+        for (const fn of fnsToShow) {
+          const risk = fn.risk || fn.priority || '?';
+          lines.push(`  - ${fn.name} | ${risk} | ${fn.file} | ${fn.flow}`);
+        }
+        lines.push('');
+      }
+    } catch (e) { /* ignore parse errors */ }
+  }
+  // ========== /HUB ==========
+
   // Story progress
   if (state.plannedStories?.length > 0) {
     lines.push('');

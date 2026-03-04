@@ -140,17 +140,17 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
   const moduleInfo = draft.modules[moduleName] || {};
   const isStory0 = storyIndex === 0;
 
-  // 工作項目表 (v2.1: 支援 Modify 類型，v2.2: 從 spec type 推導 VSC 類型)
+  // 工作項目表 (v2.1: 支援 Modify 類型，v2.2: 從 spec type 推導 VSC 類型，v2.3: 用 operation 欄位)
   const workItems = actions.map((a, i) => {
-    const isModify = (a.techName || '').includes('[Modify]');
+    const isModify = (a.operation === 'MOD') || (a.techName || '').includes('[Modify]');
     const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
     const actionType = inferVscType(a.type, cleanName, isModify);
-    return `| ${i + 1} | ${cleanName} | ${actionType} | ${a.priority} | ✅ 明確 | - |`;
+    return `| ${i + 1} | ${cleanName} | ${actionType} | ${a.priority} | ✅ 明確 | ${isModify ? 'MOD' : 'NEW'} |`;
   }).join('\n');
 
   // Item 詳細規格
   const itemSpecs = actions.map((a, i) => {
-    const isModify = (a.techName || '').includes('[Modify]');
+    const isModify = (a.operation === 'MOD') || (a.techName || '').includes('[Modify]');
     const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
     const actionType = inferVscType(a.type, cleanName, isModify);
     const fileAction = isModify ? 'Modify' : 'New';
@@ -235,7 +235,7 @@ ${acRef && acRef !== '-' ? acRef.split(/[,;]\s*/).map(ac => `// ${ac.trim()}`).j
 
 ## 3. 工作項目
 
-| Item | 名稱 | Type | Priority | 明確度 | 預估 |
+| Item | 名稱 | Type | Priority | 明確度 | 操作 |
 |------|------|------|----------|--------|------|
 ${workItems}
 
@@ -290,13 +290,13 @@ function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, o
   const moduleDeps = options.moduleDeps || [];
 
   for (const a of actions) {
-    const isModify = (a.techName || '').includes('[Modify]');
-    if (isModify) {
+    // v2.3: 用 operation 欄位判斷（向後相容 [Modify] 標記）
+    const isMod = (a.operation === 'MOD') || (a.techName || '').includes('[Modify]');
+    if (isMod) {
       const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
-      result.skipped.push(`${cleanName} (Modify)`);
+      result.skipped.push(`${cleanName} (MOD — 不生成骨架，修改既有檔案)`);
       continue;
     }
-
     const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
     const kebab = cleanName
       .replace(/([a-z])([A-Z])/g, '$1-$2')

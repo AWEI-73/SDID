@@ -138,15 +138,11 @@ src/
 
   狀態: [CURRENT] 當前迭代 | [STUB] 待展開 | [DONE] 已完成
 
-  Action Budget 上限 (blueprint-gate BUDGET-001):
-    Level S: 每個功能性 iter 最多 3 個動作
-    Level M: 每個功能性 iter 最多 4 個動作
-    Level L: 每個功能性 iter 最多 5 個動作
-    Foundation iter (全 CONST/LIB/SCRIPT) 豁免
-
-  Complicated + q3_costly 模組 (CYNEFIN Budget):
-    - 每 iter 最多 4 個動作，超出需拆成多個 Story（不是多個 iter）
-    - 例: 6 個動作 → 拆成 Story-0 (3 動作) + Story-1 (3 動作)
+  Action Budget 上限 (blueprint-gate BUDGET):
+    每個 Story (模組) 建議最多 6 個動作 → WARN
+    超過 10 個動作 → BLOCKER（需拆 Story）
+    Foundation iter (全 CONST/LIB/SCRIPT/ROUTE) 豁免
+    不再區分 Level S/M/L 的動作上限
 
   deps=[] 的模組可並行開發 (Multi-Agent Ready)
 -->
@@ -229,17 +225,17 @@ src/
 
 ### Iter 1: shared [CURRENT]
 
-| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 狀態 | 演化 | AC |
-|---------|------|---------|---|------|------|------|------|----|
-| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | ○○ | BASE | AC-0.0 |
-| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT | 無 | ○○ | BASE | - |
-| API 介面契約 | CONST | IServiceContracts | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | ○○ | BASE | AC-0.1 |
-| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | ○○ | BASE | AC-0.2 |
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 操作 | 狀態 | 演化 | AC |
+|---------|------|---------|---|------|------|------|------|------|----|
+| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | NEW | ○○ | BASE | AC-0.0 |
+| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT | 無 | NEW | ○○ | BASE | - |
+| API 介面契約 | CONST | IServiceContracts | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.1 |
+| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.2 |
 
 ### Iter 2: {moduleA} [STUB]
 
 > {模組描述}，依賴 shared
-> 預估: {N} 個動作 ({M}×P0, {K}×P1)  ⚠ Level M 上限 4 個動作，超出拆 Story 不拆 iter
+> 預估: {N} 個動作 ({M}×P0, {K}×P1)  ⚠ 每個 Story 建議 4-6 個動作，超過 6 個考慮拆 Story
 > 公開 API: {functionA}, {functionB}
 > 必含: SVC/API + ROUTE + UI（前後端一套，delivery = FULL）
 > Story 拆法: Story-0 後端 (SVC/API), Story-1 前端串接 (UI/ROUTE)
@@ -247,7 +243,7 @@ src/
 ### Iter 3: {moduleB} [STUB]
 
 > {模組描述}，依賴 shared + {moduleA}
-> 預估: {N} 個動作  ⚠ Level M 上限 4 個動作，超出拆 Story 不拆 iter
+> 預估: {N} 個動作  ⚠ 每個 Story 建議 4-6 個動作，超過 6 個考慮拆 Story
 > 公開 API: {functionC}
 > 必含: SVC/API + ROUTE + UI（前後端一套，delivery = FULL）
 > Story 拆法: Story-0 後端 (SVC/API), Story-1 前端串接 (UI/ROUTE)

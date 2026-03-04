@@ -11,6 +11,21 @@
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * v2.3: 解析操作欄位
+ * 優先讀 操作 欄位 (NEW/MOD)，向後相容 [Modify] 標記
+ */
+function resolveOperation(operationField, techName) {
+  if (operationField) {
+    const op = operationField.toUpperCase().trim();
+    if (op === 'MOD' || op === 'MODIFY') return 'MOD';
+    if (op === 'NEW') return 'NEW';
+  }
+  // 向後相容：techName 含 [Modify] → MOD
+  if (/\[Modify\]/i.test(techName)) return 'MOD';
+  return 'NEW';
+}
+
 function load(filePath) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Draft file not found: ${filePath}`);
@@ -277,6 +292,8 @@ function parseModuleActions(content) {
         status: item['狀態'] || item['status'] || '○○',
         evolution: item['演化'] || item['evolution'] || 'BASE',
         ac: item['ac'] || item['AC'] || '',
+        // v2.3: 操作欄位 NEW=新建 MOD=修改既有（向後相容：[Modify] 標記自動轉 MOD）
+        operation: resolveOperation(item['操作'] || item['operation'] || '', item['技術名稱'] || item['techname'] || ''),
       });
     }
 

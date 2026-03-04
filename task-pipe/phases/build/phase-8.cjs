@@ -160,7 +160,7 @@ function run(options) {
         // JSON 解析失敗已在上面處理，這裡忽略
       }
 
-      handlePhaseSuccess('BUILD', '8', story);
+      handlePhaseSuccess('BUILD', '8', story, target);
       clearCheckpoints(target, iteration, story);
 
       const nextStory = findNextStory(fullPlanPath, story);

@@ -522,6 +522,19 @@ function anchorPass(phase, step, summary, nextCommand, options = {}) {
     console.log(`@PASS | ${phase} ${step} | ${summary}`);
     console.log(`NEXT: ${nextCommand}`);
 
+    // v2.1: 清除該節點的 strategy drift 狀態（避免跨 phase 污染）
+    if (retryStrategy && options.projectRoot && options.phase && options.step) {
+        try {
+            const iter = typeof options.iteration === 'number'
+                ? `iter-${options.iteration}`
+                : (options.iteration || 'iter-1');
+            retryStrategy.resetNodeStrategy(
+                options.projectRoot, iter,
+                options.phase, options.step, options.story || null
+            );
+        } catch (e) { /* 忽略 */ }
+    }
+
     // 可選：存檔成功記錄
     if (options.projectRoot) {
         try {
@@ -988,6 +1001,16 @@ function emitPass(spec, options = {}) {
     console.log(`NEXT: ${nextCmd}`);
     if (nextHint) {
         console.log(`  ↳ ${nextHint}`);
+    }
+
+    // v2.1: 清除該節點的 strategy drift 狀態（避免跨 phase 污染）
+    if (retryStrategy && projectRoot && phase && step) {
+        try {
+            const iter = typeof iteration === 'number'
+                ? `iter-${iteration}`
+                : (iteration || 'iter-1');
+            retryStrategy.resetNodeStrategy(projectRoot, iter, phase, step, story || null);
+        } catch (e) { /* 忽略 */ }
     }
 
     // 記錄到 project-memory

@@ -465,7 +465,7 @@ function run(options) {
         '配置 package.json test script',
         '重新執行 Phase 5'
       ],
-      output: `NEXT: ${getRetryCmd('BUILD', '5', { story })}`
+      output: `NEXT: ${getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
       iteration: iterNum,
@@ -493,7 +493,41 @@ function run(options) {
   // Step 6: 結果處理
   // ========================================
   if (testResult.success) {
-    handlePhaseSuccess('BUILD', '5', story);
+    // NOTICE-002 修復: total=0 表示 jest 沒找到測試，不應靜默 PASS
+    if (testResult.stats.total === 0 && testFiles.length > 0) {
+      const attempt = errorHandler.recordError('E7', 'jest 執行成功但 0 個測試被執行');
+      anchorOutput({
+        context: `Phase 5 | ${story} | 測試未執行`,
+        error: {
+          type: 'TACTICAL_FIX',
+          summary: `jest 跑完但 0 個測試被執行 (找到 ${testFiles.length} 個測試檔案)`,
+          attempt,
+          maxAttempts: MAX_ATTEMPTS
+        },
+        guide: {
+          title: 'JEST_CONFIG_FIX',
+          content: `可能原因：
+1. jest.config.js 的 testMatch/testRegex 與測試檔案路徑不符
+2. ts-jest transform 未正確配置，TypeScript 測試無法被識別
+3. 測試檔案命名不符合 jest 預設規則 (*.test.ts / *.spec.ts)
+
+建議修復：
+- 確認 jest.config.js 的 testMatch 包含測試檔案路徑
+- 確認 transform 有設定 ts-jest
+- 執行 npx jest --listTests 確認 jest 能找到測試`
+        },
+        output: `NEXT: ${getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration })}`
+      }, {
+        projectRoot: target,
+        iteration: iterNum,
+        phase: 'build',
+        step: 'phase-5',
+        story
+      });
+      return { verdict: 'PENDING', reason: 'no_tests_executed', testFiles: testFiles.length };
+    }
+
+    handlePhaseSuccess('BUILD', '5', story, target);
     writeCheckpoint(target, iteration, story, '5', {
       verdict: 'PASS',
       testFiles: testFiles.length,
@@ -509,7 +543,7 @@ function run(options) {
     emitPass({
       scope: 'BUILD Phase 5',
       summary: `測試通過 ✅ | ${statsInfo} | ${testResult.duration}ms`,
-      nextCmd: getNextCmd('BUILD', '5', { story, level })
+      nextCmd: getNextCmd('BUILD', '5', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: iterNum,
@@ -570,7 +604,7 @@ function run(options) {
       title: `TEST_ERROR (Recovery Level ${recoveryLevel})`,
       content: errorSummary || '無輸出'
     },
-    output: `NEXT: ${getRetryCmd('BUILD', '5', { story })}`
+    output: `NEXT: ${getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration })}`
   }, {
     projectRoot: target,
     iteration: iterNum,

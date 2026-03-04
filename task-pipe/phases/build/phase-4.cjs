@@ -137,7 +137,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
 
   // 通過
   if (passed) {
-    handlePhaseSuccess('BUILD', '4', story);
+    handlePhaseSuccess('BUILD', '4', story, target);
     writeCheckpoint(target, iteration, story, '4', {
       verdict: 'PASS',
       p0: { total: p0Fns.length, tested: p0Tested.length, withE2E: testTypeResult.stats.p0WithE2E },

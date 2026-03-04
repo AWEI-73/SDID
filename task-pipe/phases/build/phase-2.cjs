@@ -23,7 +23,7 @@ const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { writeCheckpoint } = require('../../lib/checkpoint.cjs');
 const { extractPlanSpec, compareSpecs, getStoryContext, formatStoryContext, extractFunctionManifest, extractFileManifest, compareFilePaths, compareFlowSteps } = require('../../lib/plan/plan-spec-extractor.cjs');
 const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
-const { createErrorHandler, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
+const { createErrorHandler, handlePhaseSuccess, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
 const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cjs');
 const { resolveSrcPath } = require('../../lib/shared/src-path-resolver.cjs');
 const { getNextCmd, getRetryCmd, getPassCmd } = require('../../lib/shared/next-command-helper.cjs');
@@ -1039,8 +1039,8 @@ mkdir -p src/modules src/shared src/config`,
 
   // 通過
   if (passed) {
-    // 成功時重置 TACTICAL_FIX 計數
-    errorHandler.resetAttempts();
+    // 成功時重置 TACTICAL_FIX 計數 + strategy drift 節點
+    handlePhaseSuccess('BUILD', 'phase-2', story, target);
 
     writeCheckpoint(target, iteration, story, '2', {
       verdict: 'PASS',

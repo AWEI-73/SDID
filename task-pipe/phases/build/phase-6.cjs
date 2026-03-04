@@ -133,7 +133,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       console.log(`[代碼質量驗證] 跳過: ${err.message}\n`);
     }
 
-    handlePhaseSuccess('BUILD', '6', story);
+    handlePhaseSuccess('BUILD', '6', story, target);
     writeCheckpoint(target, iteration, story, '6', {
       verdict: 'PASS',
       testFiles: testFiles.length
@@ -142,7 +142,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     emitPass({
       scope: 'BUILD Phase 6',
       summary: `修改檔案測試通過 | 測試檔案: ${testFiles.length}`,
-      nextCmd: getNextCmd('BUILD', '6', { story, level })
+      nextCmd: getNextCmd('BUILD', '6', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -224,7 +224,7 @@ const mockRouter = { get: jest.fn() };
 \`\`\`
 `
     },
-    output: `NEXT: npm test [修改檔案的測試]\nNEXT: ${getRetryCmd('BUILD', '6', { story })} --pass`
+    output: `NEXT: npm test [修改檔案的測試]\nNEXT: ${getRetryCmd('BUILD', '6', { story, target: relativeTarget, iteration })} --pass`
   }, {
     projectRoot: target,
     iteration: parseInt(iteration.replace('iter-', '')),

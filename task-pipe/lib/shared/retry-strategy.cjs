@@ -170,7 +170,9 @@ function getStrategyLevel(retryCount) {
  */
 function recordRetryAndGetStrategy(projectRoot, iteration, phase, step, error, options = {}) {
   const { priority = 'P2', storyId = null } = options;
-  const nodeKey = storyId ? `${phase}-${step}-${storyId}` : `${phase}-${step}`;
+  // v1.1: 統一小寫，避免 anchorError('build') vs handlePhaseSuccess('BUILD') 大小寫不匹配
+  const normPhase = phase.toLowerCase();
+  const nodeKey = storyId ? `${normPhase}-${step}-${storyId}` : `${normPhase}-${step}`;
 
   const state = readStrategyState(projectRoot, iteration);
 
@@ -353,7 +355,9 @@ function generateRollbackGuidance(node) {
  * 重置節點狀態 (成功後呼叫)
  */
 function resetNodeStrategy(projectRoot, iteration, phase, step, storyId = null) {
-  const nodeKey = storyId ? `${phase}-${step}-${storyId}` : `${phase}-${step}`;
+  // v1.1: 統一小寫，避免大小寫不匹配
+  const normPhase = phase.toLowerCase();
+  const nodeKey = storyId ? `${normPhase}-${step}-${storyId}` : `${normPhase}-${step}`;
   const state = readStrategyState(projectRoot, iteration);
 
   if (state.nodes[nodeKey]) {
@@ -375,7 +379,9 @@ function resetNodeStrategy(projectRoot, iteration, phase, step, storyId = null) 
  * 取得節點當前狀態
  */
 function getNodeStatus(projectRoot, iteration, phase, step, storyId = null) {
-  const nodeKey = storyId ? `${phase}-${step}-${storyId}` : `${phase}-${step}`;
+  // v1.1: 統一小寫
+  const normPhase = phase.toLowerCase();
+  const nodeKey = storyId ? `${normPhase}-${step}-${storyId}` : `${normPhase}-${step}`;
   const state = readStrategyState(projectRoot, iteration);
 
   if (!state.nodes[nodeKey]) {

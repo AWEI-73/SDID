@@ -17,7 +17,7 @@ const path = require('path');
 const { writeCheckpoint } = require('../../lib/checkpoint.cjs');
 const { detectProjectType, getGreenfieldGuide, getSrcDir } = require('../../lib/shared/project-type.cjs');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
-const { createErrorHandler, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
+const { createErrorHandler, handlePhaseSuccess, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
 const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePending, emitTaskBlock, emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cjs');
 // v2.0: 引入前端規格提取函式
 const { extractFrontendSpecs } = require('../../tools/quality-check/poc-quality-checker.cjs');
@@ -484,6 +484,8 @@ modules/[module-name]/
             scaffoldCount: existingScaffolds.length
           });
 
+          handlePhaseSuccess('BUILD', 'phase-1', story, target);
+
           emitPass({
             scope: 'BUILD Phase 1',
             summary: `骨架模式: ${existingScaffolds.length} 個骨架檔案已存在 | ${projectType}`,
@@ -560,6 +562,8 @@ modules/[module-name]/
         checks: checks.map(c => c.name),
         isFoundation
       });
+
+      handlePhaseSuccess('BUILD', 'phase-1', story, target);
 
       emitPass({
         scope: 'BUILD Phase 1',

@@ -603,17 +603,77 @@ function run(options) {
     const stubIssues = detectTestStubs(testFiles, target);
     if (stubIssues.length > 0) {
       const attempt = errorHandler.recordError('STUB', `${stubIssues.length} 個 stub 測試`);
+
+      // 讀取被測函式的原始碼片段，幫助 AI 理解該驗證什麼
+      const taskDetails = stubIssues.slice(0, 8).map(s => {
+        let srcSnippet = '';
+        if (s.fnName) {
+          // 嘗試從 import 找到原始檔案並讀取函式簽名
+          const testAbsPath = path.isAbsolute(s.file) ? s.file : path.join(target, s.file);
+          try {
+            const testContent = fs.readFileSync(testAbsPath, 'utf8');
+            const fromMatch = testContent.match(new RegExp(`import\\s*\\{[^}]*${s.fnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^}]*\\}\\s*from\\s*['"]([^'"]+)['"]`));
+            if (fromMatch) {
+              const importPath = fromMatch[1];
+              const testDir = path.dirname(testAbsPath);
+              // 嘗試解析 import 路徑
+              const candidates = [
+                path.resolve(testDir, importPath + '.ts'),
+                path.resolve(testDir, importPath + '.tsx'),
+                path.resolve(testDir, importPath, 'index.ts'),
+                path.resolve(testDir, importPath + '.js'),
+              ];
+              for (const candidate of candidates) {
+                if (fs.existsSync(candidate)) {
+                  const srcContent = fs.readFileSync(candidate, 'utf8');
+                  // 取前 20 行作為摘要
+                  srcSnippet = srcContent.split('\n').slice(0, 20).join('\n');
+                  break;
+                }
+              }
+            }
+          } catch { /* 忽略 */ }
+        }
+        return { ...s, srcSnippet };
+      });
+
       emitBlock({
         scope: `BUILD Phase 5 | ${story}`,
-        summary: `測試通過但有 ${stubIssues.length} 個 stub 測試（只有 toBeDefined/toBeTruthy，無實質驗證）`,
+        summary: `@STUB_DETECTED: ${stubIssues.length} 個測試只有 toBeDefined()/toBeTruthy()，這是 STUB（佔位測試），必須改為驗證實際行為`,
         context: `Phase 5 | ${story} | Stub 偵測`,
-        tasks: stubIssues.slice(0, 8).map(s => ({
-          action: 'FIX_TEST',
+        details: [
+          '=== STUB 定義 ===',
+          'STUB 測試 = 只用 toBeDefined()/toBeTruthy() 確認「東西存在」，不驗證任何行為。',
+          '這種測試永遠會過，等於沒測。門控要求每個 test case 必須驗證函式的回傳值或副作用。',
+          '',
+          '=== 修復方式 ===',
+          '❌ BEFORE (stub): expect(MyFunc).toBeDefined()',
+          '✅ AFTER (real):  expect(MyFunc()).toEqual({ key: "value" })',
+          '✅ AFTER (real):  expect(MyFunc().someField).toBe("expected")',
+          '✅ AFTER (real):  expect(MyFunc().length).toBeGreaterThan(0)',
+          '',
+          '=== 被標記的測試 ===',
+          ...taskDetails.map((s, i) => {
+            const lines = [`${i + 1}. ${s.file} → it('${s.testName}')`];
+            lines.push(`   被測函式: ${s.fnName || '(請從 import 推斷)'}`);
+            if (s.srcSnippet) {
+              lines.push(`   原始碼摘要:`);
+              lines.push(`   ${s.srcSnippet.split('\n').slice(0, 5).join('\n   ')}`);
+            }
+            return lines.join('\n');
+          }),
+        ].join('\n'),
+        tasks: taskDetails.map(s => ({
+          action: 'REWRITE_TEST',
           file: s.file,
-          expected: `${s.testName}: 用 toBe/toEqual/toContain 等驗證實際行為，不要只用 toBeDefined()`,
-          reference: `函式: ${s.fnName || '(unknown)'}`
+          expected: `呼叫 ${s.fnName || '被測函式'}() 並用 toBe/toEqual/toContain 驗證回傳值。不要只檢查存在性。`,
+          reference: s.srcSnippet ? `原始碼前 5 行:\n${s.srcSnippet.split('\n').slice(0, 5).join('\n')}` : `函式: ${s.fnName || '(unknown)'}`
         })),
-        forbidden: ['不要只加 toBeDefined() 或 toBeTruthy() 來通過門控'],
+        forbidden: [
+          '禁止用 toBeDefined()/toBeTruthy()/not.toBeNull() 作為唯一斷言',
+          '禁止辯稱「這不是 stub」— 門控已自動掃描確認，只有 toBeDefined/toBeTruthy 的 test case 就是 stub',
+          '每個 test case 必須呼叫函式並驗證回傳值或副作用'
+        ],
         nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
         attempt,
         maxAttempts: MAX_ATTEMPTS

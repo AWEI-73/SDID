@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 7: 整合檢查 v5.2
+ * BUILD Phase 7: 整合檢查 v5.3
  * 輸入: 完成的程式碼 | 產物: 整合項目確認 + checkpoint
+ * 
+ * v5.3 變更：
+ * - findNewPages: 補掃 shared/pages/ 目錄（AI 常把 AppRouter 放這裡）
+ * - 新增 CSS/樣式檔案檢查：有 UI 元件但無任何 .css 時提示（WARN）
  * 
  * v5.2 變更：
  * - findNewComponents: 擴大掃描範圍，補掃 src/components/ 根層 + 遞迴任意深度
@@ -262,6 +266,9 @@ function checkIntegrations(target, srcPath, iteration, story) {
     ? findOrphanComponents(target, srcPath, allComponents)
     : [];
 
+  // v5.3: CSS/樣式檔案檢查 — UI 類型動作應有對應樣式
+  const missingStyles = findMissingStyles(srcPath);
+
   const checks = [
     {
       name: 'package.json',
@@ -303,6 +310,15 @@ function checkIntegrations(target, srcPath, iteration, story) {
       items: orphanComponents,
       // 這是確保使用者看得到畫面的關鍵
       critical: orphanComponents.length > 0
+    },
+    {
+      name: 'CSS/樣式檔案',
+      when: ['新增 UI 元件或頁面'],
+      check: ['*.css', '*.module.css', 'index.css', 'App.css'],
+      needsCheck: missingStyles.length > 0,
+      items: missingStyles,
+      // CSS 缺失不是 BLOCKER，但 AI 常忘記做
+      critical: false
     }
   ];
 
@@ -399,11 +415,18 @@ function findNewPages(srcPath) {
   const pages = [];
   const pagesDir = path.join(srcPath, 'pages');
   const modulesDir = path.join(srcPath, 'modules');
+  const sharedPagesDir = path.join(srcPath, 'shared', 'pages');
 
   // 檢查 pages 目錄
   if (fs.existsSync(pagesDir)) {
     const files = fs.readdirSync(pagesDir);
     files.filter(f => /Page\.(tsx|jsx)$/.test(f)).forEach(f => pages.push(f));
+  }
+
+  // v5.3: 檢查 shared/pages 目錄 (AI 常把 AppRouter/AppRoot 放這裡)
+  if (fs.existsSync(sharedPagesDir)) {
+    const files = fs.readdirSync(sharedPagesDir);
+    files.filter(f => /\.(tsx|jsx)$/.test(f)).forEach(f => pages.push(`shared/pages/${f}`));
   }
 
   // 檢查 modules/*/pages 目錄
@@ -735,6 +758,43 @@ function findOrphanComponents(target, srcPath, components) {
   }
 
   return orphans;
+}
+
+/**
+ * v5.3: CSS/樣式檔案檢查
+ * 如果有 UI 元件 (.tsx/.jsx) 但整個 src 下完全沒有 .css 檔案，提示 AI 補樣式
+ */
+function findMissingStyles(srcPath) {
+  const issues = [];
+
+  // 找所有 UI 元件 (.tsx/.jsx)
+  const hasUIFiles = hasFilesRecursive(srcPath, /\.(tsx|jsx)$/);
+  if (!hasUIFiles) return issues;
+
+  // 找所有 CSS 檔案
+  const hasCSSFiles = hasFilesRecursive(srcPath, /\.css$/) ||
+    hasFilesRecursive(srcPath, /\.scss$/) ||
+    hasFilesRecursive(srcPath, /\.less$/);
+
+  if (!hasCSSFiles) {
+    issues.push('src/ 下找不到任何 .css/.scss/.less 檔案，UI 元件可能缺少樣式');
+  }
+
+  return issues;
+}
+
+function hasFilesRecursive(dir, pattern) {
+  if (!fs.existsSync(dir)) return false;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === '__tests__') continue;
+    if (entry.isDirectory()) {
+      if (hasFilesRecursive(path.join(dir, entry.name), pattern)) return true;
+    } else if (pattern.test(entry.name)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // 自我執行判斷

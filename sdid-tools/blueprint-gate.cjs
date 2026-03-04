@@ -1099,7 +1099,53 @@ Blueprint Gate v1.1 - 活藍圖品質門控
   }
 
   if (!args.draft) {
-    console.error('❌ 請指定 --draft=<path>');
+    // 嘗試從 --target 自動偵測 enhanced-draft.md
+    if (args.target) {
+      const candidates = [
+        path.join(args.target, '.gems', 'draft', 'enhanced-draft.md'),
+        path.join(args.target, '.gems', 'iterations', `iter-${args.iter || 1}`, 'poc', `requirement_draft_iter-${args.iter || 1}.md`),
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) {
+          args.draft = c;
+          console.log(`📍 自動偵測藍圖: ${path.relative(process.cwd(), c)}`);
+          break;
+        }
+      }
+    }
+
+    if (!args.draft) {
+      // 綠地引導：沒有藍圖，引導去 Gem chatbot
+      console.log('');
+      console.log('@BLOCK | Blueprint Gate | 找不到活藍圖 (enhanced-draft.md)');
+      console.log('');
+      console.log('@TASK 1:');
+      console.log('  ACTION: CREATE_BLUEPRINT');
+      console.log('  FILE: .gems/draft/enhanced-draft.md');
+      console.log('  EXPECTED: 使用 Gem chatbot (gemini-gem-architect) 建立活藍圖');
+      console.log('  REFERENCE: sdid-tools/prompts/gemini-gem-architect-v2.1.md');
+      console.log('');
+      console.log('步驟:');
+      console.log('  1. 開啟 Gemini Gem (gemini-gem-architect-v2.1)');
+      console.log('  2. 描述你的專案需求，讓 Gem 產出 Enhanced Draft v2');
+      console.log('  3. 儲存到 <project>/.gems/draft/enhanced-draft.md');
+      console.log(`  4. 重跑: node sdid-tools/blueprint-gate.cjs --draft=<project>/.gems/draft/enhanced-draft.md${args.target ? ' --target=' + path.relative(process.cwd(), args.target) : ''}`);
+      console.log('');
+      process.exit(1);
+    }
+  }
+
+  // draft 路徑存在但檔案不存在
+  if (!fs.existsSync(args.draft)) {
+    console.log('');
+    console.log(`@BLOCK | Blueprint Gate | 藍圖檔案不存在: ${path.relative(process.cwd(), args.draft)}`);
+    console.log('');
+    console.log('@TASK 1:');
+    console.log('  ACTION: CREATE_BLUEPRINT');
+    console.log(`  FILE: ${path.relative(process.cwd(), args.draft)}`);
+    console.log('  EXPECTED: 使用 Gem chatbot 建立活藍圖，或確認路徑是否正確');
+    console.log('  REFERENCE: sdid-tools/prompts/gemini-gem-architect-v2.1.md');
+    console.log('');
     process.exit(1);
   }
 

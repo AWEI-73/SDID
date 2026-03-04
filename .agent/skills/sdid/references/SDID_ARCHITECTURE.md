@@ -249,15 +249,13 @@ node sdid-tools/blueprint-gate.cjs --draft=<path> --level=M
 
 ## 六、BUILD Phase 1-8
 
-**兩條路線共用**，差異只在進入腳本：
+**兩條路線共用**，統一透過 MCP `sdid-loop` tool 自動偵測路線和進度：
 
-```bash
-# Blueprint 路線
-node .agent/skills/sdid/scripts/blueprint-loop.cjs --project=[path]
-
-# Task-Pipe 路線
-node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
 ```
+呼叫 MCP sdid-loop tool，project=[path]
+```
+
+> ⚠️ 舊的 `blueprint-loop.cjs` / `taskpipe-loop.cjs` 已 deprecated，不要使用。
 
 **八個 Phase**：
 
@@ -308,8 +306,7 @@ Layer 2（確認）：原始碼內容含以下任一：
 | `draft-to-plan.cjs` | `sdid-tools/` | Enhanced Draft → implementation_plan |
 | `micro-fix-gate.cjs` | `sdid-tools/` | 小修後的快速 gate |
 | `phase-2.cjs` | `task-pipe/phases/build/` | 標籤驗收 + STUB-001 |
-| `blueprint-loop.cjs` | `.agent/skills/sdid/scripts/` | Blueprint 路線主迴圈 |
-| `taskpipe-loop.cjs` | `.agent/skills/sdid/scripts/` | Task-Pipe 路線主迴圈 |
+| `sdid-loop` (MCP) | `sdid-tools/mcp-server/` | ★ 主入口：自動偵測路線+狀態+執行 |
 
 ---
 

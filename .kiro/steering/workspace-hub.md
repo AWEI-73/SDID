@@ -3,12 +3,12 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-04 UTC
+**更新**: 2026-03-04 02:37:24 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
 ## ROADMAP 進度
-Strategy Roadmap v2.8，最後更新 2026-02-16（Phase 2 全部完成）
+Strategy Roadmap v2.8，最後更新 2026-02-16
 
 | Phase | 狀態 |
 |-------|------|
@@ -20,11 +20,6 @@ Strategy Roadmap v2.8，最後更新 2026-02-16（Phase 2 全部完成）
 | P2: 雙入口互通 — POC Step 1 支援 `--from-draft` (2026-02-15 完成) | ✅ |
 | P3: Blueprint Flow 的 loop.cjs 整合 (2026-02-15 完成) | ✅ |
 | P4: @GUARD 可配置化 (2026-02-15 完成) | ✅ |
-| P5: Quick Mode — 小步快跑 (2026-02-16 完成) | ✅ |
-| P7: Adversarial Review — 併入 Phase 8 (2026-02-16 完成) | ✅ |
-| P8: Plan 路徑驗證 + config 棕地三欄位 (2026-02-16 完成) | ✅ |
-| P6: 棕地逆向工程 | 🔒 暫緩（無實際需求）|
-| P9: Correct-Course | 🔒 暫緩（低頻場景）|
 
 ## SDID 框架
 這些是框架本身，不是被管理的 project，通常不需要大量掃描：
@@ -50,11 +45,14 @@ Strategy Roadmap v2.8，最後更新 2026-02-16（Phase 2 全部完成）
 - `claude/vigilant-heyrovsky` → C:/Users/user/Desktop/SDID/.claude/worktrees/vigilant-heyrovsky
 
 **最近 commits**:
-- docs: 清理過時文件 + ARCHITECTURE.md v5.0 全面更新
+- d698e3e fix(refs): 清除所有舊 loop script 引用 — 統一指向 MCP sdid-loop
+- 2fddba7 fix(loop): build-execution.md 改用 MCP sdid-loop + state-machine 加 POC-FIX 完成判斷
+- 95f838f docs: 清理過時文件 + ARCHITECTURE.md v5.0 + workspace-hub ROADMAP 補全
 - e532c83 feat(mcp): micro-fix-gate 加 iter 參數 + 新增 sdid-poc-scaffold tool
 - 41a3725 feat(poc-fix): micro-fix-gate 加 --iter + log 寫入 + poc-fix.md Phase 4 加 poc-to-scaffold 步驟
 - 6fae224 feat(poc-fix): consolidation-parser + poc-to-scaffold — POC-FIX 骨架遷移工具
 - 3b6fd58 feat(verify): AC 未標記降為 @WARN — PASS 判定加 acAllTagged 條件
+- cdedd20 feat(docs+deps): v3 文件更新 + DEPS 模組推導 resolveDeps()
 
 ## 專案狀態（SDID 管理中）
 
@@ -71,8 +69,8 @@ Strategy Roadmap v2.8，最後更新 2026-02-16（Phase 2 全部完成）
 ```
 SDID 核心腳本:
   task-pipe/runner.cjs          ← 執行 phase/step
-  task-pipe/loop.cjs            ← 狀態導航
-  sdid-tools/ralph-loop.cjs     ← Blueprint flow
+  sdid-core/state-machine.cjs   ← 狀態推斷引擎
+  sdid-tools/mcp-server/        ← MCP 入口（sdid-loop 等）
   .agent/skills/sdid/SKILL.md   ← AI skill hub
 
 Project 資料路徑:
@@ -88,7 +86,6 @@ build-phase-{N}-Story-{X.Y}-{status}-{ts}.log
 poc-step-{N}-{status}-{ts}.log
 plan-step-{N}-Story-{X.Y}-{status}-{ts}.log
 gate-{check|plan|shrink|expand|verify}-{status}-{ts}.log
-gate-microfix-{pass|error}-{ts}.log
 cynefin-check-{pass|fail}-{ts}.log
 scan-scan-{status}-{ts}.log
 ```

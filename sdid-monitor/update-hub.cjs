@@ -467,8 +467,8 @@ function generateMarkdown(hub) {
   lines.push(`\`\`\``);
   lines.push(`SDID 核心腳本:`);
   lines.push(`  task-pipe/runner.cjs          ← 執行 phase/step`);
-  lines.push(`  task-pipe/loop.cjs            ← 狀態導航`);
-  lines.push(`  sdid-tools/ralph-loop.cjs     ← Blueprint flow`);
+  lines.push(`  sdid-core/state-machine.cjs   ← 狀態推斷引擎`);
+  lines.push(`  sdid-tools/mcp-server/        ← MCP 入口（sdid-loop 等）`);
   lines.push(`  .agent/skills/sdid/SKILL.md   ← AI skill hub`);
   lines.push('');
   lines.push(`Project 資料路徑:`);

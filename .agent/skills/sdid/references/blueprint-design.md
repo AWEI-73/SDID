@@ -4,7 +4,7 @@
 
 Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求收斂為 Enhanced Draft。
 完成後存檔到 `{project}/.gems/iterations/iter-{X}/poc/requirement_draft_iter-{X}.md`，
-然後交給 BUILD-AUTO 模式（blueprint-loop.cjs）執行。
+然後交給 BUILD-AUTO 模式（MCP `sdid-loop`）執行。
 
 > **迭代號規則**: 存檔前先掃描 `{project}/.gems/iterations/` 找到最大的 iter-N，新建 iter-(N+1)。若無任何迭代目錄則從 iter-1 開始。
 

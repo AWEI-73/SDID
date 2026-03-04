@@ -303,7 +303,7 @@ iter-quick-NNN（不佔正式 iter 序號）
 |------|------|------|
 | 說「小修」「fix」「改一下」 | MICRO-FIX | escalation check → 直接改 → micro-fix-gate |
 | 無專案 + 需求模糊 | DESIGN-BLUEPRINT | 5 輪對話 |
-| 無專案 + 需求明確 | DESIGN-TASKPIPE | taskpipe-loop.cjs --new |
+| 無專案 + 需求明確 | DESIGN-TASKPIPE | MCP sdid-loop |
 | 有 draft，無 plan | BUILD-AUTO | 看 draft 類型自動選路線 |
 | 有 implementation_plan | BUILD-AUTO | 自動偵測路線繼續 BUILD |
 | 意圖不明 | 問一個問題 | 「大方向設計還是直接開始？」 |
@@ -312,10 +312,10 @@ iter-quick-NNN（不佔正式 iter 序號）
 
 ```
 draft 有 Enhanced Draft 格式標記（模組動作表、迭代規劃表）
-  → Blueprint 路線 → CYNEFIN-CHECK → blueprint-loop.cjs
+  → Blueprint 路線 → CYNEFIN-CHECK → MCP sdid-loop
 
 draft 是簡單 requirement_draft
-  → Task-Pipe 路線 → CYNEFIN-CHECK → taskpipe-loop.cjs
+  → Task-Pipe 路線 → CYNEFIN-CHECK → MCP sdid-loop
 ```
 
 ---

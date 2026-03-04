@@ -81,16 +81,40 @@ export const blueprintGate = {
 export const microFixGate = {
   schema: {
     title: 'SDID Micro-Fix Gate',
-    description: '小修驗收 — 檢查改動檔案的 GEMS 標籤覆蓋率和 export 完整性。適用於 MICRO-FIX 和 POC-FIX 路線。',
+    description: '小修驗收 — 檢查改動檔案的 GEMS 標籤覆蓋率和 export 完整性。適用於 MICRO-FIX 和 POC-FIX 路線。@PASS 時自動寫 log 到 logs/gate-microfix-pass-*.log。',
     inputSchema: {
       target: z.string().describe('專案根目錄路徑'),
       changed: z.string().optional().describe('逗號分隔的改動檔案清單（省略則自動掃 src/）'),
+      iter: z.number().optional().describe('迭代編號（用於 log 存檔）'),
     },
   },
-  async handler({ target, changed }) {
+  async handler({ target, changed, iter }) {
     const args = [`--target=${resolvePath(target)}`];
     if (changed) args.push(`--changed=${changed}`);
+    if (iter) args.push(`--iter=${iter}`);
     const result = await runCli('micro-fix-gate.cjs', args);
+    return { content: [{ type: 'text', text: result.output }] };
+  },
+};
+
+// ── sdid-run (通用 CLI 執行器) ──
+
+// ── sdid-poc-to-scaffold ──
+
+export const pocToScaffold = {
+  schema: {
+    title: 'SDID POC-to-Scaffold',
+    description: 'POC-FIX 骨架遷移 — 讀 poc-consolidation-log.md 映射表，產出帶 GEMS 標籤的 .ts/.tsx 骨架檔。已存在的檔案自動跳過。',
+    inputSchema: {
+      log: z.string().describe('poc-consolidation-log.md 路徑'),
+      target: z.string().describe('專案根目錄路徑'),
+      dryRun: z.boolean().optional().describe('預覽模式，不寫入檔案'),
+    },
+  },
+  async handler({ log: logPath, target, dryRun }) {
+    const args = [`--log=${resolvePath(logPath)}`, `--target=${resolvePath(target)}`];
+    if (dryRun) args.push('--dry-run');
+    const result = await runCli('poc-to-scaffold.cjs', args);
     return { content: [{ type: 'text', text: result.output }] };
   },
 };

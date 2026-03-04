@@ -558,18 +558,29 @@ mkdir -p src/modules src/shared src/config`,
         }
         if (issue.type === 'STEP_STACKED') {
           taskLines.push(`  FIX_STEP_PLACEMENT:`);
-          taskLines.push(`    ❌ 問題: ${issue.stackedSteps.length} 個 [STEP] 錨點堆疊在一起 (連續 ${issue.maxConsecutive} 個)`);
-          taskLines.push(`    ❌ 堆疊的 STEP: ${issue.stackedSteps.join(', ')}`);
-          taskLines.push(`    ✅ 正確做法: 每個 // [STEP] 錨點必須放在對應程式碼區塊的上方`);
-          taskLines.push(`    ✅ 範例:`);
-          taskLines.push(`      // [STEP] INIT_MAP`);
-          taskLines.push(`      private data = new Map();`);
+          taskLines.push(`    ❌ 問題: ${issue.stackedSteps.length} 個 [STEP] 錨點連續堆疊，沒有程式碼夾在中間`);
+          taskLines.push(`    ❌ 堆疊的 STEP: ${issue.stackedSteps.map(s => `// [STEP] ${s}`).join('  ')}`);
+          taskLines.push(`    `);
+          taskLines.push(`    📋 修復步驟:`);
+          taskLines.push(`      1. 打開 ${mm.functionName} 所在的檔案`);
+          taskLines.push(`      2. 逐行檢視每個 // [STEP] 錨點下方是否有對應的程式碼`);
+          taskLines.push(`      3. 如果多個 [STEP] 連在一起沒有程式碼，把每個 [STEP] 移到它對應的程式碼區塊正上方`);
+          taskLines.push(`    `);
+          taskLines.push(`    ❌ BEFORE (錯誤 — 堆疊):`);
+          taskLines.push(`      // [STEP] ${issue.stackedSteps[0] || 'STEP_A'}`);
+          taskLines.push(`      // [STEP] ${issue.stackedSteps[1] || 'STEP_B'}`);
+          taskLines.push(`      // [STEP] ${issue.stackedSteps[2] || 'STEP_C'}`);
+          taskLines.push(`      doStepA(); doStepB(); doStepC();  // 所有程式碼擠在最後`);
+          taskLines.push(`    `);
+          taskLines.push(`    ✅ AFTER (正確 — 分散):`);
+          taskLines.push(`      // [STEP] ${issue.stackedSteps[0] || 'STEP_A'}`);
+          taskLines.push(`      doStepA();`);
           taskLines.push(`      `);
-          taskLines.push(`      // [STEP] GET_ALL`);
-          taskLines.push(`      getAll() { ... }`);
+          taskLines.push(`      // [STEP] ${issue.stackedSteps[1] || 'STEP_B'}`);
+          taskLines.push(`      doStepB();`);
           taskLines.push(`      `);
-          taskLines.push(`      // [STEP] CREATE`);
-          taskLines.push(`      create(item) { ... }`);
+          taskLines.push(`      // [STEP] ${issue.stackedSteps[2] || 'STEP_C'}`);
+          taskLines.push(`      doStepC();`);
         }
       }
       taskLines.push('');
@@ -619,10 +630,13 @@ mkdir -p src/modules src/shared src/config`,
           console.log(`       實際: ${issue.actual.length > 0 ? issue.actual.join(', ') : '(無)'}`);
         }
         if (issue.type === 'STEP_STACKED') {
-          console.log(`     [STEP] 錨點堆疊:`);
-          console.log(`       ${issue.stackedSteps.length} 個 STEP 連續堆在一起，沒有散佈到程式碼旁`);
-          console.log(`       堆疊: ${issue.stackedSteps.join(', ')}`);
-          console.log(`       ✅ 每個 [STEP] 應放在對應程式碼區塊的正上方`);
+          console.log(`     [STEP] 錨點堆疊 (必須修復):`);
+          console.log(`       ❌ ${issue.stackedSteps.length} 個 STEP 連續堆在一起，沒有程式碼夾在中間`);
+          console.log(`       堆疊: ${issue.stackedSteps.map(s => `// [STEP] ${s}`).join('  ')}`);
+          console.log(`       `);
+          console.log(`       📋 修復: 打開該函式，逐行把每個 [STEP] 移到它對應程式碼的正上方`);
+          console.log(`       ❌ BEFORE: // [STEP] A  // [STEP] B  doA(); doB();`);
+          console.log(`       ✅ AFTER:  // [STEP] A  doA();  // [STEP] B  doB();`);
         }
       }
     }
@@ -639,8 +653,10 @@ mkdir -p src/modules src/shared src/config`,
     console.log('  🚫 禁止自行發明 FLOW 步驟名稱，必須使用 Plan 定義的 FLOW');
     console.log('  🚫 禁止省略 [STEP] 錨點，每個 FLOW 步驟都要有對應的 [STEP]');
     console.log('  🚫 禁止把 [STEP] 錨點堆在一起，每個 [STEP] 必須放在對應程式碼旁');
+    console.log('  🚫 禁止把所有 [STEP] 寫在函式頂部然後程式碼全部擠在後面');
     console.log('  ✅ 直接複製 Plan 的 GEMS-FLOW 和 [STEP] 錨點到程式碼');
     console.log('  ✅ 每個 // [STEP] XXX 放在該步驟實際程式碼的正上方');
+    console.log('  ✅ [STEP] 和它對應的程式碼之間不能有其他 [STEP]');
     console.log('═══════════════════════════════════════════════════════════');
 
     return {

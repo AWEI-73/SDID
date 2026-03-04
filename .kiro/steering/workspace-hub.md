@@ -3,12 +3,12 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-02 14:36:39 UTC
+**更新**: 2026-03-04 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
 ## ROADMAP 進度
-Strategy Roadmap v2.8，最後更新 2026-02-16
+Strategy Roadmap v2.8，最後更新 2026-02-16（Phase 2 全部完成）
 
 | Phase | 狀態 |
 |-------|------|
@@ -20,11 +20,15 @@ Strategy Roadmap v2.8，最後更新 2026-02-16
 | P2: 雙入口互通 — POC Step 1 支援 `--from-draft` (2026-02-15 完成) | ✅ |
 | P3: Blueprint Flow 的 loop.cjs 整合 (2026-02-15 完成) | ✅ |
 | P4: @GUARD 可配置化 (2026-02-15 完成) | ✅ |
+| P5: Quick Mode — 小步快跑 (2026-02-16 完成) | ✅ |
+| P7: Adversarial Review — 併入 Phase 8 (2026-02-16 完成) | ✅ |
+| P8: Plan 路徑驗證 + config 棕地三欄位 (2026-02-16 完成) | ✅ |
+| P6: 棕地逆向工程 | 🔒 暫緩（無實際需求）|
+| P9: Correct-Course | 🔒 暫緩（低頻場景）|
 
 ## SDID 框架
 這些是框架本身，不是被管理的 project，通常不需要大量掃描：
 
-- `github_project/`
 - `sdid-monitor/`
 - `sdid-tools/`
 - `task-pipe/`
@@ -34,41 +38,34 @@ Strategy Roadmap v2.8，最後更新 2026-02-16
 
 **Worktrees**:
 - `main` → C:/Users/user/Desktop/SDID
+- `claude/agitated-saha` → C:/Users/user/Desktop/SDID/.claude/worktrees/agitated-saha
 - `claude/determined-beaver` → C:/Users/user/Desktop/SDID/.claude/worktrees/determined-beaver
 - `claude/eager-lichterman` → C:/Users/user/Desktop/SDID/.claude/worktrees/eager-lichterman
 - `claude/hungry-snyder` → C:/Users/user/Desktop/SDID/.claude/worktrees/hungry-snyder
 - `claude/musing-elbakyan` → C:/Users/user/Desktop/SDID/.claude/worktrees/musing-elbakyan
 - `claude/quirky-blackburn` → C:/Users/user/Desktop/SDID/.claude/worktrees/quirky-blackburn
+- `claude/silly-agnesi` → C:/Users/user/Desktop/SDID/.claude/worktrees/silly-agnesi
 - `claude/stoic-black` → C:/Users/user/Desktop/SDID/.claude/worktrees/stoic-black
 - `claude/sweet-proskuriakova` → C:/Users/user/Desktop/SDID/.claude/worktrees/sweet-proskuriakova
 - `claude/vigilant-heyrovsky` → C:/Users/user/Desktop/SDID/.claude/worktrees/vigilant-heyrovsky
 
 **最近 commits**:
-- fe77886 feat(mcp): add sdid-build + sdid-scan tools (runner.cjs integration)
-- 90f1f58 feat(mcp): SDID MCP Server — 7 tools via stdio transport
-- a06ca17 fix(phase-2): STUB-001 升級 — effectiveLines 取代 nonTagLines，防 STEP 灌水逃脫
-- 89267fd fix(spec-gen): flowToSteps Return step should use "TODO" not empty string
-- 803e76c feat(spec-gen): implement dictionary generator (M10 — formerly Skill A)
-- 43ac515 docs(roadmap): rewrite - remove POC Quick (hallucinated), correct route names, add M10 Skill A, update CYNEFIN/M3/M5 status
-- f95f5fd docs(roadmap): session 5 - scanner bug fix, SCAN modernize, convergence target = dict loop
-- 3aff5d8 fix(scanner): gems-scanner-v2 支援 VariableStatement + SCAN phase 統一走 v2 降級鏈
+- docs: 清理過時文件 + ARCHITECTURE.md v5.0 全面更新
+- e532c83 feat(mcp): micro-fix-gate 加 iter 參數 + 新增 sdid-poc-scaffold tool
+- 41a3725 feat(poc-fix): micro-fix-gate 加 --iter + log 寫入 + poc-fix.md Phase 4 加 poc-to-scaffold 步驟
+- 6fae224 feat(poc-fix): consolidation-parser + poc-to-scaffold — POC-FIX 骨架遷移工具
+- 3b6fd58 feat(verify): AC 未標記降為 @WARN — PASS 判定加 acAllTagged 條件
 
 ## 專案狀態（SDID 管理中）
 
 | Project | Iter | Phase | Badge | Tech |
 |---------|------|-------|-------|------|
-| 選股用 | iter-6 | — | — | — |
-| control-tower | iter-6 | BUILD-5 | @FIX | express, @types/express, @types/jest |
 | ExamForge | iter-11 | DONE | @PASS | — |
 | my_workflow | iter-4 | BUILD-1 | @BLOCK | — |
-| sdid-test-app | iter-2 | BUILD-2 | @FIX | — |
-| simple-app | iter-1 | POC-1 | @BLOCK | — |
-| smart-assistant | iter-1 | — | — | — |
-| smart-notebook | iter-1 | DONE | @PASS | — |
-| Task-Priority-AI | iter-3 | — | — | — |
-| time-echo | iter-1 | DONE | @PASS | — |
+| sdid-blueprint-lab | iter-1 | PLAN-1 | @BLOCK | — |
+| test-blueprint-flow | iter-1 | DONE | @PASS | — |
 
-**無 .gems（非 SDID 管理）**: sdid-test-app2
+**無 .gems（非 SDID 管理）**: ralph-main, sdid-core
 
 ## 關鍵路徑
 ```
@@ -91,6 +88,7 @@ build-phase-{N}-Story-{X.Y}-{status}-{ts}.log
 poc-step-{N}-{status}-{ts}.log
 plan-step-{N}-Story-{X.Y}-{status}-{ts}.log
 gate-{check|plan|shrink|expand|verify}-{status}-{ts}.log
+gate-microfix-{pass|error}-{ts}.log
 cynefin-check-{pass|fail}-{ts}.log
 scan-scan-{status}-{ts}.log
 ```

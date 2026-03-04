@@ -1,463 +1,381 @@
-# SDID 系統架構全景
+# SDID 系統架構書
 
-> 版本: v4.1 | 更新: 2026-03-01
-> 定位: SDID 框架的完整腳本地圖與功能說明，供人類閱讀與 AI session 導航
+> 版本: v5.0 | 更新: 2026-03-04
+> 定位: SDID 框架完整架構說明，供人類閱讀與 AI session 導航
 
 ---
 
-## 核心概念
+## 一、核心概念
 
 SDID（Structured Iterative Development）是一套 **AI 協同開發框架**。
-核心主張：與其靠 AI 記憶規格，不如讓規格存活在結構化 JSON 字典裡，
-AI 每次進來讀字典就能精準施工，不依賴上下文傳遞。
+
+核心主張：用腳本驅動的 Gate 機制，把 AI 的隨機輸出約束成可預測的結構化產出。
+每個 Phase 都有明確的輸入、輸出、驗收條件，AI 不需要記憶規格，只需讀腳本輸出執行。
 
 ```
-規格草稿 → 路線選擇 → POC 驗證 → 字典生成 → BUILD 八關 → 字典同步
-                                                     ↑            ↓
-                                               AI 進入點 ← state-guide 讀字典
-```
-
----
-
-## 架構圖（含腳本功能說明）
-
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║                     SDID 系統架構全景  v4.1                          ║
-╚══════════════════════════════════════════════════════════════════════╝
-
-━━━ 層 0：AI 進入點 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  ┌─────────────────────────────────────────────────────────────────┐
-  │  sdid-tools/state-guide.cjs  ★Wave 2★                           │
-  │                                                                 │
-  │  AI 每次 session 開始執行的第一支腳本                            │
-  │  自動組裝「指令包」，讓 AI 不需追問就知道在哪、做什麼            │
-  │                                                                 │
-  │  輸入（自動讀取，不需手動指定）：                               │
-  │    .gems/iterations/{iter}/.state.json  → 流程位置              │
-  │    .gems/function-index-v2.json         → 目標函式位置          │
-  │    .gems/specs/*.json                   → 字典規格              │
-  │    .gems/project-memory.json            → 歷史 pitfall          │
-  │                                                                 │
-  │  輸出五個區塊：                                                 │
-  │    📍 現在在哪（路線 / phase / step / story / iter）            │
-  │    📖 該讀什麼（腳本規則 / 字典規格 / 目標函式 + 行號）         │
-  │    ⚠️  歷史提示（@PITFALL / @HINT，同步驟曾踩的坑）            │
-  │    🎯 下一步（@NEXT_COMMAND，可直接複製執行的指令）             │
-  │    🚫 施工紅線（@GUARD，allowedImports 白名單）                 │
-  │                                                                 │
-  │  用法: node sdid-tools/state-guide.cjs --project=ExamForge      │
-  │        --iter=iter-11  --story=Story-11.1  --gems=PDF.Parse     │
-  └─────────────────────────────────────────────────────────────────┘
-                              │
-              路線偵測（marker 文件識別）
-              requirement-draft.md    → Blueprint
-              requirement-spec.md     → Task-Pipe (LEGACY)
-              poc-consolidation-log.md → POC-FIX
-                              │
-                              ▼
-
-━━━ 層 1：路線路由 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  三條路線從「需求類型」分流，共用同一個 BUILD 八關卡
-
-  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-  │   Blueprint      │  │   POC-FIX        │  │   MICRO-FIX      │
-  │  (模糊需求)      │  │  (複雜/特化模組) │  │  (單函式微調)    │
-  │                  │  │                  │  │                  │
-  │ requirement-     │  │ poc-             │  │ 直接指定函式     │
-  │ draft.md 為標    │  │ consolidation-   │  │ 不走完整 BUILD   │
-  │                  │  │ log.md 為標      │  │                  │
-  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
-           │                     │                      │
-  blueprint-expand.cjs  poc/step-1~5.cjs       micro-fix-gate.cjs
-  ─ 讀草稿，展開成    ─ step-1: SETUP            ─ 掃 --changed 的
-    結構化 blueprint    step-2: VERIFY (迭代)       函式，驗 GEMS 標
-                        step-3: CONSOLIDATE         籤基本存在性
-  blueprint-gate.cjs    step-4: BUILD 入口          + allowedImports
-  ─ 15 項機械驗收     step-5: 報告                + 測試檔存在性
-    (VSC/AC/層次)
-                       ★ POC-FIX 沒有 PLAN 階段 ★
-  blueprint-verify.cjs  POC 本身就是探索過程，
-  ─ 逐行核對設計規則   整合後直接進 BUILD
-    vs 已有程式碼
-                       poc/step-1~5.cjs
-  blueprint-shrink.cjs  ─ [LEGACY] Task-Pipe poc
-  ─ 壓縮 blueprint      步驟，保留供特定場景
-    → 錨點格式          但不主推
-
-  draft-to-plan.cjs    plan/step-1~5.cjs
-  ─ blueprint → 拆成   ─ [LEGACY] Task-Pipe plan
-    tasks + stories      步驟，式微中
-
-━━━ 層 2：字典品質門控 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Skill A 生成字典後、進 CYNEFIN/BUILD 之前的品質檢查點
-
-  ┌─────────────────────────────────────────────────────────────────┐
-  │  sdid-tools/spec-gate.cjs  ★Wave 3★                             │
-  │                                                                 │
-  │  SPEC-001  字典 schema 驗證                                     │
-  │            必填欄位（priority/targetFile/lineRange）全存在       │
-  │            P0 函式額外驗 flow/steps/deps/allowedImports/ac      │
-  │                                                                 │
-  │  SPEC-002  _index.json 格式驗證                                 │
-  │            值必須是字串（"Domain.Action": "specs/xxx.json"）     │
-  │            不可是物件                                            │
-  │                                                                 │
-  │  SPEC-003  index ↔ spec 雙向一致性                              │
-  │            index 有的 gemsId 必須在 spec 存在，反之亦然          │
-  │                                                                 │
-  │  SPEC-004  $meta.manages 路徑存在性                             │
-  │            字典管理的 targetFile 必須在磁碟上找得到              │
-  │                                                                 │
-  │  SPEC-005  lineRange 格式與邏輯                                 │
-  │            必須是 L{n}-{m} 且 n ≤ m                             │
-  │                                                                 │
-  │  用法: node sdid-tools/spec-gate.cjs --project=ExamForge        │
-  │        --fix-index  （自動補 _index.json 缺漏條目）              │
-  └─────────────────────────────────────────────────────────────────┘
-
-  cynefin-log-writer.cjs
-  ─ 評估需求複雜度（Simple/Complicated/Complex/Chaotic）
-    Complex → 建議拆 story 或降 level
-    結果寫入 cynefin log，下游路由參考
-
-━━━ 層 3：BUILD 八道關卡 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  task-pipe/runner.cjs
-  ─ 統一入口，根據 --phase / --step / --story 呼叫對應 phase 腳本
-    狀態寫入 .gems/iterations/{iter}/.state.json
-    log 輸出到 .gems/iterations/{iter}/logs/
-
-  phases/build/
-  ├── phase-1.cjs  骨架檢查
-  │   ─ 環境（node/npm/tsc）健在
-  │     implementation_plan 格式合法
-  │     src 目錄存在，關鍵檔案結構正確
-  │
-  ├── phase-2.cjs  標籤驗收（The Enforcer）  ← 呼叫 gems-scanner-v2
-  │   ─ 掃 src，確保每個 P0/P1 函式都有 @GEMS 錨點
-  │     有字典 → 走 v2（比對 dict 條目）
-  │     無字典 → 走 v1（regex 掃 JSDoc）
-  │     STUB-001 偵測：函式 body 空或只有 throw
-  │
-  ├── phase-3.cjs  測試腳本撰寫
-  │   ─ 輸出測試模板，AI 根據 ac 欄位填充測試案例
-  │
-  ├── phase-4.cjs  Test Gate
-  │   ─ 測試檔存在、import 被測函式正確
-  │     @GEMS-TEST-FILE 指向的路徑存在性驗證
-  │
-  ├── phase-5.cjs  TDD 執行
-  │   ─ npm test / npx jest，擷取結果
-  │     失敗 → @BLOCKER，輸出失敗測試名稱
-  │
-  ├── phase-6.cjs  整合測試
-  │   ─ 跨模組整合測試（可依 consolidation-log 範圍選擇性跳過）
-  │
-  ├── phase-7.cjs  整合檢查
-  │   ─ 路由/模組匯出/依賴關係正確性
-  │     circular dependency 偵測
-  │
-  └── phase-8.cjs  Fillback                  ← 呼叫 dict-sync
-      ─ 產出 iteration_suggestions.json
-        同步更新字典（呼叫 dict-sync.cjs）
-        checkpoint 存入 build/ 目錄
-
-━━━ 層 4：掃描 & 字典工具層 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  sdid-tools/
-
-  gems-scanner-v2.cjs  ★Wave 3★
-  ─ AST 掃描（TypeScript Compiler API，從目標專案動態載入）
-    isFunctionNode：FunctionDecl / Method / Arrow / Interface /
-                    TypeAlias / Class / VarDecl(箭頭函式)
-    getLeadingComment：合併所有連續 // 注釋區塊（防止多行遺漏）
-    雙格式解析：
-      舊 JSDoc: GEMS: funcName | P0 | ✓✓ | sig | Story-X.Y | desc
-      新 inline: // @GEMS [P0] Domain.Action | FLOW: A→B | L50-61
-    gemsId 解析：新格式直接取 / 舊格式對比 _index.json shortName
-    輸出：functions-v2.json（flat）+ function-index-v2.json（byFile/
-          byPriority/byGemsId/byPhase2）
-    用法: node sdid-tools/gems-scanner-v2.cjs --project=ExamForge
-
-  dict-sync.cjs  ★Wave 3★
-  ─ BUILD phase-8 後執行，把 AST 掃描結果回寫字典
-    lineRange 同步：用 node.getStart()/getEnd() 取實際行號
-                    覆蓋字典的佔位符（L1-1）
-    status 同步：   只升不降（STATUS_RANK: ⬜<🔧<✓<✓✓）
-                    舊 JSDoc ✓✓→✓✓ / ✓○→✓ / ○○→⬜
-                    新 inline 格式不動 status
-    同步後：自動呼叫 spec-gate 做品質驗證
-    用法: node sdid-tools/dict-sync.cjs --project=ExamForge [--dry-run]
-
-  spec-gate.cjs  ★Wave 3★（見層 2 說明）
-
-  tag-shrink.cjs  ★Wave 2★
-  ─ BUILD @PASS 後，把程式碼裡的完整 JSDoc 壓縮成一行錨點
-    原本: /** GEMS: parseBuffer | P0 | ✓✓ | (buf)→... | Story-11.1 | 載入 PDF */
-    之後: // @GEMS [P0] PDF.ParseBufferWithImages | FLOW: A→B | L589-653
-          //   → .gems/specs/pdf-text-extractor.json
-    完整資訊搬進字典 JSON，程式碼保持精簡
-
-  blueprint-expand.cjs   ─ 草稿 → 結構化 blueprint JSON
-  blueprint-gate.cjs     ─ 15 項機械驗收（VSC/AC/层次）
-  blueprint-verify.cjs   ─ 設計規則逐行核對
-  blueprint-shrink.cjs   ─ 壓縮 blueprint → 錨點
-  draft-to-plan.cjs      ─ blueprint → tasks + stories
-  micro-fix-gate.cjs     ─ MICRO-FIX 快速 gate
-  cynefin-log-writer.cjs ─ 複雜度評估記錄
-  lib/dict-schema.cjs    ─ 字典 JSON Schema 定義與驗證器
-
-━━━ 層 5：共用基礎設施 (task-pipe/lib/shared/) ━━━━━━━━━━━━━━━━━━━━━━
-
-  state-manager-v3.cjs
-  ─ .gems/iterations/{iter}/.state.json 讀寫
-    狀態機：POC-1 → PLAN-1 → BUILD-1 → ... → COMPLETE
-    Story 追蹤（in-progress / completed）
-    重試計數（≥3 次 → 標記需人工介入）
-    detectActiveIteration()：自動找最新的 active iter
-
-  project-memory.cjs
-  ─ .gems/project-memory.json（append，最多 200 筆）
-    getResumeContext()：最近 5 筆 + pitfall + token 統計
-    getHistoricalHint()：同 phase/step 的歷史失敗記錄
-    knownPitfalls：自動收集的「坑」字串陣列
-
-  phase-registry-loader.cjs  ─ 載入 phase-registry.json，取流程順序
-  project-type.cjs           ─ 偵測 TS/JS/GAS 專案類型
-  backtrack-router.cjs       ─ 失敗時的回退路由邏輯
-  error-handler.cjs          ─ 錯誤格式化與分類
-  retry-strategy.cjs         ─ 重試策略（指數退避）
-  taint-analyzer.cjs         ─ 分析修改範圍，決定哪些 phase 可跳過
-  next-command-helper.cjs    ─ 生成 @NEXT_COMMAND 指令字串
-  incremental-validator.cjs  ─ 只驗證本次修改的函式（增量驗證）
-  src-path-resolver.cjs      ─ 解析 src 目錄路徑（支援多種專案結構）
-
-━━━ 層 6：資料層 (.gems/) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  ── 專案級（跨 iter 共用，持續更新）──
-
-  .gems/specs/
-  ├── _index.json              ★Wave 3★
-  │   ─ gemsId → specFile 快速索引
-  │     AI 施工先讀這個，定位字典分片後再讀完整規格
-  │     格式: { "PDF.ParseBufferWithImages": "specs/pdf-text-extractor.json" }
-  │
-  └── pdf-text-extractor.json  （字典分片，每個模組一份）
-      ─ 每筆 gemsId 包含：
-        priority / status / signature / description
-        targetFile / lineRange（dict-sync 自動維護）
-        flow / steps（函式執行步驟）
-        deps / depsRisk（依賴關係與風險）
-        allowedImports（只允許引入的套件，state-guide 讀為 @GUARD）
-        test / testFile（測試資訊）
-        storyRef（屬於哪個 story，state-guide 用來過濾目標函式）
-        ac（驗收條件，phase-3 測試模板的依據）
-
-  .gems/function-index-v2.json  ★Wave 3★
-  ─ gems-scanner-v2 的輸出，四個維度索引：
-    byFile: 每個 .ts 檔有哪些 GEMS 函式
-    byPriority: P0/P1/P2/P3 各有哪些函式
-    byGemsId: gemsId → {file, line, flow, specFile, dictBacked}
-    byPhase2: dict-spec（有字典）/ comment-only（只有注釋）
-
-  .gems/functions-v2.json       ★Wave 3★
-  ─ 完整 flat 陣列，包含 untagged 函式（無 GEMS 標籤的）
-    phase-2 用來報告「未標籤函式數量」
-
-  .gems/project-memory.json
-  ─ 跨 Story 歷史記錄，最多 200 筆
-    每筆: { iteration, phase, step, story, verdict, signal, summary, missing }
-    summary.knownPitfalls: 曾踩的坑（自動提取）
-
-  .gems/last_step_result.json
-  ─ 最後執行的 step 結果
-    { phase, step, verdict, timestamp, message, needsFix, fixHints }
-    state-guide 的 fallback 資料源
-
-  ── iter 級（每次迭代獨立）──
-
-  .gems/iterations/iter-N/
-  ├── .state.json           ─ 流程狀態（stories/retries/humanAlerts/flow）
-  ├── logs/                 ─ 所有 phase 的 log（poc/plan/build/scan 全進這裡）
-  │   ├── poc-step-1-pass-{ts}.log
-  │   ├── build-phase-2-Story-N.M-error-{ts}.log
-  │   └── scan-scan-pass-{ts}.log
-  ├── poc/                  ─ POC 產物（特例，不是 log）
-  │   ├── poc-consolidation-log.md  ← POC-FIX 路線識別標記
-  │   ├── requirement_spec_iter-N.md
-  │   └── （POC 原始檔案）
-  ├── plan/                 ─ implementation_plan_Story-N.M.md
-  └── build/                ─ checkpoint JSON / iteration_suggestions / Fillback md
-
-━━━ 層 7：監控層 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  sdid-monitor/server.cjs
-  ─ HTTP server（port 3737）
-    fs.watch 監聽 .gems/ 和各專案目錄
-    debounce 1.2s 後呼叫 update-hub.cjs
-    POST /api/hub/rebuild 手動觸發
-    GET  /api/hub          回傳 hub.json
-
-  sdid-monitor/update-hub.cjs
-  ─ 掃描所有已知專案目錄
-    讀各專案 .gems/last_step_result.json + .state.json
-    輸出 hub.json（機器讀）+ workspace-hub.md（AI 讀）
-    workspace-hub.md 格式：
-      ROADMAP 進度快照 / 各專案即時狀態 / SDID 框架邊界宣告
-
-  sdid-monitor/index.html
-  ─ 瀏覽器 Dashboard，polling hub.json 顯示各專案狀態
-
-━━━ 測試 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  sdid-tools/__tests__/
-  ├── skill-a/fixtures/
-  │   ├── blueprint/            ★Wave 3 新增★
-  │   │   ├── requirement-draft.md   ← Blueprint 路線識別標記
-  │   │   └── .gems/specs/auth-service.json
-  │   └── taskpipe/             ★Wave 3 新增★
-  │       ├── requirement-spec.md    ← Task-Pipe 路線識別標記
-  │       └── .gems/specs/meal-service.json
-  ├── test-gate-v12.cjs         ─ blueprint-gate 主要邏輯測試
-  ├── test-gate-budget.cjs      ─ iter budget 上限測試
-  ├── test-cynefin-iter-budget.cjs ─ cynefin 觸發門檻測試
-  ├── test-stub-001.cjs         ─ STUB-001 偵測測試
-  ├── test-v21-features.cjs     ─ v2.1 新功能迴歸測試
-  └── test-log-output-dryrun.cjs ─ log 輸出格式 dry-run 測試
+需求 → 路線選擇 → 設計/驗證 → Plan → BUILD 八關 → 驗收
+         │                                              │
+         └──── AI 讀腳本輸出 ──── 修復 ──── 重跑 ───────┘
 ```
 
 ---
 
-## 快速用法參考
+## 二、四條路線
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        路線路由                                      │
+│                                                                     │
+│  需求模糊 / 大型功能          → Blueprint Flow                       │
+│  特化模組 / 第三方串接        → POC-FIX                              │
+│  單函式微調 / 快速修復        → MICRO-FIX                            │
+│  漸進式設計 / 小型專案        → Task-Pipe Flow (備用)                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 路線 A：Blueprint Flow（主線）
+
+```
+Enhanced Draft (人寫)
+  │
+  ▼ blueprint-gate.cjs        ← 15 項機械驗收（AC/VSC/層次/預算）
+  │  @PASS → 繼續
+  │  @BLOCKER → 修 draft 重跑
+  │
+  ▼ draft-to-plan.cjs         ← 拆成 Story + implementation_plan
+  │  產出: plan/implementation_plan_Story-X.Y.md
+  │        骨架 .ts/.tsx（plan-to-scaffold.cjs）
+  │
+  ▼ BUILD Phase 1-8           ← 共用 task-pipe/runner.cjs
+  │  每個 Story 跑一輪
+  │
+  ▼ blueprint-shrink.cjs      ← 壓縮 draft → 錨點格式
+  │
+  ▼ blueprint-verify.cjs      ← 逐行核對 draft vs 源碼
+  │  @PASS → 進下一個 iter 或完成
+  │  @WARN → AC 未標記（補標後重跑）
+  │
+  ▼ blueprint-expand.cjs      ← 展開下一個 iter（如有）
+```
+
+識別標記：`.gems/iterations/iter-N/poc/requirement_draft_iter-N.md`
+
+### 路線 B：POC-FIX
+
+```
+Phase 1: SETUP        ← 建 poc/ 工作目錄，放原型檔案
+Phase 2: VERIFY       ← 反覆驗證調整（可多輪）
+Phase 3: CONSOLIDATE  ← 整合清除，產出 poc-consolidation-log.md
+Phase 4: BUILD+TEST   ← poc-to-scaffold.cjs 產骨架
+                         → 填入 POC 邏輯
+                         → micro-fix-gate.cjs --iter=N 驗收
+```
+
+識別標記：`.gems/iterations/iter-N/poc/poc-consolidation-log.md`
+
+適用：第三方 API 串接、客製化演算法、複雜資料處理等特化功能（非標準 CRUD）
+
+### 路線 C：MICRO-FIX
+
+```
+確認要改什麼（一句話）
+  → 直接修改檔案
+  → micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
+  → @PASS 完成 / @BLOCKER 修復重跑
+```
+
+適用：單一檔案/函式的小修，不需要 story/plan/測試
+
+### 路線 D：Task-Pipe Flow（備用）
+
+```
+POC Step 1-5 → PLAN Step 1-5 → BUILD Phase 1-8 → SCAN
+```
+
+適用：漸進式設計、小型專案、需要 POC 先驗證 UI 的場景
+
+---
+
+## 三、共用 BUILD 八關（Phase 1-8）
+
+所有路線（Blueprint/Task-Pipe）共用同一套 BUILD，透過 `task-pipe/runner.cjs` 執行。
+
+```
+task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<project>
+```
+
+| Phase | 名稱 | 職責 |
+|-------|------|------|
+| 1 | 骨架檢查 | 確認骨架檔存在、環境健在 |
+| 2 | 標籤驗收 | 掃 src，P0/P1 函式必須有 GEMS 標籤（The Enforcer）|
+| 3 | 測試腳本 | 輸出測試模板，AI 填充測試案例 |
+| 4 | Test Gate | 測試檔存在、import 被測函式正確 |
+| 5 | TDD 執行 | 跑測試，失敗 → @BLOCKER |
+| 6 | 整合測試 | 跨模組整合測試 |
+| 7 | 整合檢查 | 路由/模組匯出/依賴關係 |
+| 8 | Fillback | 產出 Fillback.md + iteration_suggestions.json，AC 覆蓋檢查 |
+
+---
+
+## 四、腳本地圖
+
+### sdid-tools/（Blueprint Flow 工具）
+
+| 腳本 | 功能 |
+|------|------|
+| `blueprint-gate.cjs` | 藍圖品質驗收（15 項機械規則）|
+| `blueprint-verify.cjs` | 逐行核對 draft vs 源碼，AC 未標記 → @WARN |
+| `blueprint-shrink.cjs` | 壓縮 draft → 錨點格式 |
+| `blueprint-expand.cjs` | 展開下一個 iter |
+| `draft-to-plan.cjs` | Enhanced Draft → implementation_plan + 骨架 |
+| `plan-to-scaffold.cjs` | Plan → .ts/.tsx 骨架檔（type-aware）|
+| `poc-to-scaffold.cjs` | consolidation-log → .ts/.tsx 骨架檔（POC-FIX 用）|
+| `micro-fix-gate.cjs` | 輕量驗收（GEMS 標籤 + import 不斷鏈），寫 log |
+| `cynefin-log-writer.cjs` | 複雜度評估記錄 |
+| `state-guide.cjs` | AI session 入口，輸出「指令包」|
+| `lib/draft-parser-standalone.cjs` | Enhanced Draft 解析器 |
+| `lib/consolidation-parser.cjs` | poc-consolidation-log.md 解析器 |
+
+### task-pipe/（BUILD 引擎）
+
+| 腳本 | 功能 |
+|------|------|
+| `runner.cjs` | 統一入口，根據 phase/step/story 呼叫對應腳本 |
+| `loop.cjs` | 狀態導航（已 deprecated，改用 MCP sdid-loop）|
+| `phases/build/phase-1~8.cjs` | BUILD 八關實作 |
+| `phases/poc/step-1~5.cjs` | Task-Pipe POC 步驟 |
+| `phases/plan/step-1~5.cjs` | Task-Pipe PLAN 步驟 |
+| `phases/scan/scan.cjs` | SCAN 全專案掃描 |
+| `lib/scan/gems-scanner-unified.cjs` | GEMS 標籤掃描（支援 shrink 格式 + acIds）|
+| `lib/plan/plan-validator.cjs` | Plan 格式驗證（Rule 10: P0/P1 缺 AC → WARNING）|
+| `lib/shared/log-output.cjs` | 統一輸出引擎（anchorPass/anchorError/emitTaskBlock）|
+| `lib/shared/state-manager-v3.cjs` | .state.json 讀寫，狀態機 |
+| `lib/shared/project-memory.cjs` | 歷史記憶（pitfall/hint）|
+| `tools/shrink-tags.cjs` | GEMS 標籤壓縮工具 |
+| `tools/health-report.cjs` | 專案健康報告 |
+
+### sdid-core/（共用核心）
+
+| 腳本 | 功能 |
+|------|------|
+| `state-machine.cjs` | 統一狀態推斷引擎（detectRoute/inferStateFromLogs/detectFullState）|
+| `architecture-contract.cjs` | 架構契約定義 |
+
+### sdid-tools/mcp-server/（MCP 介面）
+
+| Tool | 對應 CLI | 功能 |
+|------|----------|------|
+| `sdid-loop` | loop adapter | ★主入口：自動偵測狀態執行下一步 |
+| `sdid-state-guide` | state-guide.cjs | AI session 指令包 |
+| `sdid-blueprint-gate` | blueprint-gate.cjs | 藍圖驗收 |
+| `sdid-micro-fix-gate` | micro-fix-gate.cjs | 小修驗收（支援 --iter）|
+| `sdid-poc-scaffold` | poc-to-scaffold.cjs | POC-FIX 骨架遷移 |
+| `sdid-build` | runner.cjs | BUILD/POC/PLAN 執行 |
+| `sdid-scan` | scan.cjs | SCAN 執行 |
+| `sdid-run` | 通用 | 安全白名單 CLI 執行器 |
+| `sdid-spec-gen` | spec-gen.cjs | 字典生成（舊路線）|
+| `sdid-spec-gate` | spec-gate.cjs | 字典品質驗證（舊路線）|
+| `sdid-scanner` | gems-scanner-unified.cjs | GEMS 標籤掃描 |
+| `sdid-dict-sync` | dict-sync.cjs | 字典行號回寫（舊路線）|
+
+---
+
+## 五、狀態推斷機制
+
+`sdid-core/state-machine.cjs` 是唯一真相源，合併三套重疊邏輯：
+
+```
+優先順序：
+  1. .state.json（state-manager-v3 ledger）
+  2. last_step_result.json
+  3. log-based inference（inferStateFromLogs）
+  4. draft 存在 → GATE
+```
+
+路線偵測（`detectRoute`）：
+
+| 標記文件 | 路線 |
+|---------|------|
+| `poc/poc-consolidation-log.md` | POC-FIX |
+| `poc/requirement_draft_iter-N.md` | Blueprint |
+| `requirement-spec.md` | Task-Pipe |
+| 無 | Unknown |
+
+Log 前綴與狀態對應（`inferStateFromLogs`）：
+
+| Log 前綴 | 推斷狀態 |
+|---------|---------|
+| `gate-verify-pass-` | NEXT_ITER 或 COMPLETE |
+| `gate-shrink-pass-` | VERIFY 或 BUILD 下一個 Story |
+| `build-phase-8-Story-X.Y-pass-` | SHRINK 或 BUILD 下一個 Story |
+| `gate-plan-pass-` | BUILD Phase 1 |
+| `gate-check-pass-` | PLAN |
+| `gate-check-error-` | GATE（重試）|
+| `gate-microfix-pass-` | POC-FIX/MICRO-FIX 完成記錄 |
+
+---
+
+## 六、AC 閉環資料流
+
+AC（驗收條件）從 Draft 一路穿透到源碼標記，全程機械追蹤：
+
+```
+Enhanced Draft
+  AC-9.2: Given/When/Then 完整描述
+  │
+  ▼ draft-parser-standalone.cjs
+  解出 action.ac = "AC-9.2"
+  │
+  ▼ draft-to-plan.cjs
+  Plan 裡插入: // AC-9.2
+  │
+  ▼ plan-to-scaffold.cjs
+  骨架檔帶: // AC-9.2（在 GEMS 標籤後、[STEP] 前）
+  │
+  ▼ AI 實作
+  源碼保留: // AC-9.2
+  │
+  ▼ gems-scanner-unified.cjs
+  fn.acIds = ["AC-9.2"]（機械識別）
+  │
+  ├── phase-8.cjs Check 2
+  │   Plan AC vs 源碼 acIds 比對 → AC_NOT_TAGGED (WARNING)
+  │                              → AC_UNCOVERED (WARNING)
+  │
+  └── blueprint-verify.cjs checkACCoverage()
+      Plan AC vs 源碼 acIds 比對
+      全標記 → @PASS
+      有未標記 → @WARN（TACTICAL_FIX）
+```
+
+---
+
+## 七、資料目錄結構
+
+```
+{project}/
+├── src/                          ← 實際程式碼
+├── .gems/
+│   ├── iterations/
+│   │   └── iter-N/
+│   │       ├── .state.json       ← 流程狀態（state-manager-v3）
+│   │       ├── poc/
+│   │       │   ├── requirement_draft_iter-N.md  ← Blueprint 識別標記
+│   │       │   └── poc-consolidation-log.md     ← POC-FIX 識別標記
+│   │       ├── plan/
+│   │       │   └── implementation_plan_Story-X.Y.md
+│   │       ├── build/
+│   │       │   ├── Fillback_Story-X.Y.md
+│   │       │   └── iteration_suggestions_Story-X.Y.json
+│   │       └── logs/
+│   │           ├── gate-check-{pass|error}-{ts}.log
+│   │           ├── gate-plan-{pass|error}-{ts}.log
+│   │           ├── build-phase-N-Story-X.Y-{pass|error}-{ts}.log
+│   │           ├── gate-shrink-{pass|error}-{ts}.log
+│   │           ├── gate-verify-{pass|error}-{ts}.log
+│   │           └── gate-microfix-{pass|error}-{ts}.log  ← POC-FIX/MICRO-FIX
+│   ├── docs/
+│   │   ├── functions.json        ← gems-scanner-unified 輸出
+│   │   ├── blueprint-verify.json ← blueprint-verify 報告
+│   │   └── BLUEPRINT_VERIFY.md
+│   └── project-memory.json       ← 歷史記憶（pitfall/hint）
+```
+
+---
+
+## 八、MCP Loop 自動偵測流程
+
+`sdid-loop` MCP tool 是主入口，每次呼叫自動：
+
+1. 偵測最新 iter
+2. `detectRoute()` 判斷路線
+3. `inferBlueprintState()` 推斷當前 phase
+4. 執行對應工具
+5. 回傳輸出 + @TASK / @PASS / @BLOCKER 指示
+
+```
+sdid-loop(project=<path>)
+  │
+  ├── phase=GATE     → blueprint-gate.cjs
+  ├── phase=PLAN     → draft-to-plan.cjs
+  ├── phase=BUILD    → runner.cjs --phase=BUILD --step=N
+  ├── phase=SHRINK   → blueprint-shrink.cjs
+  ├── phase=VERIFY   → blueprint-verify.cjs
+  ├── phase=NEXT_ITER → blueprint-expand.cjs
+  ├── phase=POC-FIX  → micro-fix-gate.cjs（forceStart 進入）
+  └── phase=MICRO-FIX → micro-fix-gate.cjs（forceStart 進入）
+```
+
+---
+
+## 九、快速指令參考
 
 ```bash
-# AI Session 開始（最常用）
-node sdid-tools/state-guide.cjs --project=ExamForge
+# Blueprint Flow
+node sdid-tools/blueprint-gate.cjs --draft=<path> --target=<project> --iter=N
+node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=<project>
+node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=N --target=<project>
+node sdid-tools/blueprint-verify.cjs --draft=<path> --target=<project> --iter=N
 
-# 字典品質檢查
-node sdid-tools/spec-gate.cjs --project=ExamForge
-node sdid-tools/spec-gate.cjs --project=ExamForge --fix-index  # 自動補 index
+# POC-FIX Phase 4
+node sdid-tools/poc-to-scaffold.cjs --log=<consolidation-log.md> --target=<project>
+node sdid-tools/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
 
-# AST 掃描（GEMS 標籤覆蓋率）
-node sdid-tools/gems-scanner-v2.cjs --project=ExamForge
+# MICRO-FIX
+node sdid-tools/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
 
-# BUILD 後字典同步
-node sdid-tools/dict-sync.cjs --project=ExamForge --dry-run   # 預覽
-node sdid-tools/dict-sync.cjs --project=ExamForge             # 實際同步
+# 骨架工具
+node sdid-tools/plan-to-scaffold.cjs --plan=<plan.md> --target=<project> --dry-run
+node task-pipe/tools/shrink-tags.cjs --target=<project> --dry-run
 
-# 執行 BUILD
-node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-11.1
+# 狀態查詢
+node sdid-tools/state-guide.cjs --project=<project>
+node task-pipe/tools/project-status.cjs --target=<project>
 
-# 監控 Dashboard
+# 監控
 node sdid-monitor/server.cjs   # http://localhost:3737
 ```
 
 ---
 
-## 資料流
+## 十、Skill 路由（AI 進入點）
 
-```
-[程式碼 .ts]
-     │
-     ▼ gems-scanner-v2（AST）
-[function-index-v2.json]──────────────────────────────┐
-[functions-v2.json]                                   │
-     │                                                │
-     ▼ Skill A / 手動                                 │
-[.gems/specs/*.json]──── spec-gate ──→ PASS/FAIL      │
-[.gems/specs/_index.json]                             │
-     │                                                │
-     ▼ BUILD phase-1~7                                │
-[程式碼實作完成]                                       │
-     │                                                │
-     ▼ phase-8 Fillback                               │
-[dict-sync] ──→ lineRange 更新 ──→ [specs/*.json] ←──┘
-             ──→ status 更新
-             ──→ spec-gate 自動驗證
-     │
-     ▼
-[state-guide]  ← 讀以上所有資料 → 輸出「指令包」
-```
+`.agent/skills/sdid/SKILL.md` 是 AI 的路由器，根據使用者意圖決定走哪條路線：
 
----
-
-## 專案潛力分析
-
-### 當前強項
-
-**1. 字典架構（GEMS-Next）已成形**
-`.gems/specs/*.json` 作為「函式規格的唯一真相源」，AI 讀字典施工，
-不依賴上下文傳遞規格，理論上無限擴展不會失憶。
-
-**2. 閉環品質保障**
-`BUILD → dict-sync → spec-gate` 形成閉環：
-實作完成 → 行號自動回填字典 → 品質驗證 → 下次 AI 進來讀到的是最新規格。
-
-**3. AI 進入成本接近零**
-`state-guide` 讓 AI 不需追問「現在做什麼」，5 秒讀完指令包就可施工。
-
----
-
-### 可整合的方向
-
-**A. MCP Server 化（高潛力）**
-現在 `state-guide` 是 CLI，AI 需要手動執行。
-若包裝成 MCP tool，Claude 進入對話時可自動呼叫：
-```
-tool: get_project_state  → 直接回傳 state-guide 的輸出
-tool: get_function_spec  → 讀 .gems/specs/{gemsId}
-tool: sync_dict          → 呼叫 dict-sync（phase-8 後自動）
-```
-這樣 AI 完全不需要知道腳本路徑，透過 MCP 直接取得結構化資料。
-
-**B. Claude API + 自動化施工（中期）**
-有了字典（specs）+ 行號（lineRange）+ 施工規則（allowedImports/ac），
-可以寫一個 `auto-build.cjs`：
-```
-讀 spec → 生成施工 prompt → 呼叫 Claude API → 寫入程式碼 → 跑測試
-```
-字典提供的精確範圍（L589-653）讓局部替換可行，不需讀整個檔案。
-
-**C. VS Code Extension / Cursor Plugin**
-`function-index-v2.json` 有 file + lineRange，可以：
-- 在 GEMS 函式旁顯示 spec 摘要（hover）
-- 側邊欄顯示哪些函式是 ✓✓ / 🔧 / ⬜
-- 點擊跳到對應 spec 字典
-
-**D. CI/CD 整合**
-`spec-gate` 已是無依賴的 CLI（exit 0/1）：
-```yaml
-# .github/workflows/gems-gate.yml
-- run: node sdid-tools/spec-gate.cjs --project=.
-  # PR 合入前確保字典品質
-```
-`gems-scanner-v2` 可作為 pre-commit hook，確保新函式有 GEMS 標籤。
-
-**E. 多專案統一儀表板（已有雛形）**
-`sdid-monitor` 已能掃多個專案，`workspace-hub.md` 已有格式定義。
-缺的是：
-- 各專案的 GEMS 覆蓋率（tagged / untagged 比例）
-- 字典品質得分（spec-gate pass rate）
-- 跨專案的 pitfall 共享（目前 pitfall 只在單專案內）
-
-**F. 字典版本控制**
-`specs/*.json` 現在沒有 diff 追蹤。
-加上 `dict-changelog.json`（記錄每次 dict-sync 改了什麼），
-可以回答「這個函式的規格在哪個 iter 改過」。
-
----
-
-### 目前的缺口
-
-| 缺口 | 影響 | 建議 |
+| 條件 | 模式 | 動作 |
 |------|------|------|
-| `@SEARCH` 未寫入 BUILD log | AI 修 bug 時還需要自己搜尋 | phase-2 log 加 `@SEARCH: .gems/specs/... → gemsId → L{n}-{m}` |
-| `lastModified` / `iterRef` 未寫入 dict | 無法追蹤字典何時由哪個 iter 更新 | dict-sync 順帶寫入 |
-| MICRO-FIX 路線識別 | state-guide 無法區分 MICRO-FIX | 加 `micro-fix-target.md` 作為標記 |
-| Blueprint route 的 state-guide 輸出 | 沒有 story/phase 資訊（無 state.json）| Blueprint loop 需寫入 state.json |
-| 跨專案 pitfall 共享 | 每個專案獨立學習，不跨案 | workspace-hub 層面做 pitfall 聚合 |
+| 「小修」「fix」「改一下」 | MICRO-FIX | 直接改 → micro-fix-gate |
+| 第三方串接、客製化演算法 | POC-FIX | 讀 poc-fix.md 四階段 |
+| 有 draft，無 plan | BUILD-AUTO | sdid-loop 自動偵測 |
+| 有 implementation_plan | BUILD-AUTO | sdid-loop 自動偵測 |
+| 需求模糊，無專案 | DESIGN-BLUEPRINT | 5 輪對話收斂需求 |
+| 需求明確，無專案 | DESIGN-TASKPIPE | sdid-loop 自動走 Task-Pipe |
+
+---
+
+## 十一、GEMS 標籤格式
+
+```typescript
+/**
+ * GEMS: functionName | P[0-3] | ✓✓ | (args)→Result | Story-X.X | 描述
+ * GEMS-FLOW: Step1→Step2→Step3
+ * GEMS-DEPS: [Type.Name (說明)]
+ * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH
+ * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
+ * GEMS-TEST-FILE: xxx.test.ts
+ */
+// AC-X.Y                    ← 驗收條件 ID（在標籤後、[STEP] 前）
+// [STEP] Step1              ← P0/P1 強制，P2/P3 可選
+// [STEP] Step2
+export function functionName(...) { ... }
+```
+
+Shrink 格式（`shrink-tags.cjs` 壓縮後）：
+
+```typescript
+// GEMS: functionName | P1 | FLOW: Step1→Step2
+// AC-X.Y
+// [STEP] Step1
+export function functionName(...) { ... }
 ```

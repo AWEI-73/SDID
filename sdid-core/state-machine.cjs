@@ -185,7 +185,13 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
   if (has('gate-plan-pass-')) {
     return { phase: 'BUILD', step: '1', story: plannedStories[0] || null };
   }
-  if (has('gate-check-pass-')) return { phase: 'PLAN', step: null, story: null };
+  if (has('gate-check-pass-')) {
+    // Cynefin Gate: GATE @PASS 後必須有 cynefin-check-pass 才能進 PLAN
+    if (!has('cynefin-check-pass-')) {
+      return { phase: 'CYNEFIN_CHECK', step: null, story: null };
+    }
+    return { phase: 'PLAN', step: null, story: null };
+  }
 
   // error logs → retry same phase
   if (has('gate-check-error-')) return { phase: 'GATE', step: null, story: null, hasError: true };

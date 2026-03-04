@@ -76,7 +76,7 @@ export async function handler({ project, iter, story, forceStart }) {
       const inferred = inferBlueprintState(projectRoot, iterNum);
       state = { phase: 'BUILD', step: parseInt(buildMatch[1] || '1'), story: story || inferred.plannedStories?.[0], draftPath: inferred.draftPath, plannedStories: inferred.plannedStories, completedStories: inferred.completedStories };
     } else {
-      const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'NEXT-ITER': 'NEXT_ITER', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX' };
+      const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'NEXT-ITER': 'NEXT_ITER', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX', 'CYNEFIN-CHECK': 'CYNEFIN_CHECK', 'CYNEFIN': 'CYNEFIN_CHECK' };
       const phase = phaseMap[forceStart.toUpperCase()];
       if (!phase) {
         return { content: [{ type: 'text', text: `ERROR: 無效的 forceStart: ${forceStart}\n有效值: GATE, PLAN, BUILD-N, SHRINK, VERIFY, POC, SCAN, NEXT-ITER, POC-FIX, MICRO-FIX` }] };
@@ -182,6 +182,28 @@ export async function handler({ project, iter, story, forceStart }) {
       lines.push(`🚀 執行: runner.cjs SCAN`);
       result = await runRunner([`--phase=SCAN`, `--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
       break;
+    }
+    case 'CYNEFIN_CHECK': {
+      // Cynefin 語意域分析 — AI 手動執行，不走 runner
+      const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
+      const pocPath = path.join(iterPath, 'poc');
+      let inputFile = null;
+      if (fs.existsSync(pocPath)) {
+        const files = fs.readdirSync(pocPath);
+        inputFile = files.find(f => f.startsWith('requirement_draft_')) || files.find(f => f.startsWith('requirement_spec_'));
+      }
+      const inputPath = inputFile ? path.join(pocPath, inputFile) : `${iterPath}/poc/requirement_draft_iter-${iterNum}.md`;
+
+      lines.push(`🔍 CYNEFIN-CHECK: 語意域分析`);
+      lines.push('');
+      lines.push('@TASK');
+      lines.push(`ACTION: 讀 .agent/skills/sdid/references/cynefin-check.md 對以下文件做語意域分析`);
+      lines.push(`FILE: ${inputPath}`);
+      lines.push(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectRoot} --iter=${iterNum}`);
+      lines.push('');
+      lines.push('@REMINDER: 分析完成後必須執行 cynefin-log-writer.cjs 存 log，@PASS 才能進 PLAN');
+
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
     }
     case 'NEXT_ITER': {
       if (!state.draftPath) { lines.push('@BLOCKER: 找不到 draft 檔案，無法 EXPAND'); return { content: [{ type: 'text', text: lines.join('\n') }] }; }

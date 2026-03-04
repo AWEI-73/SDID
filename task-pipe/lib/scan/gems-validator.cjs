@@ -154,7 +154,7 @@ function scanGemsTags(srcDir) {
   // v2.1 fallback: if regex scanner found 0 tagged functions, try gems-scanner-v2 (AST-based)
   if (result.stats.tagged === 0 && result.stats.total > 0) {
     try {
-      const scannerV2Path = path.join(__dirname, '..', '..', '..', 'sdid-tools', 'gems-scanner-v2.cjs');
+      const scannerV2Path = path.join(__dirname, 'gems-scanner-v2-proxy.cjs');
       if (fs.existsSync(scannerV2Path)) {
         const { scanV2 } = require(scannerV2Path);
         // Resolve projectRoot from srcDir (go up until we find .gems or package.json)
@@ -310,21 +310,32 @@ function validateTestFiles(functions, srcDir, projectRoot) {
 
     const testFileName = fn.testFile.trim();
 
-    // fn.file 是相對於 cwd 的完整路徑，需要取得其目錄
-    const fnFullDir = fn.file ? path.dirname(fn.file) : '';
+    // fn.file 可能是相對於 projectRoot（v2 AST scanner）或相對於 cwd（regex scanner）
+    // 統一解析為絕對路徑，優先使用 projectRoot
+    let fnAbsFile = '';
+    if (fn.file) {
+      if (path.isAbsolute(fn.file)) {
+        fnAbsFile = fn.file;
+      } else if (projectRoot && fs.existsSync(path.join(projectRoot, fn.file))) {
+        fnAbsFile = path.join(projectRoot, fn.file);
+      } else {
+        fnAbsFile = path.resolve(fn.file); // fallback: 相對於 cwd
+      }
+    }
+    const fnFullDir = fnAbsFile ? path.dirname(fnAbsFile) : '';
 
-    // 可能的測試檔案路徑
+    // 可能的測試檔案路徑（全部使用絕對路徑）
     const possiblePaths = [
       // 1. 源碼同目錄的 __tests__
-      path.join(fnFullDir, '__tests__', testFileName),
+      fnFullDir ? path.join(fnFullDir, '__tests__', testFileName) : null,
       // 2. 源碼同目錄
-      path.join(fnFullDir, testFileName),
+      fnFullDir ? path.join(fnFullDir, testFileName) : null,
       // 3. srcDir 下的 __tests__
       path.join(srcDir, '__tests__', testFileName),
       // 4. srcDir 同層
       path.join(srcDir, testFileName),
       // 5. 上層 __tests__
-      path.join(fnFullDir, '..', '__tests__', testFileName),
+      fnFullDir ? path.join(fnFullDir, '..', '__tests__', testFileName) : null,
       // 6. 專案根目錄 __tests__ (v3.2)
       projectRoot ? path.join(projectRoot, '__tests__', testFileName) : null
     ].filter(Boolean);

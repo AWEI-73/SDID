@@ -403,9 +403,19 @@ function checkTestCoverage(functions, srcPath, target) {
   for (const fn of functions) {
     if (!fn.testFile) continue;
 
-    // fn.file 已經是相對於 cwd 的路徑 (e.g., recipe-manager/src/modules/...)
-    // 不需要再 join srcPath
-    const sourceDir = fn.file ? path.dirname(path.resolve(fn.file)) : path.resolve(srcPath);
+    // fn.file 可能是相對於 target（v2 AST scanner）或相對於 cwd（regex scanner）
+    // 統一解析為絕對路徑，優先使用 target（專案根目錄）
+    let fnAbsFile = '';
+    if (fn.file) {
+      if (path.isAbsolute(fn.file)) {
+        fnAbsFile = fn.file;
+      } else if (target && fs.existsSync(path.join(target, fn.file))) {
+        fnAbsFile = path.join(target, fn.file);
+      } else {
+        fnAbsFile = path.resolve(fn.file); // fallback: 相對於 cwd
+      }
+    }
+    const sourceDir = fnAbsFile ? path.dirname(fnAbsFile) : path.resolve(srcPath);
     const possiblePaths = [
       path.join(sourceDir, '__tests__', fn.testFile),
       path.join(sourceDir, fn.testFile),

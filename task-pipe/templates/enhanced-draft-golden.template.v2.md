@@ -63,6 +63,19 @@
 - [ ] 儲存層封裝 (CRUD 操作)
 - [ ] 通用 UI 元件 (表單、表格、通知)
 
+**樣式策略**: {CSS Modules (.module.css) / Tailwind CSS / Global CSS / CSS-in-JS}
+
+<!--
+  樣式策略說明（專案級別決策，所有 UI/ROUTE 動作共用）：
+  - CSS Modules (.module.css): 推薦，每個元件一個 .module.css，自動 scope
+  - Tailwind CSS: 適合快速原型，class-based
+  - Global CSS: 簡單專案，全域 index.css / App.css
+  - CSS-in-JS: styled-components / emotion，適合動態樣式
+  
+  plan-to-scaffold 會根據此欄位自動生成對應的 CSS 骨架檔。
+  UI/ROUTE 類型的 .tsx 會自動帶 import styles from './xxx.module.css'。
+-->
+
 ### 4. 獨立模組 (Modules)
 
 #### 模組：{moduleA} ({中文名稱})

@@ -154,8 +154,9 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 
 ### Round 3: 模組拆分
 - MUST: 根據 Round 1-2 提出模組結構建議，問使用者確認
+- MUST: 確認樣式策略 (CSS Modules / Tailwind / Global CSS / CSS-in-JS)
 - ALLOWED-READ: [architecture-rules.md](architecture-rules.md)
-- EXIT: 使用者確認模組結構
+- EXIT: 使用者確認模組結構 + 樣式策略
 
 ### Round 4: 迭代規劃
 

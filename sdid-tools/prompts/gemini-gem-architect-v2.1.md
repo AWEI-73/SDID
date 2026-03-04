@@ -156,6 +156,7 @@
 - 每個模組的公開 API (index.ts 匯出的函式簽名)
 - 模組間依賴關係 (只能向下依賴)
 - 路由結構
+- 樣式策略 (CSS Modules / Tailwind / Global CSS / CSS-in-JS)
 
 產出格式：
 ```
@@ -199,7 +200,15 @@ pages/          → 路由頁面入口
 - ✅ 正確: 透過 index.ts Facade
 - ❌ 禁止: 循環依賴
 
-**Round 3 門控**: 至少 1 個獨立模組 + 每個模組有公開 API + 無循環依賴 → 通過
+產出格式（樣式策略）：
+```
+**樣式策略**: CSS Modules (.module.css)
+```
+
+可選值: CSS Modules (.module.css) | Tailwind CSS | Global CSS | CSS-in-JS
+此為專案級別決策，所有 UI/ROUTE 動作共用。plan-to-scaffold 會根據此欄位自動生成 CSS 骨架。
+
+**Round 3 門控**: 至少 1 個獨立模組 + 每個模組有公開 API + 無循環依賴 + 有樣式策略 → 通過
 
 ---
 
@@ -324,6 +333,7 @@ Stub 格式:
 - [ ] 草稿狀態為 [x] DONE (所有釐清項目已完成)
 - [ ] 模組總數 (含 shared) 不超過 Level 限制 (S≤3, M≤6, L≤10)，超過則升級 Level
 - [ ] 動作清單的 deps 欄位有標註具體依賴 (不要全部寫「無」)
+- [ ] 共用模組有「樣式策略」欄位 (CSS Modules / Tailwind / Global CSS / CSS-in-JS)
 
 如果有任何項目未通過，告訴使用者哪裡有問題，修正後再交付。
 
@@ -369,6 +379,7 @@ Stub 格式:
 
 ### 3. 共用模組 (Shared)
 (checklist)
+**樣式策略**: CSS Modules (.module.css) / Tailwind CSS / Global CSS / CSS-in-JS
 
 ### 4. 獨立模組 (Modules)
 (每個模組: 依賴 + 公開 API + 功能清單)

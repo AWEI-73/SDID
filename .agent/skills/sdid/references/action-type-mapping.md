@@ -47,6 +47,8 @@ UI / HOOK / ROUTE 類型的 FLOW 應描述**業務行為**，不是 React 框架
 
 **原則**：FLOW 詞彙要讓人讀了就知道「這個 component 做什麼業務」，不是「React 怎麼執行它」。
 
+**樣式提示**：UI / ROUTE 類型的元件需要搭配樣式檔。藍圖的「共用模組」區塊會宣告專案級別的「樣式策略」（CSS Modules / Tailwind / Global CSS / CSS-in-JS），plan-to-scaffold 會根據該欄位自動生成對應的 CSS 骨架。
+
 範例：
 ```
 ✅ FETCH_LIST → BIND_EVENTS → RENDER_TABLE     (題庫列表，使用者能搜尋/排序)

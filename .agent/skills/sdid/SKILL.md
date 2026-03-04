@@ -1,6 +1,6 @@
 ---
 name: sdid
-description: SDID 統一開發框架 — 從需求設計到程式碼交付的完整流程。觸發詞：「SDID」「藍圖」「blueprint」「新專案」「開發」「build」「繼續」「POC」「Task-Pipe」「快速建」「練習」「小專案」「create project」「new project」「繼續開發」「跑 build」「自動開發」「一鍵開發」「sdid 小修」「quick fix」「改一下」「fix」「小改」「micro fix」。
+description: SDID 統一開發框架 — 從需求設計到程式碼交付的完整流程。觸發詞：「SDID」「藍圖」「blueprint」「新專案」「開發」「build」「繼續」「POC」「Task-Pipe」「快速建」「練習」「小專案」「create project」「new project」「繼續開發」「跑 build」「自動開發」「一鍵開發」「sdid 小修」「quick fix」「改一下」「fix」「小改」「micro fix」「重跑」「rerun」「跑 Phase」。
 ---
 
 # SDID — 路由器
@@ -21,6 +21,7 @@ description: SDID 統一開發框架 — 從需求設計到程式碼交付的完
 | 有 draft，無 plan | BUILD-AUTO | 看 draft 類型自動選路線（見下方） |
 | 有 implementation_plan | BUILD-AUTO | 自動偵測路線繼續 BUILD |
 | 使用者說「快速建」「練習」「小專案」 | QUICKSTART | 呼叫 MCP `sdid-loop` tool，`project=[name]`（自動走 Task-Pipe 路線） |
+| 使用者說「重跑 Phase N」「跑 Phase N」「Phase N 重跑」 | RERUN-PHASE | 呼叫 MCP `sdid-build` tool，指定 `phase`/`step`/`story`/`target` |
 
 ### Draft 類型自動判斷（BUILD-AUTO 進入時）
 
@@ -114,6 +115,16 @@ Task-Pipe:  POC Step 5 完成    → CYNEFIN-CHECK → @PASS → PLAN Step 1 →
 ### QUICKSTART 模式
 - 用一句話確認使用者要建什麼，然後直接執行
 - 如果使用者已經描述清楚，跳過確認直接執行
+
+### RERUN-PHASE 模式
+- 使用者要求重跑特定 Phase（如「重跑 Phase 5」「Phase 2 重跑」「跑 BUILD step 5」）
+- 呼叫 MCP `sdid-build` tool：
+  ```
+  sdid-build(target: "<專案路徑>", phase: "BUILD", step: <N>, story: "<Story-X.Y>", iteration: "<iter-N>")
+  ```
+- 如果使用者沒指定 story/iteration，從 `.gems/iterations/` 和 `project-memory.json` 自動偵測
+- 收到 `@BLOCK` + `@TASK` → 按 @TASK 修復 → 重跑同一個 Phase
+- 收到 `@PASS` → 報告完成，問使用者是否繼續下一步
 
 ---
 

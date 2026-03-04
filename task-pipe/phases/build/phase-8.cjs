@@ -262,12 +262,25 @@ function run(options) {
           ? `\n[WARN] 可執行性: ${execWarnings.map(w => w.message).join('; ')}`
           : '';
 
+        // dict-sync: 回寫 lineRange/status 到 .gems/specs/*.json
+        let dictSyncNote = '';
+        try {
+          const { syncDict } = require('../../../sdid-tools/dict-sync.cjs');
+          const srcDir = path.join(target, getSrcDir(target));
+          const syncResult = syncDict(target, srcDir, false);
+          const updatedCount = Array.isArray(syncResult.updated) ? syncResult.updated.length : (syncResult.updated || 0);
+          dictSyncNote = updatedCount > 0 ? `dict-sync: ${updatedCount} 筆更新` : 'dict-sync: 無變更';
+        } catch (e) {
+          dictSyncNote = `dict-sync: 跳過 (${e.message.split('\n')[0]})`;
+        }
+
         anchorOutput({
           context: `Phase 8 | ${story} | BUILD 完成`,
           info: {
             'Fillback': 'OK',
             'Suggestions': 'OK',
             'Checkpoints': '已清除',
+            'Dict-Sync': dictSyncNote,
             'Iteration': `${iteration} 全部完成 (${iterationStatus.completed}/${iterationStatus.total})`,
             '入口點': execCheck.hasEntryPoint ? '✓' : '✗',
             'Smoke Test': smokeStatus,

@@ -242,6 +242,19 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
       produced.push('function-index.json');
     }
 
+    // shrink-tags: SCAN 完成後壓縮 GEMS 標籤
+    let shrinkNote = '';
+    try {
+      const { shrinkTags } = require('../../tools/shrink-tags.cjs');
+      const shrinkResult = shrinkTags(target);
+      shrinkNote = shrinkResult.filesChanged > 0
+        ? `shrink-tags: ${shrinkResult.filesChanged} 個檔案, ${shrinkResult.tagsShrunken} 個標籤`
+        : 'shrink-tags: 無需壓縮';
+    } catch (e) {
+      shrinkNote = `shrink-tags: 跳過 (${e.message.split('\n')[0]})`;
+    }
+    console.log(`[SCAN] ${shrinkNote}`);
+
     anchorPass('SCAN', 'Enhanced Scan v7.0',
       `SCAN 完成 | Funcs: ${scanResult.functions.length} | 平均 ${scanResult.stats.avgFunctionLines || '?'} 行/函式`,
       `位置: ${path.relative(process.cwd(), docsPath) || docsPath}`,
@@ -251,7 +264,8 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
           'Version': scannerVersion,
           'P0': scanResult.stats.p0,
           'P1': scanResult.stats.p1,
-          '行號索引': scannerVersion === '7.0' ? '✓' : '-'
+          '行號索引': scannerVersion === '7.0' ? '✓' : '-',
+          'Shrink': shrinkNote
         }
       }
     );

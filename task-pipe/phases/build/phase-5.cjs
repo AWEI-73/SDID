@@ -345,12 +345,15 @@ function parseTestStats(output) {
   }
 
   // Vitest 格式
-  const vitestMatch = output.match(/(\d+)\s+passed.*?(\d+)\s+failed/i);
+  const vitestMatch = output.match(/Tests\s+(\d+)\s+passed/i);
   if (vitestMatch) {
+    const failedMatch = output.match(/(\d+)\s+failed/i);
+    const passed = parseInt(vitestMatch[1]);
+    const failed = failedMatch ? parseInt(failedMatch[1]) : 0;
     return {
-      passed: parseInt(vitestMatch[1]),
-      failed: parseInt(vitestMatch[2]),
-      total: parseInt(vitestMatch[1]) + parseInt(vitestMatch[2])
+      passed,
+      failed,
+      total: passed + failed
     };
   }
 
@@ -363,6 +366,58 @@ function parseTestStats(output) {
 // ============================================
 // 主函式
 // ============================================
+
+// ============================================
+// Stub 偵測 — 掃描測試檔案品質
+// ============================================
+
+/**
+ * 偵測 stub 測試：只有 toBeDefined()/toBeTruthy() 的 test case
+ * @param {string[]} testFiles - 測試檔案路徑列表
+ * @param {string} projectRoot - 專案根目錄
+ * @returns {Array} stub issues
+ */
+function detectTestStubs(testFiles, projectRoot) {
+  const issues = [];
+  const WEAK_ONLY = /expect\([^)]+\)\.(toBeDefined|toBeTruthy|not\.toBeUndefined|not\.toBeNull)\(\)/g;
+  const VALID_ASSERT = /expect\([\s\S]*?\)\.(toBe|toEqual|toContain|toHaveLength|toMatchObject|toHaveBeenCalledWith|toThrow|toHaveProperty|toMatch)\(/;
+
+  for (const file of testFiles) {
+    const absFile = path.isAbsolute(file) ? file : path.join(projectRoot, file);
+    if (!fs.existsSync(absFile)) continue;
+
+    let content;
+    try { content = fs.readFileSync(absFile, 'utf8'); } catch { continue; }
+
+    // 提取每個 it/test block
+    const testBlocks = content.match(/(?:it|test)\s*\(\s*['"`]([^'"`]+)['"`]\s*,\s*(?:async\s*)?\(\s*\)\s*=>\s*\{[^}]*\}/g);
+    if (!testBlocks) continue;
+
+    for (const block of testBlocks) {
+      const nameMatch = block.match(/(?:it|test)\s*\(\s*['"`]([^'"`]+)['"`]/);
+      const testName = nameMatch ? nameMatch[1] : '(unnamed)';
+
+      const hasWeak = WEAK_ONLY.test(block);
+      WEAK_ONLY.lastIndex = 0;
+      const hasValid = VALID_ASSERT.test(block);
+
+      if (hasWeak && !hasValid) {
+        // 嘗試從 import 推斷被測函式
+        const importMatch = content.match(/import\s*\{([^}]+)\}\s*from/);
+        const fnName = importMatch ? importMatch[1].trim().split(',')[0].trim() : null;
+
+        issues.push({
+          file: path.relative(projectRoot, absFile),
+          testName,
+          fnName,
+          reason: '只有 toBeDefined/toBeTruthy，無實質行為驗證'
+        });
+      }
+    }
+  }
+
+  return issues;
+}
 
 function run(options) {
 
@@ -528,6 +583,37 @@ function run(options) {
     }
 
     handlePhaseSuccess('BUILD', '5', story, target);
+
+    // ========================================
+    // Step 6.1: Stub 偵測 — 掃描測試品質
+    // ========================================
+    const stubIssues = detectTestStubs(testFiles, target);
+    if (stubIssues.length > 0) {
+      const attempt = errorHandler.recordError('STUB', `${stubIssues.length} 個 stub 測試`);
+      emitBlock({
+        scope: `BUILD Phase 5 | ${story}`,
+        summary: `測試通過但有 ${stubIssues.length} 個 stub 測試（只有 toBeDefined/toBeTruthy，無實質驗證）`,
+        context: `Phase 5 | ${story} | Stub 偵測`,
+        tasks: stubIssues.slice(0, 8).map(s => ({
+          action: 'FIX_TEST',
+          file: s.file,
+          expected: `${s.testName}: 用 toBe/toEqual/toContain 等驗證實際行為，不要只用 toBeDefined()`,
+          reference: `函式: ${s.fnName || '(unknown)'}`
+        })),
+        forbidden: ['不要只加 toBeDefined() 或 toBeTruthy() 來通過門控'],
+        nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
+        attempt,
+        maxAttempts: MAX_ATTEMPTS
+      }, {
+        projectRoot: target,
+        iteration: iterNum,
+        phase: 'build',
+        step: 'phase-5',
+        story
+      });
+      return { verdict: 'BLOCKER', reason: 'stub_tests', count: stubIssues.length };
+    }
+
     writeCheckpoint(target, iteration, story, '5', {
       verdict: 'PASS',
       testFiles: testFiles.length,

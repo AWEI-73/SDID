@@ -1,332 +1,116 @@
-# Cynefin Check — 進 PLAN 前語意域分析
+# Cynefin Check — 語意域分析指引
 
-> 知識來源：[Cynefin 白皮書 v7](../../task-pipe/docs/cynefin_whitepaper_v7.md)
+## 目的
 
-## 觸發時機
+在進入 PLAN/BUILD 前，對需求文件做 Cynefin 語意域分析，展開隱含複雜度。
+避免「需求寫得很簡單，做到一半才發現很複雜」的情況。
 
-兩條路線共用，在進入 PLAN 前強制執行：
+## 輸入
 
-| 路線 | 觸發點 | 輸入文件 |
-|------|--------|---------|
-| Blueprint | Enhanced Draft 組裝完成後，`draft-to-plan` 執行前 | `requirement_draft_iter-X.md` |
-| Task-Pipe | POC Step 5 完成後，PLAN Step 1 執行前 | `requirement_spec_iter-X.md` |
-
----
-
-## 核心防線：隱含複雜度展開
-
-**最危險的情況不是需求模糊，而是需求寫得很簡單但背後藏著複雜度。**
-
-模糊消除問不出來的原因：使用者自己也不知道背後有多複雜。
-
-### 展開規則
-
-對每個功能動作，主動問：「這個動作背後有沒有隱含的步驟？」
-
-常見的隱含複雜度模式：
-
-| 表面需求 | 隱含步驟 |
-|---------|---------|
-| 支援第三方登入 | OAuth flow、token 管理、refresh 機制、安全考量、帳號綁定衝突 |
-| 支援多語言 | i18n 架構、日期/數字格式、RTL 支援、動態載入 |
-| 即時通知 | WebSocket/SSE 連線管理、斷線重連、訊息佇列、推播服務整合 |
-| 匯出 PDF | 排版引擎、字型嵌入、大檔案分頁、非同步產生 |
-| 搜尋功能 | 索引策略、模糊比對、分詞、效能考量 |
-| 支付整合 | 金流 API、webhook 驗證、冪等性、退款流程、對帳 |
-| 權限管理 | RBAC 設計、繼承規則、動態權限、稽核日誌 |
-| 資料同步 | 衝突解決策略、版本控制、離線支援、同步佇列 |
-
-### 展開步驟
-
-1. 讀取每個模組的功能動作清單
-2. 對每個動作套用「隱含步驟展開」：
-   - 這個動作有沒有外部服務依賴？（API、第三方平台）
-   - 這個動作有沒有狀態管理需求？（session、cache、queue）
-   - 這個動作有沒有錯誤處理路徑？（retry、fallback、rollback）
-   - 這個動作有沒有安全考量？（auth、validation、rate limit）
-3. 如果展開後的步驟數 > 原始描述的 3 倍，標記為「隱含複雜度」
+- `requirement_spec_iter-X.md`（Task-Pipe 路線）
+- `enhanced_draft.md`（Blueprint 路線）
 
 ---
 
-## AI 執行步驟
+## Phase 0: 文件品質評分（前置判斷）
 
-### Step 1: 讀取輸入文件
+在做域分析之前，先對輸入文件做品質評分。
+如果文件本身品質不足，域分析的結果也不可靠。
 
-讀取對應的 draft 或 spec 文件，提取：
-- 所有模組名稱
-- 每個模組的功能動作清單（FLOW 步驟）
-- 每個模組的依賴關係（deps）
-- 是否有外部服務依賴（AI API、第三方平台、不可控服務）
+### 評分維度（每項 0-5 分，滿分 25）
 
-### Step 2: 隱含複雜度展開（優先執行）
+| 維度 | 0 分 | 3 分 | 5 分 |
+|------|------|------|------|
+| 明確性 | 全是模糊描述 | 大部分明確，少數模糊 | 每個功能都有具體行為描述 |
+| 完整性 | 只有標題 | 有功能列表但缺細節 | 功能、邊界、錯誤處理都有 |
+| 可測試性 | 無法寫測試 | 部分可寫測試 | 每個功能都能對應測試案例 |
+| 一致性 | 自相矛盾 | 小處不一致 | 術語統一、邏輯自洽 |
+| 可行性 | 技術上不可能 | 需要額外研究 | 技術方案明確可行 |
 
-對每個模組的每個動作，執行上方「展開步驟」。
-**這是最重要的一步**，在做三問域識別之前先展開，確保分析的是真實複雜度而非表面描述。
+### 門檻
 
-### Step 3: 對每個模組做三問域識別
-
-```
-問 1: 這個模組的做法，現在清楚嗎？（展開後的完整步驟）
-  → 清楚 → 傾向 Complicated 以上
-  → 不清楚 → 傾向 Complex
-
-問 2: 有沒有類似的東西做過或參考過？
-  → 有 → 傾向 Complicated
-  → 沒有 → 傾向 Complex
-
-問 3: 如果做錯了，代價大嗎？
-  → 大 → 需要更嚴謹的域識別與驗收標準
-  → 小 → 允許較寬鬆的探索
-```
-
-三問組合推導域：
-| 問1 | 問2 | 問3 | 推導域 |
-|-----|-----|-----|--------|
-| 清楚 | 有 | 任意 | Complicated |
-| 清楚 | 沒有 | 小 | Complicated |
-| 清楚 | 沒有 | 大 | Complex |
-| 不清楚 | 任意 | 任意 | Complex |
-
-### Step 4: 複雜度指標檢查
-
-對每個模組計算（使用展開後的步驟數）：
-
-| 指標 | 閾值 | 超標行為 |
-|------|------|---------|
-| FLOW 步驟數（展開後） | > 7 | 標記超標，建議拆分協調層 + subfunction |
-| deps 數量 | > 5 | 標記超標，建議抽中間層 |
-| Clear 同步等待 Complex | 任何一個 | 標記時間耦合，建議非同步隔離 |
-| 隱含複雜度倍數 | > 3x | 標記為 BLOCKER，需要在文件中明確展開 |
-
-### Step 4.5: 迭代預算檢查（Iteration Budget Check）
-
-**這一步把 Step 3 的域識別結果轉換為可執行的迭代拆分建議。**
-
-對每個被識別為 `Complicated` 的模組：
-
-1. 從 draft 的「模組動作清單」中，計算該模組的**總動作數**（items 數量）
-2. 根據 `q3_costly` 決定預算上限：
-
-| 條件 | 每 iter 動作上限 | 說明 |
-|------|-----------------|------|
-| Complicated + q3_costly=true | **4** | 出錯成本高，必須控制單次 iter 負載 |
-| Complicated + q3_costly=false | **6** | 有參考經驗，可稍微放寬 |
-| Complex（任何） | **3** | 探索性質，更需小步驗證 |
-| Clear | 不限 | 做法清楚且有成熟參考 |
-
-3. 計算建議迭代數：`suggestedIters = ceil(actionCount / maxPerIter)`
-4. 從 draft 的「迭代規劃表」中，計算該模組目前佔用幾個 iter（`currentIters`）
-5. 比較 `currentIters` vs `suggestedIters`，產出 issue：
-
-| 條件 | Issue 級別 | 說明 |
-|------|-----------|------|
-| Complicated + costly + currentIters < suggestedIters | **BLOCKER** | 必須拆 iter |
-| Complicated + !costly + currentIters < suggestedIters | **WARNING** | 建議拆 iter |
-| Complex + currentIters < suggestedIters | **BLOCKER** | 探索性模組更需要小步 |
-
-6. 將結果填入 `iterBudget` 欄位（見 Step 5 JSON schema）
-
-**範例**：
-```
-模組 question_bank:
-  域: Complicated, q3_costly=true
-  動作數: 6 (PdfParseCoordinator, PdfTextExtractor, PdfImageProcessor, QuestionBankService, QuestionBankList, ImportBankPage)
-  上限: 4/iter
-  建議 iter: ceil(6/4) = 2
-  目前 iter: 1
-  → BLOCKER: 需要拆成至少 2 個 iter
-```
+| 總分 | 判定 | 動作 |
+|------|------|------|
+| 20-25 | ✅ PASS | 繼續域分析 |
+| 15-19 | ⚠️ WARN | 標記弱項，繼續但在 report 中註記 |
+| 0-14 | ❌ FAIL | 退回修改文件，不進行域分析 |
 
 ---
 
-### Step 5: 產出 Report JSON 並呼叫驗證腳本
+## Phase 1: 模組域識別
 
-**5-A: 將分析結果寫成 report JSON**
+對每個模組/功能做三問判定：
 
-將上方所有模組的分析結果（Step 2-4）寫成一個 JSON 檔並存檔：
+| 問題 | Clear | Complicated | Complex |
+|------|-------|-------------|---------|
+| 因果關係明確嗎？ | ✅ 直接可見 | ⚠️ 需要分析 | ❌ 事後才知道 |
+| 有已知最佳實踐嗎？ | ✅ 有標準做法 | ⚠️ 需要專家判斷 | ❌ 需要實驗 |
+| 需求會變動嗎？ | ✅ 穩定 | ⚠️ 可能微調 | ❌ 高度不確定 |
 
-```
-存檔位置: .gems/iterations/iter-X/logs/cynefin-report-<timestamp>.json
-```
+---
 
-JSON 格式（必須完全符合 cynefin-log-writer.cjs 所需的 schema）：
+## Phase 2: 隱含步驟展開
+
+對每個 Complicated/Complex 模組，展開隱含步驟：
+
+- 錯誤處理（error boundary、retry、fallback）
+- 狀態管理（loading、error、empty state）
+- 邊界條件（空值、超長、並發）
+- 資料驗證（input validation、type guard）
+- 效能考量（大量資料、分頁、快取）
+
+---
+
+## Phase 3: 預算檢查
+
+| 域 | 每 iter 動作上限 | 超出處理 |
+|----|-----------------|---------|
+| Clear | 不限 | — |
+| Complicated | 4 個動作 | 拆成多個 iter |
+| Complex | 2 個動作 | 必須先做 POC 驗證 |
+
+---
+
+## 輸出格式
+
+產出 JSON report，格式如下：
 
 ```json
 {
-  "route": "Blueprint",
-  "inputFile": "輸入文件路徑",
+  "iteration": "iter-1",
+  "docQuality": {
+    "clarity": 4,
+    "completeness": 3,
+    "testability": 4,
+    "consistency": 5,
+    "feasibility": 4,
+    "total": 20,
+    "verdict": "PASS",
+    "weakPoints": ["completeness: 缺少錯誤處理描述"]
+  },
   "modules": [
     {
-      "name": "模組名",
+      "name": "模組名稱",
       "domain": "Clear|Complicated|Complex",
-      "threeQuestions": {
-        "q1_clear": true,
-        "q2_reference": true,
-        "q3_costly": false
-      },
-      "flowSteps": 4,
-      "depsCount": 2,
-      "timeCoupling": false,
-      "iterBudget": {
-        "actionCount": 6,
-        "maxPerIter": 4,
-        "suggestedIters": 2,
-        "currentIters": 1
-      },
-      "implicitExpansion": ["Step 2 展開的隱含步驟（若展開後無明顯增加可省略）"],
-      "issues": [
-        {
-          "level": "BLOCKER",
-          "description": "問題具體描述",
-          "suggestions": ["具體修改建議"],
-          "fixTarget": "需要修改的文件路徑"
-        }
-      ]
+      "reasoning": "判定理由（一句話）",
+      "hiddenSteps": ["展開的隱含步驟1", "展開的隱含步驟2"],
+      "actionCount": 3,
+      "budgetOk": true
     }
-  ]
+  ],
+  "verdict": "PASS|NEEDS_FIX",
+  "issues": ["超出預算的模組或需要拆分的項目"]
 }
 ```
 
-> **Issues 分級規則**：
-> - `BLOCKER`：需要修改才能進 PLAN（FLOW 超標、deps 超標、隱含複雜度 >3x、**迭代預算不足**）
-> - `WARNING`：提醒但不阻擋（輕度超標、非同步警告、Complicated+!costly 預算建議）
-> - 無問題模組：`"issues": []`
->
-> **注意**：`iterBudget` 欄位為必填（Complicated/Complex 模組）。cynefin-log-writer.cjs 會**機械判定** iterBudget，即使 AI 沒有手動報 BLOCKER，腳本也會根據 iterBudget 數據自動產生。
+---
 
-**5-B: 執行結果驗證腳本**
+## 完成後
 
-呼叫腳本，讓腳本客觀判定是否送進 PLAN：
+執行以下指令寫入 log：
 
 ```bash
-node sdid-tools/cynefin-log-writer.cjs \
-  --report-file=.gems/iterations/iter-X/logs/cynefin-report-<timestamp>.json \
-  --target=<project 根目錄> \
-  --iter=<N>
+node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=<N>
 ```
 
-**5-C: 終端輸出摘要**（腳本執行前，AI 先輸出简潔表格）：
-
-```
-@CYNEFIN-CHECK | <Blueprint|TaskPipe> | 待腳本判定...
-
-模組: <模組名>
-  域: <Clear|Complicated|Complex>  [三問推導]
-  FLOW: <N> 步驟 <✓|⚠ 超標>
-  deps: <N> <✓|⚠ 超標>
-  隱含複雜度展開: <無|展開後 Nx 原始描述>
-  待腳本確認...
-
-...（所有模組）
-```
-
-
-
-### Step 6: 根據腳本輸出決定下一步
-
-> **判定權在腳本，不在 AI。** AI 的分析是投票，腳本才是裁判。
-
-**腳本輸出 `@PASS`：**
-- AI 在輸入文件末尾加上 `CYNEFIN-CHECK: PASS | iter-X | <timestamp>` 標記
-- 繼續進入 PLAN
-
-**腳本輸出 `@NEEDS-FIX`：**
-- 讀腳本輸出的 BLOCKER 清單（腳本已格式化好）
-- 直接修改 draft 或 spec 中對應的模組描述（根據 `fixTarget` 和 `suggestions`）
-- 修改完成後重跑（從 Step 1 開始），產出新的 report JSON，重新呼叫腳本
-- 不進入 PLAN，直到腳本說 @PASS
-
----
-
-## Log 檔命名規則
-
-與現有 sdid-tools log 格式一致：
-
-```
-cynefin-check-pass-<timestamp>.log   ← @PASS 時
-cynefin-check-fail-<timestamp>.log   ← @NEEDS-FIX 時
-```
-
-存放路徑：`.gems/iterations/iter-X/logs/`
-
-timestamp 格式：`2026-02-22T10-30-00`（ISO，冒號換成連字號）
-
----
-
-## 修改指引（@NEEDS-FIX 時）
-
-### 隱含複雜度 → 在文件中明確展開
-
-在 draft/spec 的模組動作清單裡，把隱含步驟明確寫出來：
-
-```
-修改前:
-  auth: 支援第三方登入
-
-修改後:
-  auth:
-    - oauthRedirect: 產生 OAuth URL → 導向第三方
-    - oauthCallback: 接收 code → 換 token → 驗證
-    - tokenRefresh: 偵測過期 → 自動 refresh
-    - accountBinding: 檢查衝突 → 綁定或提示
-```
-
-### FLOW 超標 → 拆分模組動作
-
-在 draft/spec 的模組動作清單裡，把一個大動作拆成：
-- 一個協調層動作（薄，只負責呼叫順序）
-- 多個子動作（各自職責單一）
-
-範例：
-```
-修改前:
-  processOrder: ValidateUser→CheckInventory→CalcDiscount→ProcessPayment→UpdateInventory→SendNotification→UpdateLoyaltyPoints→GenerateInvoice→LogAudit
-
-修改後:
-  processOrder (協調層): ValidateOrder→ProcessPayment→FulfillOrder→Notify
-  orderValidator: ValidateUser→CheckInventory→CheckStock
-  paymentProcessor: CalcDiscount→ChargePayment→RecordTransaction
-  orderFulfiller: UpdateInventory→UpdateLoyaltyPoints→GenerateInvoice
-  notifier: SendNotification→LogAudit
-```
-
-### deps 超標 → 抽中間層
-
-在 deps 清單裡加一個 Facade 或 Service 層，把多個外部依賴包起來。
-
-### 迭代預算不足 → 拆分 iter
-
-將 Complicated+costly 模組的動作分散到多個 iter，每 iter 最多 4 個動作：
-
-```
-修改前 (1 iter 塞 6 個動作):
-  iter-2: question_bank
-    PdfParseCoordinator, PdfTextExtractor, PdfImageProcessor,
-    QuestionBankService, QuestionBankList, ImportBankPage
-
-修改後 (拆成 2 iter，每 iter 前後端一套):
-  iter-2: question_bank (CRUD + 手動匯入)
-    QuestionBankService, QuestionBankList, ImportBankPage (手動)
-  iter-3: question_bank (PDF 解析)
-    PdfParseCoordinator, PdfTextExtractor, PdfImageProcessor, ImportBankPage (PDF)
-```
-
-拆分原則：
-- P0 動作優先進第一個 iter
-- 每個 iter 必須有 SVC + ROUTE + UI（前後端一套）
-- 每個 iter 結束後必須有可展示的功能
-
-### 時間耦合 → 標記非同步需求
-
-在模組描述裡加上 `[ASYNC]` 標記，說明這個模組需要非同步隔離設計。
-BUILD 時 AI 根據這個標記推導非同步實作方式。
-
----
-
-## 注意事項
-
-- 閾值（FLOW > 7、deps > 5）是經驗值，不是絕對規則。小型專案（Level S）可以放寬。
-- Complex 域不是壞事，是「還在探索中」的誠實聲明。不要強行把 Complex 改成 Complicated。
-- 這個 check 是語意分析，不是程式碼掃描。判斷依據是文件裡的功能描述，不是實際程式碼。
-- 每次重跑都產生新的 log，舊 log 保留（可追溯修改歷程）。
-- **隱含複雜度展開是主動行為**，不要等使用者說「這個很複雜」才展開。
+log 寫入成功後才算 `@PASS`，loop 才會放行進入 PLAN/BUILD。

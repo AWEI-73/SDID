@@ -347,6 +347,16 @@ function detectProjectState(projectPath, detectedLevel = 'M') {
     // === P0 State Ledger: 快速路徑 ===
     const ledgerResult = detectFromStateLedger(projectPath);
     if (ledgerResult) {
+        // Cynefin Gate: BUILD 進入前必須有 cynefin-check-pass log
+        // Blueprint 路線走 State Ledger 會跳過 filesystem fallback 的 cynefin 判斷
+        if (ledgerResult.phase === 'BUILD' && ledgerResult.step === '1') {
+            const logsPath = path.join(projectPath, '.gems', 'iterations', ledgerResult.iteration, 'logs');
+            const hasCynefinPass = fs.existsSync(logsPath) &&
+                fs.readdirSync(logsPath).some(f => f.startsWith('cynefin-check-pass-'));
+            if (!hasCynefinPass) {
+                return { phase: 'CYNEFIN_CHECK', iteration: ledgerResult.iteration, reason: 'BUILD 前需要 Cynefin 語意域分析', source: 'state_ledger' };
+            }
+        }
         return ledgerResult;
     }
 

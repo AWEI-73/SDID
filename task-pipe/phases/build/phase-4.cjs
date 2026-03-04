@@ -200,7 +200,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
 
       // 建構 EXPECTED 內容：告訴 AI 測試裡面要有什麼
       const expectedParts = [];
-      expectedParts.push(`import { ${issue.fn} } from '${fnFile.replace(/\\/g, '/').replace(/\.ts$/, '')}'`);
+      expectedParts.push(`import { ${issue.fn} } from '${fnFile.replace(/\\/g, '/').replace(/\.tsx?$/, '')}'`);
       if (testType === 'E2E' || testType === 'INTEGRATION') {
         expectedParts.push('禁止 jest.mock()');
         expectedParts.push('必須有有效 assertion: toBe / toEqual / toHaveBeenCalledWith / toContain / toThrow');
@@ -267,7 +267,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       if (isMissingFile) {
         action = 'CREATE_TEST';
         testFilePath = testDir ? path.join(testDir, `${fnBaseName}.test.ts`) : `__tests__/${fnBaseName}.test.ts`;
-        expected = `import { ${fn.name} } from '${(fn.file || '').replace(/\\/g, '/').replace(/\.ts$/, '')}'\n             必須有 describe('${fn.name}') 和至少一個 it/test`;
+        expected = `import { ${fn.name} } from '${(fn.file || '').replace(/\\/g, '/').replace(/\.tsx?$/, '')}'\n             必須有 describe('${fn.name}') 和至少一個 it/test`;
       } else {
         action = 'FIX_IMPORT';
         testFilePath = fn.testFile ? (testDir ? path.join(testDir, fn.testFile) : fn.testFile) : '(找不到測試檔案)';
@@ -363,7 +363,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     return {
       action: 'CREATE_TEST',
       file: testFilePath,
-      expected: `import { ${m.fn} } from '${fnFile.replace(/\\/g, '/').replace(/\.ts$/, '')}'\n             必須有 describe('${m.fn}') 和至少一個有效 assertion`,
+      expected: `import { ${m.fn} } from '${fnFile.replace(/\\/g, '/').replace(/\.tsx?$/, '')}'\n             必須有 describe('${m.fn}') 和至少一個有效 assertion`,
       gemsSpec: `${m.fn} | ${m.priority} | ${fn?.storyId || story}`,
       reference: `源碼: ${fnFile} | GEMS-TEST-FILE 標籤指定: ${m.testFile}`
     };

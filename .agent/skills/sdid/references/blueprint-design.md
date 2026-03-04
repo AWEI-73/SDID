@@ -216,6 +216,11 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 ```
 
 - 用 P0-P3 標記優先級，用 `→` 描述資料流向
+- **前端類型 (UI/HOOK/ROUTE) 的流向必須描述業務行為，不是 React 框架機制**
+  - UI: `FETCH_DATA`, `RENDER`, `BIND_EVENTS`, `FILTER`, `SORT` ✅ / `MOUNT`, `CONFIG`, `USEEFFECT` ❌
+  - HOOK: `CALL_API`, `UPDATE_STATE`, `VALIDATE`, `DEBOUNCE`, `RETURN` ✅ / `USESTATE`, `USEEFFECT` ❌
+  - ROUTE: `CHECK_AUTH`, `LOAD_DATA`, `RENDER_LAYOUT`, `RENDER_CONTENT` ✅ / `MOUNT`, `RENDER`（太泛）❌
+  - 參考: [action-type-mapping.md](action-type-mapping.md)「前端類型 FLOW 詞彙」表
 - EXIT: 使用者確認 → 組裝 Enhanced Draft
 
 ---

@@ -178,6 +178,8 @@ src/
   - 技術名稱: 函式名或類型名 (對應 GEMS 標籤的函式名)
   - P: 優先級 P0-P3
   - 流向: STEP1→STEP2→STEP3 (對應 GEMS-FLOW，3-7 步)
+  - 前端類型 (UI/HOOK/ROUTE) 的流向必須描述業務行為，不是 React 機制
+  - 參考: action-type-mapping.md「前端類型 FLOW 詞彙」表
   - 依賴: [Type.Name] 格式 (對應 GEMS-DEPS)
   - 狀態: ○○ (未開始) | ✓✓ (完成)
   - 演化: BASE / L1 / L2 ... (v2.1 新增，標記此動作屬於哪個演化層)

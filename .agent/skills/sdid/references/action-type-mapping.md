@@ -35,6 +35,27 @@ DEFINE → FREEZE → EXPORT                (CONST 動作)
 CONNECT → POOL → EXPORT                 (LIB 動作)
 ```
 
+## 前端類型 FLOW 詞彙
+
+UI / HOOK / ROUTE 類型的 FLOW 應描述**業務行為**，不是 React 框架機制。
+
+| 類型 | 正確詞彙 | 錯誤詞彙 | 說明 |
+|------|---------|---------|------|
+| UI | `FETCH_DATA`, `RENDER`, `BIND_EVENTS`, `BIND_DOWNLOAD`, `FILTER`, `SORT` | `MOUNT`, `CONFIG`, `USEEFFECT` | 描述使用者看到什麼、能做什麼 |
+| HOOK | `CALL_API`, `UPDATE_STATE`, `VALIDATE`, `DEBOUNCE`, `RETURN` | `USESTATE`, `USEEFFECT` | 描述資料流動，不是 React API |
+| ROUTE | `CHECK_AUTH`, `LOAD_DATA`, `RENDER_LAYOUT`, `RENDER_CONTENT` | `MOUNT`, `RENDER` (太泛) | 描述頁面進入後的業務流程 |
+
+**原則**：FLOW 詞彙要讓人讀了就知道「這個 component 做什麼業務」，不是「React 怎麼執行它」。
+
+範例：
+```
+✅ FETCH_LIST → BIND_EVENTS → RENDER_TABLE     (題庫列表，使用者能搜尋/排序)
+✅ CHECK_AUTH → LOAD_DATA → RENDER_DASHBOARD   (統計頁，需登入才能看)
+✅ CALL_SVC → UPDATE_STATE → RENDER            (Hook，封裝 API 呼叫)
+❌ CONFIG → MOUNT → RENDER                     (沒有業務語意)
+❌ USESTATE → USEEFFECT → RETURN               (React 內部機制)
+```
+
 ## 填充等級
 
 | 等級 | 說明 | 適用場景 |

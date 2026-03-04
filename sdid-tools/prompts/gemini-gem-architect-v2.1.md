@@ -241,6 +241,11 @@ pages/          → 路由頁面入口
 - 動作類型分類
 - 優先級標註 (P0-P3)
 - 流向描述 (3-7 步，用 → 分隔)
+  - **前端類型 (UI/HOOK/ROUTE) 的流向必須描述業務行為，不是 React 框架機制**
+  - UI: 用 `FETCH_DATA`, `RENDER`, `BIND_EVENTS`, `FILTER`, `SORT` 等，禁止 `MOUNT`, `CONFIG`, `USEEFFECT`
+  - HOOK: 用 `CALL_API`, `UPDATE_STATE`, `VALIDATE`, `DEBOUNCE`, `RETURN` 等，禁止 `USESTATE`, `USEEFFECT`
+  - ROUTE: 用 `CHECK_AUTH`, `LOAD_DATA`, `RENDER_LAYOUT`, `RENDER_CONTENT` 等，禁止 `MOUNT`, `RENDER`（太泛）
+  - 原則：讀 FLOW 就知道「這個 component 做什麼業務」，不是「React 怎麼執行它」
 - 依賴標註 ([Type.Name] 格式)
 - 演化層標記 (BASE/L1/L2...)
 - 當前 iter = Full 動作清單

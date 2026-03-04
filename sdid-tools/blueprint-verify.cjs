@@ -615,12 +615,23 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
     `覆蓋率: ${s.coverage}%`,
   ].join('\n');
 
-  if (s.missing === 0 && s.mismatches === 0) {
+  const acAllTagged = !acCoverage || acCoverage.untagged.length === 0;
+
+  if (s.missing === 0 && s.mismatches === 0 && acAllTagged) {
     const nextCmd = '藍圖與程式碼完全一致，可進入下一個 iter';
     if (logProjectRoot) {
       logOutput.anchorPass('gate', 'verify', `Blueprint Verify — 覆蓋率 ${s.coverage}%`, nextCmd, logOptions);
     } else {
       console.log(`\n@PASS | Blueprint Verify — 藍圖與程式碼完全一致`);
+    }
+  } else if (s.missing === 0 && s.mismatches === 0 && !acAllTagged) {
+    const summary = `Blueprint Verify — 結構一致但 ${acCoverage.untagged.length} 個 AC 未標記 (${acCoverage.untagged.join(', ')})`;
+    if (logProjectRoot) {
+      logOutput.anchorError('TACTICAL_FIX', summary,
+        `補齊 AC 標記後重跑: node sdid-tools/blueprint-verify.cjs --draft=${args.draft} --target=${args.target}`,
+        { ...logOptions, details });
+    } else {
+      console.log(`\n@WARN | ${summary}`);
     }
   } else if (s.missing > 0) {
     const summary = `Blueprint Verify — ${s.missing} 個藍圖動作尚未實作 (覆蓋率 ${s.coverage}%)`;

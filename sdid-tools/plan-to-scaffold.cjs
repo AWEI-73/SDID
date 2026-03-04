@@ -105,8 +105,9 @@ function generateBody(name, type, storyId, stepLines) {
   switch (t) {
     // ── 前端 ──────────────────────────────────────────────
     case 'UI': {
+      const cssModule = name.replace(/([A-Z])/g, (m, c, i) => i > 0 ? `-${c.toLowerCase()}` : c.toLowerCase());
       return {
-        imports: [`import React from 'react';`],
+        imports: [`import React from 'react';`, `import styles from './${cssModule}.module.css';`],
         body: [
           `interface ${name}Props {`,
           `  // TODO: define props`,
@@ -140,8 +141,9 @@ function generateBody(name, type, storyId, stepLines) {
     case 'ROUTE': {
       // 名稱本身可能已含 Page，不重複加
       const pageName = name.endsWith('Page') ? name : `${name}Page`;
+      const routeCssModule = pageName.replace(/([A-Z])/g, (m, c, i) => i > 0 ? `-${c.toLowerCase()}` : c.toLowerCase());
       return {
-        imports: [`import React from 'react';`],
+        imports: [`import React from 'react';`, `import styles from './${routeCssModule}.module.css';`],
         body: [
           ...stepLines,
           `export default function ${pageName}() {`,
@@ -335,6 +337,25 @@ function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(fullPath, lines.join('\n'), 'utf8');
       result.generated.push(`${fn.name} [${actionType}] → ${filePath}`);
+
+      // v1.1: UI/ROUTE 類型自動生成對應的 .module.css 骨架
+      const frontendTypes = ['UI', 'ROUTE'];
+      if (frontendTypes.includes((actionType || '').toUpperCase())) {
+        const cssFileName = path.basename(fullPath).replace(/\.tsx?$/, '.module.css');
+        const cssPath = path.join(dir, cssFileName);
+        if (!fs.existsSync(cssPath)) {
+          const cssContent = [
+            `/* ${cssFileName} — ${fn.name} 樣式 (由 plan-to-scaffold 自動生成) */`,
+            '',
+            `.container {`,
+            `  /* TODO: 定義 ${fn.name} 的佈局樣式 */`,
+            `}`,
+            '',
+          ].join('\n');
+          fs.writeFileSync(cssPath, cssContent, 'utf8');
+          result.generated.push(`${fn.name} [CSS] → ${path.relative(target, cssPath)}`);
+        }
+      }
     }
   }
 

@@ -173,6 +173,18 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 - 禁止前後端分離不同 iter（如 iter-2 只有邏輯，iter-3 才有 UI）是 ❌ BLOCKER
 - 每個 iter 交付後，使用者必須能操作完整功能，不是只看到 API 或只看到空 UI
 
+**規則 1.5 — Iter 分層模型 (VSC-004，垂直切片原則)**
+
+| 層級 | 適用 Iter | 內容 | 交付 | Story 拆法 |
+|------|----------|------|------|-----------|
+| Foundation | Iter 1 | 型別 + 配置 + API 介面契約 (interface) + 前端主入口殼 (AppRouter/Layout) | INFRA | Story-0: types/config, Story-1: API 介面 + 前端殼 |
+| 業務模組 | Iter 2+ | 後端服務實作 → 前端串接 = 一個完整端到端業務流程 | FULL | Story-0: SVC/API 實作, Story-1: UI/ROUTE 串接 |
+
+- Foundation 只放「形狀」(interface/type)，不放「行為」(實作/Mock)
+- 業務模組 iter 必須是完整垂直切片：後端先行 → 前端串接
+- 如果動作數超過 Action Budget，拆成多個 Story（不是多個 iter）
+- ❌ 反模式：iter-2 做 Mock + 型別，iter-3 才做 UI；每個 iter 只有 Story-0
+
 **規則 2 — 每個功能性 iter 可展示標準必備注**
 - 迭代規劃表必須包含「可展示標準」一行：「操作者 + 操作步驟 + 預期畫面反應」
 - Iter 1 允許寫 `npm run dev → 首頁不報錯`
@@ -180,10 +192,10 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 
 **規則 3 — Complicated 模組拆分規則（CYNEFIN Budget 對齊）**
 - CYNEFIN-CHECK 標記為 Complicated + q3_costly 的模組：每 iter 最多 4 個動作
-- 如果模組有 N 個動作（N > 4），至少需要 ceil(N/4) 個 iter
+- 如果模組有 N 個動作（N > 4），拆成多個 Story（不是多個 iter）
 - Blueprint Gate 會機械檢查 BUDGET-001，超標 = ❌ BLOCKER
-- 拆分策略：P0 動作優先進第一個 iter，P1/P2 依序排入後續 iter
-- 拆分後每個 iter 仍須滿足規則 1（前後端一套）
+- 拆分策略：Story-0 放 SVC/API (後端先行)，Story-1 放 UI/ROUTE (前端串接)
+- 拆分後每個 iter 仍須滿足規則 1（前後端一套）+ 規則 1.5（垂直切片）
 
 **規則 4 — Action Budget（動作預算上限）**
 - Level S: 每 iter 最多 3 個動作
@@ -203,6 +215,9 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 - MUST: 列出每個模組的具體動作，問使用者確認
 - ALLOWED-READ: [action-type-mapping.md](action-type-mapping.md)
 - 每個功能性 iter 最少 2 個 Story（iter 1 豁免）
+  - Story-0: 後端 (SVC/API 實作)
+  - Story-1: 前端串接 (UI/ROUTE 串接後端)
+  - 如果動作數超過 Action Budget，拆更多 Story（不是更多 iter）
 
 **AC 兩條規則（不達標必須重寫）：**
 
@@ -249,6 +264,11 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 | 每個功能性 iter 有 ROUTE | 至少一個頁面入口 |
 | 每個功能性 iter 有 UI | 至少一個畫面元件 |
 | 每個功能性 iter 交付類型 = FULL | 前後端一套，不可分離 |
+| Foundation 含 API 介面契約 | IXxxService interface 定義形狀 |
+| Foundation 含前端主入口殼 | AppRouter/Layout，npm run dev 可見 |
+| Foundation 不含業務邏輯 | 禁止 Mock Service、計算函式 |
+| 功能性 iter 是完整垂直切片 | 後端 SVC/API → 前端 UI/ROUTE |
+| 功能性 iter 至少 2 Story | Story-0: 後端, Story-1: 前端串接 |
 | 每個功能性 iter 有 Demo Checkpoint | 使用者操作後可親眼看到畫面 |
 | 每 iter 動作數 ≤ Budget 上限 | S:3 / M:4 / L:5（Foundation 豁免） |
 | P0 動作的 AC 不為空 | Given/When/Then 格式 |

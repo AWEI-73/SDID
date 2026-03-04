@@ -47,6 +47,10 @@
 | 依賴循環 | 模組 A→B→A | 重新安排依賴 |
 | 迭代 DAG | iter-N 依賴 iter-N+1 或更晚 | 調整迭代順序 |
 | 演化層違規 | BASE 動作依賴 L1 動作 | 調整演化層或依賴 |
+| Foundation 缺骨架 | Iter 1 缺 API 介面契約或前端主入口殼 | 補齊 CONST (interface) + ROUTE (AppRouter) |
+| Foundation 含業務邏輯 | Iter 1 有 Mock Service 或計算函式 | 移到功能性 iter |
+| 垂直切片違規 | 功能性 iter 只有後端或只有前端 | 合併為完整垂直切片 |
+| Story 不足 | 功能性 iter 只有 1 個 Story | 拆為 Story-0 (後端) + Story-1 (前端) |
 | Level vs 模組數 | 模組總數 (含 shared) 超過 Level 限制 30%+ | 升級 Level (S→M 或 M→L) |
 | 動作 deps 空白 | 模組有依賴但動作清單 deps 全是「無」 | 在動作清單標註 [Type.Name] |
 | 單一 iter 負載 | 單一 iter 模組數超過建議值 (S:2/M:3/L:4) | 將部分模組移到下一個 iter |
@@ -219,25 +223,56 @@ pages/          → 路由頁面入口
 引導方向：
 - 迭代順序 (shared 永遠 Iter 1)
 - 每個迭代的目標和範圍
-- 交付類型 (FULL/BACKEND/FRONTEND/INFRA)
+- 交付類型 (FULL/INFRA，禁止 BACKEND/FRONTEND)
 - 依賴關係 (deps=[] 可並行)
 - 狀態標記 ([CURRENT] / [STUB])
 - 明確排除項目 (不做什麼)
 - 如果有變異點分析，分層對應迭代
+- Foundation iter 必含 API 介面契約 + 前端主入口殼
+- 功能性 iter 必須是完整垂直切片（後端→前端）
 
 產出：迭代規劃表
 
 ```
 | Iter | 範圍 | 目標 | 模組 | 交付 | 依賴 | 狀態 |
 |------|------|------|------|------|------|------|
-| 1 | Foundation | 型別+儲存 | shared | INFRA | 無 | [CURRENT] |
-| 2 | Core MVP | 核心業務 | module-a | FULL | shared | [STUB] |
+| 1 | Foundation | 型別+API 介面契約+前端殼 | shared | INFRA | 無 | [CURRENT] |
+| 2 | Core MVP | 完整業務流程 (後端→前端) | module-a | FULL | shared | [STUB] |
 ```
 
-交付類型: FULL (前後端) | BACKEND | FRONTEND | INFRA (純基礎設施)
+交付類型: FULL (前後端) | INFRA (純基礎設施)
 狀態: [CURRENT] 當前 | [STUB] 待展開 | [DONE] 已完成
 
-**Round 4 門控**: 迭代規劃表有 Iter/範圍/目標/模組/交付/依賴/狀態 七欄 + 後面的 iter 只依賴更早的 iter + 模組總數 (含 shared) 不超過 Level 限制 (S≤3, M≤6, L≤10)，超過則建議升級 Level → 通過才進入下一輪
+**⚠️ Iter 分層模型 (VSC-004) — 垂直切片原則**
+
+迭代規劃必須遵守以下分層模型，確保每個 iter 交付有意義的可驗證成果：
+
+| 層級 | 適用 Iter | 內容 | 交付 | Story 拆法 |
+|------|----------|------|------|-----------|
+| Foundation | Iter 1 | 型別 + 配置 + API 介面契約 (interface) + 前端主入口殼 (AppRouter/Layout) | INFRA | Story-0: types/config, Story-1: API 介面 + 前端殼 |
+| 業務模組 | Iter 2+ | 後端服務實作 → 前端串接 = 一個完整端到端業務流程 | FULL | Story-0: SVC/API 實作, Story-1: UI/ROUTE 串接 |
+
+**Foundation (Iter 1) 必含項目：**
+- CONST: 核心型別定義 (CoreTypes, enums, interfaces)
+- CONST/LIB: 環境配置 (ENV_CONFIG)
+- CONST: API 介面契約 (IXxxService interface) — 定義「形狀」而非「行為」
+- ROUTE: 前端主入口殼 (AppRouter / Layout) — `npm run dev` 可看到首頁框架
+- ❌ 禁止在 Foundation 放業務邏輯實作 (Mock Service、計算函式等)
+
+**業務模組 (Iter 2+) 硬規則：**
+- 一個 iter = 一個完整業務垂直切片（從資料層到 UI 展示）
+- 後端先行：先實作 SVC/API，再串接 UI/ROUTE
+- 同一個業務流程的後端和前端禁止拆到不同 iter
+- 如果動作數超過 Action Budget，拆成多個 Story（不是多個 iter）
+- 每個 iter 完成後，使用者必須能操作一個完整的業務功能
+
+**❌ 反模式（BLOCKER）：**
+- iter-2 只做 Mock + 型別，iter-3 才做 UI → 違反垂直切片
+- iter-2 只做後端 API，iter-3 才做前端頁面 → 違反垂直切片
+- Foundation 塞 MockService 或業務計算邏輯 → Foundation 只放骨架
+- 每個 iter 只有 Story-0 → iter 粒度太細，應合併
+
+**Round 4 門控**: 迭代規劃表有 Iter/範圍/目標/模組/交付/依賴/狀態 七欄 + 後面的 iter 只依賴更早的 iter + 模組總數 (含 shared) 不超過 Level 限制 (S≤3, M≤6, L≤10)，超過則建議升級 Level + Foundation 含 API 介面契約 + 前端殼 + 每個功能性 iter 是完整垂直切片 → 通過才進入下一輪
 
 ---
 
@@ -284,7 +319,8 @@ pages/          → 路由頁面入口
 | 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 狀態 | 演化 |
 |---------|------|---------|---|------|------|------|------|
 | 核心型別 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | ○○ | BASE |
-| 儲存層 | LIB | storage | P1 | INIT→CRUD→EXPORT | [Internal.CoreTypes] | ○○ | BASE |
+| API 介面契約 | CONST | IServiceContracts | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | ○○ | BASE |
+| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | ○○ | BASE |
 ```
 
 Modify 動作 (修改既有函式):
@@ -299,13 +335,15 @@ Stub 格式:
 > 模組描述，依賴 shared
 > 預估: N 個動作 (M×P0, K×P1)
 > 公開 API: funcA, funcB
+> Story 拆法: Story-0 後端 (SVC/API), Story-1 前端串接 (UI/ROUTE)
 ```
 
 **Round 5 門控**:
 - 當前 iter 每個動作有 techName + P + flow + deps
 - flow 有 3-7 步
-- 每個 Stub 有描述 + 預估 + 公開 API
+- 每個 Stub 有描述 + 預估 + 公開 API + Story 拆法
 - 演化層: BASE 動作不依賴 L1+ 動作
+- 功能性 iter 至少 2 個 Story (Story-0: 後端, Story-1: 前端串接)
 → 全部通過才能組裝最終藍圖
 
 ---
@@ -334,6 +372,10 @@ Stub 格式:
 - [ ] 模組總數 (含 shared) 不超過 Level 限制 (S≤3, M≤6, L≤10)，超過則升級 Level
 - [ ] 動作清單的 deps 欄位有標註具體依賴 (不要全部寫「無」)
 - [ ] 共用模組有「樣式策略」欄位 (CSS Modules / Tailwind / Global CSS / CSS-in-JS)
+- [ ] Foundation iter 含 API 介面契約 (interface) + 前端主入口殼 (AppRouter/Layout)
+- [ ] Foundation iter 不含業務邏輯實作 (Mock Service、計算函式等)
+- [ ] 每個功能性 iter 是完整垂直切片 (後端 SVC/API → 前端 UI/ROUTE)
+- [ ] 每個功能性 iter 至少可拆 2 個 Story (Story-0: 後端, Story-1: 前端串接)
 
 如果有任何項目未通過，告訴使用者哪裡有問題，修正後再交付。
 

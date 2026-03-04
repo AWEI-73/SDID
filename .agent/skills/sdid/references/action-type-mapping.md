@@ -71,6 +71,28 @@ Stub 格式：
 ### Iter 4: report-gen (Stub)
 
 > PDF 報告生成模組，具體動作待 Iter 3 完成後細化
+> Story 拆法: Story-0 後端 (SVC/API), Story-1 前端串接 (UI/ROUTE)
+```
+
+## Iter 分層模型 (VSC-004)
+
+| 層級 | 適用 Iter | 允許的動作類型 | 禁止 |
+|------|----------|--------------|------|
+| Foundation | Iter 1 | CONST, LIB (配置), ROUTE (前端殼) | SVC 實作, Mock Service, 業務計算 |
+| 業務模組 | Iter 2+ | SVC, API, HOOK, UI, ROUTE (完整垂直切片) | 只有後端或只有前端 |
+
+Foundation (Iter 1) 典型動作：
+```
+| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT |
+| 環境配置 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT |
+| API 介面契約 | CONST | IXxxService | P1 | DEFINE→VALIDATE→EXPORT |
+| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES |
+```
+
+業務模組 (Iter 2+) Story 拆法：
+```
+Story-0 (後端先行): SVC/API 實作 → 資料層完成
+Story-1 (前端串接): UI/ROUTE 串接後端 → 使用者可操作完整功能
 ```
 
 ## 規模判斷

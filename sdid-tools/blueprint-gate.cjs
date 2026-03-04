@@ -516,14 +516,14 @@ function checkIterActionBudget(draft) {
   }
 
   for (const [iter, data] of Object.entries(iterActions)) {
-    // Foundation iter exemption: if all actions are CONST/LIB/SCRIPT, skip budget check
+    // Foundation iter exemption: if all actions are CONST/LIB/SCRIPT/ROUTE (VSC-004), skip budget check
     if (parseInt(iter) === 1) {
       let allInfra = true;
       for (const [modName, mod] of Object.entries(draft.moduleActions)) {
         if (mod.iter !== 1 || mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
         for (const item of (mod.items || [])) {
           const type = (item.type || '').toUpperCase();
-          if (!['CONST', 'LIB', 'SCRIPT'].includes(type)) {
+          if (!['CONST', 'LIB', 'SCRIPT', 'ROUTE'].includes(type)) {
             allInfra = false;
             break;
           }
@@ -537,7 +537,7 @@ function checkIterActionBudget(draft) {
       const breakdown = data.modules.map(m => `${m.name}(${m.count})`).join(' + ');
       issues.push({
         level: 'BLOCKER', code: 'BUDGET-001',
-        msg: `iter-${iter} 總動作數 ${data.count} 超過 Level ${level} 的上限 ${limit} [${breakdown}]。建議拆分至多個 iter，每個 iter 最多 ${limit} 個動作`
+        msg: `iter-${iter} 總動作數 ${data.count} 超過 Level ${level} 的上限 ${limit} [${breakdown}]。建議拆成多個 Story（不是多個 iter），每個 iter 最多 ${limit} 個動作`
       });
     } else if (data.count === limit) {
       issues.push({
@@ -1025,7 +1025,7 @@ function getFixGuidance(code) {
     'SIG-002': '公開 API 簽名應包含回傳型別，例如 ): Bookmark[] 或 ): ImportResult',
     'SIG-003': '公開 API 參數應標註型別，例如 (data: string, format: string)',
     'ACC-001': 'P0/P1 動作必須有 AC 欄位。在動作清單的 AC 欄填入編號（如 AC-1.0），並在「## ✅ 驗收條件」區塊定義 Given/When/Then',
-    'BUDGET-001': '將動作拆分到多個 iter。Level S 每 iter 最多 3 個、M 最多 4 個、L 最多 5 個。Complicated+costly 模組每 iter 最多 4 個動作，確保前後端一套',
+    'BUDGET-001': '動作數超過上限。Level S 每 iter 最多 3 個、M 最多 4 個、L 最多 5 個。超出時拆成多個 Story（不是多個 iter），確保每個 iter 是完整垂直切片',
     'BUDGET-002': '動作數接近上限，建議檢查每個動作的複雜度是否可以再拆',
     'VSC-003': '功能模組的交付類型必須是 FULL（前後端一套）。將前後端合併到同一個 iter，確保每個 iter 都能展示完整功能',
   };

@@ -324,8 +324,11 @@ function extractFailedTests(output) {
  * @returns {object|null} 統計數據
  */
 function parseTestStats(output) {
+  // Strip ANSI escape codes 避免色碼夾在數字裡導致 regex 失效
+  const clean = output.replace(/\x1b\[[0-9;]*m/g, '');
+
   // Jest 格式: Tests: 4 passed, 4 total
-  const jestMatch = output.match(/Tests:\s+(\d+)\s+failed,?\s*(\d+)\s+passed,?\s*(\d+)\s+total/i);
+  const jestMatch = clean.match(/Tests:\s+(\d+)\s+failed,?\s*(\d+)\s+passed,?\s*(\d+)\s+total/i);
   if (jestMatch) {
     return {
       failed: parseInt(jestMatch[1]),
@@ -335,7 +338,7 @@ function parseTestStats(output) {
   }
 
   // Jest 全通過格式: Tests: 4 passed, 4 total
-  const jestAllPass = output.match(/Tests:\s+(\d+)\s+passed,\s*(\d+)\s+total/i);
+  const jestAllPass = clean.match(/Tests:\s+(\d+)\s+passed,\s*(\d+)\s+total/i);
   if (jestAllPass) {
     return {
       passed: parseInt(jestAllPass[1]),
@@ -346,20 +349,20 @@ function parseTestStats(output) {
 
   // Vitest 格式: "Tests  12 passed (12)" 或 "Tests  2 failed | 10 passed (12)"
   // 注意: Vitest 用多個空格，且結尾有 (total)
-  const vitestTotalMatch = output.match(/Tests\s+.*?\((\d+)\)/i);
+  const vitestTotalMatch = clean.match(/Tests\s+.*?\((\d+)\)/i);
   if (vitestTotalMatch) {
     const total = parseInt(vitestTotalMatch[1]);
-    const vitestPassedMatch = output.match(/Tests\s+.*?(\d+)\s+passed/i);
-    const vitestFailedMatch = output.match(/Tests\s+.*?(\d+)\s+failed/i);
+    const vitestPassedMatch = clean.match(/Tests\s+.*?(\d+)\s+passed/i);
+    const vitestFailedMatch = clean.match(/Tests\s+.*?(\d+)\s+failed/i);
     const passed = vitestPassedMatch ? parseInt(vitestPassedMatch[1]) : 0;
     const failed = vitestFailedMatch ? parseInt(vitestFailedMatch[1]) : 0;
     return { passed, failed, total };
   }
 
   // Vitest 舊格式 (無括號): "Tests  12 passed"
-  const vitestMatch = output.match(/Tests\s+(\d+)\s+passed/i);
+  const vitestMatch = clean.match(/Tests\s+(\d+)\s+passed/i);
   if (vitestMatch) {
-    const failedMatch = output.match(/(\d+)\s+failed/i);
+    const failedMatch = clean.match(/(\d+)\s+failed/i);
     const passed = parseInt(vitestMatch[1]);
     const failed = failedMatch ? parseInt(failedMatch[1]) : 0;
     return {

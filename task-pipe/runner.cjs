@@ -206,7 +206,10 @@ function parseArgs() {
     phase: args.find(a => a.startsWith('--phase='))?.split('=')[1]?.toUpperCase() || null,
     step: args.find(a => a.startsWith('--step='))?.split('=')[1] || null,
     level: args.find(a => a.startsWith('--level='))?.split('=')[1]?.toUpperCase() || 'M',
-    target: args.find(a => a.startsWith('--target='))?.split('=')[1] || process.cwd(),
+    target: (() => {
+      const raw = args.find(a => a.startsWith('--target='))?.split('=')[1] || process.cwd();
+      return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+    })(),
     iteration: args.find(a => a.startsWith('--iteration='))?.split('=')[1] || null,  // v3: 自動偵測
     story: args.find(a => a.startsWith('--story='))?.split('=')[1] || null,
     config: args.find(a => a.startsWith('--config='))?.split('=')[1] || path.join(__dirname, 'config.json'),

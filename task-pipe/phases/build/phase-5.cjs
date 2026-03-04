@@ -344,7 +344,19 @@ function parseTestStats(output) {
     };
   }
 
-  // Vitest 格式
+  // Vitest 格式: "Tests  12 passed (12)" 或 "Tests  2 failed | 10 passed (12)"
+  // 注意: Vitest 用多個空格，且結尾有 (total)
+  const vitestTotalMatch = output.match(/Tests\s+.*?\((\d+)\)/i);
+  if (vitestTotalMatch) {
+    const total = parseInt(vitestTotalMatch[1]);
+    const vitestPassedMatch = output.match(/Tests\s+.*?(\d+)\s+passed/i);
+    const vitestFailedMatch = output.match(/Tests\s+.*?(\d+)\s+failed/i);
+    const passed = vitestPassedMatch ? parseInt(vitestPassedMatch[1]) : 0;
+    const failed = vitestFailedMatch ? parseInt(vitestFailedMatch[1]) : 0;
+    return { passed, failed, total };
+  }
+
+  // Vitest 舊格式 (無括號): "Tests  12 passed"
   const vitestMatch = output.match(/Tests\s+(\d+)\s+passed/i);
   if (vitestMatch) {
     const failedMatch = output.match(/(\d+)\s+failed/i);
@@ -379,7 +391,7 @@ function parseTestStats(output) {
  */
 function detectTestStubs(testFiles, projectRoot) {
   const issues = [];
-  const WEAK_ONLY = /expect\([^)]+\)\.(toBeDefined|toBeTruthy|not\.toBeUndefined|not\.toBeNull)\(\)/g;
+  const WEAK_ONLY = /expect\([\s\S]*?\)\.(toBeDefined|toBeTruthy|not\.toBeUndefined|not\.toBeNull)\(\)/g;
   const VALID_ASSERT = /expect\([\s\S]*?\)\.(toBe|toEqual|toContain|toHaveLength|toMatchObject|toHaveBeenCalledWith|toThrow|toHaveProperty|toMatch)\(/;
 
   for (const file of testFiles) {
@@ -402,9 +414,10 @@ function detectTestStubs(testFiles, projectRoot) {
       const hasValid = VALID_ASSERT.test(block);
 
       if (hasWeak && !hasValid) {
-        // 嘗試從 import 推斷被測函式
-        const importMatch = content.match(/import\s*\{([^}]+)\}\s*from/);
-        const fnName = importMatch ? importMatch[1].trim().split(',')[0].trim() : null;
+        // 嘗試從 import 推斷被測函式（排除 test framework imports）
+        const imports = [...content.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)];
+        const appImport = imports.find(m => !m[2].match(/^(vitest|jest|@jest|@testing-library)/));
+        const fnName = appImport ? appImport[1].trim().split(',')[0].trim() : null;
 
         issues.push({
           file: path.relative(projectRoot, absFile),
@@ -767,7 +780,7 @@ function findTestFiles(dir, files = []) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== 'node_modules') {
+    if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.gems' && entry.name !== 'backups') {
       findTestFiles(fullPath, files);
     } else if (entry.isFile() && /\.test\.(ts|tsx|js|jsx)$/.test(entry.name)) {
       files.push(fullPath);

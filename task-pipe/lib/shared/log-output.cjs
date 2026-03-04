@@ -1272,7 +1272,7 @@ function emitFill(spec, options = {}) {
  */
 function emitBlock(spec, options = {}) {
     const { scope, summary, nextCmd, targetFile, missing = [],
-            details, gateSpec } = spec;
+            details, gateSpec, tasks, forbidden, context, attempt, maxAttempts } = spec;
     const { projectRoot, iteration, phase, step, story } = options;
 
     // === 終端輸出 ===
@@ -1280,6 +1280,28 @@ function emitBlock(spec, options = {}) {
     console.log(`@BLOCK | ${scope} | ${summary}`);
     if (targetFile) {
         console.log(`TARGET: ${targetFile}`);
+    }
+    if (attempt) {
+        console.log(`@STRATEGY_DRIFT Level: ${attempt}/${maxAttempts || 'N/A'}`);
+    }
+
+    // @TASK 輸出
+    if (tasks && tasks.length > 0) {
+        console.log('');
+        tasks.forEach((t, i) => {
+            console.log(`@TASK ${i + 1}:`);
+            if (t.action) console.log(`  ACTION: ${t.action}`);
+            if (t.file) console.log(`  FILE: ${t.file}`);
+            if (t.expected) console.log(`  EXPECTED: ${t.expected}`);
+            if (t.reference) console.log(`  REFERENCE: ${t.reference}`);
+        });
+    }
+
+    // @FORBIDDEN 輸出
+    if (forbidden && forbidden.length > 0) {
+        console.log('');
+        console.log('@FORBIDDEN:');
+        forbidden.forEach(f => console.log(`  - ${f}`));
     }
 
     // @HINT
@@ -1317,6 +1339,22 @@ function emitBlock(spec, options = {}) {
                 logLines.push('');
                 logLines.push(`=== DETAILS ===`);
                 logLines.push(details);
+            }
+            if (tasks && tasks.length > 0) {
+                logLines.push('');
+                logLines.push(`=== TASKS ===`);
+                tasks.forEach((t, i) => {
+                    logLines.push(`@TASK ${i + 1}:`);
+                    if (t.action) logLines.push(`  ACTION: ${t.action}`);
+                    if (t.file) logLines.push(`  FILE: ${t.file}`);
+                    if (t.expected) logLines.push(`  EXPECTED: ${t.expected}`);
+                    if (t.reference) logLines.push(`  REFERENCE: ${t.reference}`);
+                });
+            }
+            if (forbidden && forbidden.length > 0) {
+                logLines.push('');
+                logLines.push(`=== FORBIDDEN ===`);
+                forbidden.forEach(f => logLines.push(`- ${f}`));
             }
             logLines.push('');
             logLines.push(`=== NEXT ===`);

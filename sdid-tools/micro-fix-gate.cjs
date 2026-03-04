@@ -25,17 +25,34 @@ const path = require('path');
 // 參數解析
 // ============================================
 function parseArgs() {
-  const args = { changed: [], target: null, help: false };
+  const args = { changed: [], target: null, iter: null, help: false };
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--changed=')) {
       args.changed = arg.split('=').slice(1).join('=').split(',').map(f => f.trim()).filter(Boolean);
     } else if (arg.startsWith('--target=')) {
       args.target = path.resolve(arg.split('=').slice(1).join('='));
+    } else if (arg.startsWith('--iter=')) {
+      args.iter = arg.split('=')[1];
     } else if (arg === '--help' || arg === '-h') {
       args.help = true;
     }
   }
   return args;
+}
+
+// ============================================
+// Log 寫入（寫到 .gems/iterations/iter-X/logs/）
+// ============================================
+function writeGateLog(projectRoot, iterNum, status, summary) {
+  if (!projectRoot || !iterNum) return;
+  const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+  if (!fs.existsSync(logsDir)) {
+    try { fs.mkdirSync(logsDir, { recursive: true }); } catch { return; }
+  }
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const filename = `gate-microfix-${status}-${ts}.log`;
+  const content = `[micro-fix-gate] ${status.toUpperCase()}\n${summary}\nTimestamp: ${new Date().toISOString()}\n`;
+  try { fs.writeFileSync(path.join(logsDir, filename), content, 'utf8'); } catch { /* silent */ }
 }
 
 // ============================================
@@ -259,6 +276,7 @@ Micro-Fix Gate v1.0 — 輕量驗證器
     console.log(`@PASS | micro-fix-gate | ${filesToCheck.length} 個檔案全部通過`);
     console.log(`  ✓ GEMS 標籤: OK`);
     console.log(`  ✓ Import 整合: OK`);
+    writeGateLog(projectRoot, args.iter, 'pass', `${filesToCheck.length} 個檔案全部通過`);
     process.exit(0);
   }
 
@@ -299,8 +317,15 @@ Micro-Fix Gate v1.0 — 輕量驗證器
   console.log('重跑指令:');
   const changedArg = args.changed.length > 0 ? ` --changed=${args.changed.join(',')}` : '';
   const targetArg = args.target ? ` --target=${path.relative(process.cwd(), args.target) || '.'}` : '';
-  console.log(`  node sdid-tools/micro-fix-gate.cjs${changedArg}${targetArg}`);
+  const iterArg = args.iter ? ` --iter=${args.iter}` : '';
+  console.log(`  node sdid-tools/micro-fix-gate.cjs${changedArg}${targetArg}${iterArg}`);
   console.log('═══════════════════════════════════════════════════════════');
+
+  const blockerSummary = [
+    tagIssues.length > 0 ? `標籤缺失 ${tagIssues.length} 檔` : '',
+    importIssues.length > 0 ? `Import 斷鏈 ${importIssues.length} 檔` : '',
+  ].filter(Boolean).join(', ');
+  writeGateLog(projectRoot, args.iter, 'error', blockerSummary);
 
   process.exit(1);
 }

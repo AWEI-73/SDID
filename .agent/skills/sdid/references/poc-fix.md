@@ -98,17 +98,23 @@ changed: src/lib/moduleA.ts, src/lib/moduleB.ts
 
 ### Phase 4: BUILD + TEST（落地 + 必寫測試）
 
-1. 按 Phase 3 的整合清單，直接把邏輯搬進正式程式碼（不重新設計）
-2. **必寫測試** — 根據模組性質選擇：
+1. 先跑骨架遷移工具，從 consolidation-log 產出帶 GEMS 標籤的骨架檔：
+   ```bash
+   node sdid-tools/poc-to-scaffold.cjs --log=<poc-consolidation-log.md> --target=<project>
+   ```
+   - 已存在的檔案會自動跳過（不覆蓋）
+   - 骨架格式對齊 plan-to-scaffold（GEMS 標籤 + export 簽名 + throw Not implemented）
+2. 按 Phase 3 的整合清單，把 POC 邏輯填入骨架檔（不重新設計）
+3. **必寫測試** — 根據模組性質選擇：
    - 純函式 / 資料處理 → 單元測試
    - API 串接 / 第三方 → 整合測試（mock external）
    - 完整流程 → E2E 測試
-3. 從 `poc-consolidation-log.md` 的 `changed:` 行讀取目標檔案，執行 gate 驗證：
+4. 執行 gate 驗證：
    ```bash
-   node sdid-tools/micro-fix-gate.cjs --changed=<從 consolidation-log 的 changed 行> --target=<project>
+   node sdid-tools/micro-fix-gate.cjs --changed=<從 consolidation-log 的 changed 行> --target=<project> --iter=<N>
    ```
-4. `@PASS` → 完成
-5. `@BLOCKER` → 修復後重跑 gate
+5. `@PASS` → 完成（log 自動寫入 `logs/gate-microfix-pass-*.log`）
+6. `@BLOCKER` → 修復後重跑 gate
 
 ---
 

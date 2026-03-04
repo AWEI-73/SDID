@@ -472,7 +472,21 @@ modules/[module-name]/
         if (existingScaffolds.length > 0 && existingScaffolds.length === scaffoldFiles.length) {
           // 所有骨架檔案都已存在（由 draft-to-plan 預生成）
           console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在（draft-to-plan 預生成）`);
-          console.log(`   骨架包含完整 GEMS 標籤 + AC + STEP 錨點，可直接進 Phase 2`);
+
+          // 組出需要 AI 實作的 @TASK 清單
+          const relPlanFile = path.relative(target, planFile);
+          const scaffoldTasks = manifest.functions
+            .filter(fn => fn.file)
+            .map((fn, idx) => {
+              const isModify = (fn.evolution || '').toUpperCase() === 'EVOLVE' ||
+                               (fn.techName || fn.name || '').includes('[Modify]');
+              const action = isModify ? 'MODIFY' : 'IMPLEMENT';
+              return {
+                action,
+                file: fn.file,
+                expected: `依 ${relPlanFile} Item ${idx + 1} 實作（禁止留 throw new Error）`
+              };
+            });
 
           writeCheckpoint(target, iteration, story, '1', {
             verdict: 'PASS',
@@ -489,7 +503,8 @@ modules/[module-name]/
           emitPass({
             scope: 'BUILD Phase 1',
             summary: `骨架模式: ${existingScaffolds.length} 個骨架檔案已存在 | ${projectType}`,
-            nextCmd: getNextCmd('BUILD', '1', { story, level, target: relativeTarget, iteration })
+            nextCmd: getNextCmd('BUILD', '1', { story, level, target: relativeTarget, iteration }),
+            tasks: scaffoldTasks
           }, {
             projectRoot: target,
             iteration: parseInt(iteration.replace('iter-', '')),

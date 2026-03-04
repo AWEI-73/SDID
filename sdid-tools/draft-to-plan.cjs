@@ -90,6 +90,26 @@ function inferTestFile(techName, type) {
   }
 }
 
+/**
+ * 從 spec 的 type 欄位推導 VSC 類型（phase-1 可識別的類型）
+ * 優先用 spec 原始 type，再 fallback 路徑推導
+ */
+function inferVscType(specType, techName, isModify) {
+  if (isModify) return 'MODIFY';
+  const VALID_VSC = new Set(['ROUTE', 'SVC', 'API', 'HOOK', 'UI', 'DATA', 'CONST', 'LIB']);
+  if (specType && VALID_VSC.has(specType.toUpperCase())) return specType.toUpperCase();
+  // fallback: 從 techName 推導
+  const name = (techName || '').toLowerCase();
+  if (name.includes('route') || name.includes('page') || name.includes('router')) return 'ROUTE';
+  if (name.includes('service') || name.includes('svc')) return 'SVC';
+  if (name.includes('hook') || name.startsWith('use')) return 'HOOK';
+  if (name.includes('table') || name.includes('view') || name.includes('panel') || name.includes('modal')) return 'UI';
+  if (name.includes('api') || name.includes('client')) return 'API';
+  if (name.includes('store') || name.includes('repo') || name.includes('data')) return 'DATA';
+  if (name.includes('config') || name.includes('const') || name.includes('type')) return 'CONST';
+  return 'FEATURE';
+}
+
 /** 根據 type 推導檔案路徑（委派給 Architecture Contract） */
 function inferFilePath(techName, type, moduleName) {
   const kebab = techName
@@ -120,11 +140,11 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
   const moduleInfo = draft.modules[moduleName] || {};
   const isStory0 = storyIndex === 0;
 
-  // 工作項目表 (v2.1: 支援 Modify 類型)
+  // 工作項目表 (v2.1: 支援 Modify 類型，v2.2: 從 spec type 推導 VSC 類型)
   const workItems = actions.map((a, i) => {
     const isModify = (a.techName || '').includes('[Modify]');
-    const actionType = isModify ? 'MODIFY' : 'FEATURE';
     const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
+    const actionType = inferVscType(a.type, cleanName, isModify);
     return `| ${i + 1} | ${cleanName} | ${actionType} | ${a.priority} | ✅ 明確 | - |`;
   }).join('\n');
 
@@ -132,7 +152,7 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
   const itemSpecs = actions.map((a, i) => {
     const isModify = (a.techName || '').includes('[Modify]');
     const cleanName = (a.techName || '').replace(/\s*\[Modify\]/i, '').trim();
-    const actionType = isModify ? 'MODIFY' : 'FEATURE';
+    const actionType = inferVscType(a.type, cleanName, isModify);
     const fileAction = isModify ? 'Modify' : 'New';
     const evolution = a.evolution || a['演化'] || 'BASE';
 

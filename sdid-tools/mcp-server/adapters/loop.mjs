@@ -123,8 +123,8 @@ export async function handler({ project, iter, story, forceStart }) {
 
   if (state.phase === 'COMPLETE') {
     lines.push('');
-    lines.push('@PASS: iter-' + iterNum + ' Blueprint Flow 全部完成！');
-    lines.push('<promise>BLUEPRINT-COMPLETE</promise>');
+    lines.push('@PASS: iter-' + iterNum + ' 全部完成！');
+    lines.push(`<promise>${route === 'Blueprint' ? 'BLUEPRINT' : route.toUpperCase()}-COMPLETE</promise>`);
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
 

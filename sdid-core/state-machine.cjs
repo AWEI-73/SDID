@@ -138,6 +138,15 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
   const logs = fs.readdirSync(logsDir).sort();
   const has = (prefix) => logs.some(f => f.startsWith(prefix));
 
+  // POC-FIX / MICRO-FIX 完成判斷
+  if (has('gate-microfix-pass-')) {
+    // 如果之後沒有更高優先的 log（如 build-phase），視為完成
+    const hasSubsequentBuild = logs.some(f => f.startsWith('build-phase-'));
+    if (!hasSubsequentBuild) {
+      return { phase: 'COMPLETE', step: null, story: null };
+    }
+  }
+
   if (has('gate-verify-pass-')) {
     const nextDraft = findDraft(projectRoot, iterNum + 1);
     return nextDraft

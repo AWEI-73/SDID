@@ -7,17 +7,15 @@
 
 ## 執行方式
 
-根據進入路線，使用對應的 loop script：
+使用 MCP `sdid-loop` tool（唯一入口，自動偵測路線）：
 
-```bash
-# Blueprint 路線（有 Enhanced Draft）
-node .agent/skills/sdid/scripts/blueprint-loop.cjs --project=[path]
-
-# Task-Pipe 路線（沒有 Enhanced Draft）
-node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
+```
+呼叫 MCP sdid-loop tool，project=[path]
 ```
 
-兩個 loop 都會自動偵測 BUILD 進度，你不需要手動指定 phase。
+`sdid-loop` 會自動偵測 Blueprint / Task-Pipe / POC-FIX 路線和 BUILD 進度，你不需要手動指定 phase。
+
+> ⚠️ 舊的 `blueprint-loop.cjs` / `taskpipe-loop.cjs` 已 deprecated，不要使用。
 
 ## BUILD Phase 1-8
 
@@ -34,11 +32,11 @@ node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
 
 ## 執行循環
 
-1. 執行 loop script
+1. 呼叫 MCP `sdid-loop` tool
 2. 讀取 output：
 
 ### 收到 @PASS
-- 執行 output 裡的 @NEXT_COMMAND （**唯一例外**：若是 Blueprint 路線且完成 Phase 8，強制忽略此命令，改為重新執行 `blueprint-loop.cjs`）
+- 直接再次呼叫 MCP `sdid-loop`（會自動進入下一階段）
 - 不要自行組裝命令
 - 不要讀額外檔案「確認一下」
 
@@ -50,7 +48,7 @@ node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
 ### 收到 @TACTICAL_FIX
 - 讀 output 指定的 error log
 - 找 @TASK 區塊
-- 修復後重新執行 loop
+- 修復後再次呼叫 MCP `sdid-loop`
 
 ### 收到 @BLOCKER
 - 讀 error log
@@ -69,12 +67,12 @@ node .agent/skills/sdid/scripts/taskpipe-loop.cjs --project=[path]
 
 ### Blueprint 路線
 BUILD Phase 8 完成後，**忽略 output 的「下一步: SCAN」**。
-重新執行 `blueprint-loop.cjs`，它會自動偵測下一步（SHRINK 或下一個 Story）。
+再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD 或 SHRINK）。
 
 **活藍圖狀態由 blueprint-shrink 自動維護，不需要手動更新：**
 
 ```
-blueprint-loop.cjs 在 Phase 8 後自動執行 blueprint-shrink：
+sdid-loop 在所有 Story 完成後自動進入 SHRINK：
   → 主藍圖 iter-N: [CURRENT] → [DONE]
   → 主藍圖 iter-N+1: [STUB] → [CURRENT]（升格，帶 Fillback suggestions）
 ```
@@ -83,7 +81,7 @@ shrink 完成後，告知使用者：
 「Iter-N 已完成並折疊。下一個 iter-(N+1) [{模組名}] 已升格為 [CURRENT]，可執行 BLUEPRINT-CONTINUE 展開。」
 
 ### Task-Pipe 路線
-BUILD Phase 8 完成後，重新執行 `taskpipe-loop.cjs`，它會自動進入 SCAN。
+BUILD Phase 8 完成後，再次呼叫 MCP `sdid-loop`，它會自動進入 SCAN。
 
 ## 禁止事項
 

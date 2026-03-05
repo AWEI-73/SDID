@@ -50,7 +50,7 @@ function parseArgs() {
 /**
  * 1. 格式完整性 — 必要區塊是否存在
  */
-function checkFormatCompleteness(draft) {
+function checkFormatCompleteness(draft, rawContent = '') {
   const issues = [];
 
   if (!draft.goal || draft.goal.length < 10) {
@@ -80,14 +80,79 @@ function checkFormatCompleteness(draft) {
     issues.push({ level: 'BLOCKER', code: 'FMT-007', msg: '缺少「模組動作清單」' });
   }
 
+  // FMT-008: 樣式策略
+  const hasStyleStrategy = /\*\*樣式策略\*\*\s*:\s*\S/.test(rawContent);
+  if (!hasStyleStrategy) {
+    issues.push({ level: 'BLOCKER', code: 'FMT-008', msg: '缺少「樣式策略」定義 (在共用模組區塊加上 **樣式策略**: CSS Modules / Tailwind / Global CSS / CSS-in-JS)' });
+  }
+
+  // FMT-009: 動作類型必須是合法值
+  const VALID_TYPES = new Set(['CONST', 'LIB', 'API', 'SVC', 'HOOK', 'UI', 'ROUTE', 'SCRIPT']);
+  const invalidTypeItems = [];
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    for (const item of (mod.items || [])) {
+      const t = (item.type || '').toUpperCase();
+      if (t && !VALID_TYPES.has(t)) {
+        invalidTypeItems.push(`[${modName}/${item.techName}] 類型 "${item.type}" 無效`);
+      }
+    }
+  }
+  if (invalidTypeItems.length > 0) {
+    issues.push({ level: 'BLOCKER', code: 'FMT-009', msg: `動作類型必須是 CONST/LIB/API/SVC/HOOK/UI/ROUTE/SCRIPT，以下項目無效:\n  ${invalidTypeItems.slice(0, 5).join('\n  ')}` });
+  }
+
+  // FMT-012: 路由結構 — 有 ROUTE 類型動作時必須定義路由結構
+  const hasRouteActions = Object.values(draft.moduleActions).some(mod =>
+    (mod.items || []).some(item => (item.type || '').toUpperCase() === 'ROUTE')
+  );
+  const hasRouteStructure = !!(draft.routes && draft.routes.trim().length > 0);
+  if (!hasRouteStructure) {
+    if (hasRouteActions) {
+      issues.push({ level: 'BLOCKER', code: 'FMT-012', msg: '有 ROUTE 類型動作但缺少「### 5. 路由結構」定義。請加入 src/ 目錄樹，說明各模組的檔案路徑' });
+    } else {
+      issues.push({ level: 'WARN', code: 'FMT-012', msg: '缺少「### 5. 路由結構」定義，建議加入 src/ 目錄樹讓 AI 知道檔案放哪' });
+    }
+  }
+
+  // FMT-010: 實體欄位數量 — 每個實體至少 3 個欄位
+  const thinEntities = [];
+  for (const [name, fields] of Object.entries(draft.entities)) {
+    const fieldCount = Array.isArray(fields) ? fields.length : 0;
+    if (fieldCount < 3) {
+      thinEntities.push(`${name} (${fieldCount} 個欄位，至少需要 3 個)`);
+    }
+  }
+  if (thinEntities.length > 0) {
+    issues.push({ level: 'BLOCKER', code: 'FMT-010', msg: `實體定義欄位不足，請補齊欄位（型別/約束/說明）:\n  ${thinEntities.join('\n  ')}` });
+  }
+
+  // FMT-011: 模組公開 API 必須有型別簽名 (含括號)
+  const noSigModules = [];
+  for (const [name, mod] of Object.entries(draft.modules)) {
+    const apis = mod.publicAPI || [];
+    if (apis.length === 0) continue;
+    const hasTypedSig = apis.some(a => /\(.*\)/.test(a) && a.length > 5);
+    if (!hasTypedSig) {
+      noSigModules.push(`${name}: ${apis.slice(0, 2).join(', ')}`);
+    }
+  }
+  if (noSigModules.length > 0) {
+    issues.push({ level: 'BLOCKER', code: 'FMT-011', msg: `模組公開 API 缺少型別簽名，應寫成 functionName(param: Type): ReturnType:\n  ${noSigModules.join('\n  ')}` });
+  }
+
   return issues;
 }
 
 /**
  * 2. 佔位符偵測 — 檢查是否有未替換的 {placeholder}
  */
-function checkPlaceholders(rawContent) {
+function checkPlaceholders(rawContent, draftPath = '') {
   const issues = [];
+
+  // Template 檔案豁免佔位符檢查
+  if (draftPath && /\.template\./i.test(path.basename(draftPath))) {
+    return issues;
+  }
   const placeholderPattern = /\{[a-zA-Z_\u4e00-\u9fff]+\}/g;
   const lines = rawContent.split('\n');
 
@@ -287,7 +352,8 @@ function checkInfraSize(draft) {
 }
 
 /**
- * 8. Stub 最低資訊檢查 — iter-2+ 的 Stub 必須有描述 + 依賴 + 預估
+ * 8. Stub 最低資訊檢查 — iter-2+ 的 Stub 必須有描述 + 依賴 + 函式 flow 清單
+ * v2.3: 新增 STUB-003 — Stub 必須有函式 flow 清單（expand 工具只做搬運，不做推導）
  */
 function checkStubMinimum(draft, targetIter) {
   const issues = [];
@@ -309,6 +375,17 @@ function checkStubMinimum(draft, targetIter) {
       if (modName !== 'shared') {
         issues.push({ level: 'WARN', code: 'STUB-002', msg: `${prefix} 迭代規劃表中缺少依賴資訊` });
       }
+    }
+
+    // STUB-003: Stub 必須有函式 flow 清單（至少一個 item 有 flow 欄位）
+    // expand v2.0 只做格式搬運，沒有 flow 清單就無法展開
+    const items = mod.items || [];
+    const hasFlowItems = items.some(item => item.flow && item.flow.trim() !== '');
+    if (!hasFlowItems) {
+      issues.push({
+        level: 'BLOCKER', code: 'STUB-003',
+        msg: `${prefix} 缺少函式 flow 清單。Stub iter 必須在藍圖設計階段就填入函式 flow 清單（每個公開 API 函式有 flow + AC 骨架），expand 工具只做格式搬運，不做內容推導`
+      });
     }
   }
 
@@ -762,99 +839,262 @@ function checkACIntegrity(draft, targetIter) {
 }
 
 /**
- * 18. 垂直切片完整性 (VSC) v1.0
- * 
- * 每個非 Foundation 的模組 (Story X.1+) 必須同時包含完整的垂直層次。
- * 不能只有技術零件卻沒有路由 — 否則 MVP 跑完使用者看不到東西。
- * 
- * Foundation (X.0) 規則：建議有 ROUTE (App 骨架路由殼)
- * Feature (X.1+) 規則：
- *   - 必須有 ROUTE (使用者如何進入)
- *   - 必須有 SVC 或 API (業務邏輯)
- *   - 如果有 HOOK/UI，必須有 UI (前端展示)
+ * 18. 垂直切片完整性 (VSC) v2.0
+ *
+ * 改為 per-iter 聚合檢查，不再 per-story 強制。
+ * 單一 story 可以純後端或純前端（合法拆法）。
+ * 整個 iter 的所有 story 合起來才做前後端覆蓋判斷。
+ *
+ * BLOCKER: Foundation 缺 ROUTE 殼 (VSC-001) — 維持，因為 npm run dev 會白屏
+ * WARN:    iter 聚合只有後端或只有前端 (VSC-002/003) — 引導但不擋
+ * WARN:    STUB iter 前後端分離 (VSC-004/005) — 設計草稿不強制
  */
 function checkVerticalSliceCompleteness(draft, targetIter) {
   const issues = [];
+
+  const BACKEND_TYPES = new Set(['SVC', 'API', 'DATA', 'REPO', 'DB']);
+  const FRONTEND_TYPES = new Set(['UI', 'HOOK', 'ROUTE', 'PAGE', 'COMPONENT']);
+  const NEUTRAL_TYPES = new Set(['CONST', 'LIB', 'SCRIPT']);
 
   const isFoundationModule = (name) => {
     const lower = name.toLowerCase();
     return lower === 'shared' || lower.includes('foundation') || lower.includes('infra') || lower.includes('config');
   };
 
-  const BACKEND_TYPES = new Set(['SVC', 'API', 'DATA', 'REPO', 'DB']);
-  const FRONTEND_TYPES = new Set(['UI', 'HOOK', 'ROUTE', 'PAGE', 'COMPONENT']);
-
+  // ── Foundation：只檢查 ROUTE 殼（BLOCKER 維持）──
   for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.fillLevel === 'done') continue;
-    const isStub = mod.fillLevel === 'stub';
-    const isCurrent = mod.iter === targetIter;
+    if (mod.iter !== targetIter) continue;
+    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+    if (!isFoundationModule(modName)) continue;
 
     const items = mod.items || [];
     const types = new Set(items.map(i => (i.type || '').toUpperCase()));
-    const prefix = `[${modName}]`;
-
-    if (isFoundationModule(modName)) {
-      // Foundation 模組：只檢查 CURRENT，STUB 的 Foundation 不強制
-      if (isCurrent && !isStub && !types.has('ROUTE') && !types.has('APP') && items.length > 0) {
-        issues.push({
-          level: 'BLOCKER', code: 'VSC-001',
-          msg: `${prefix} Foundation 模組必須包含 ROUTE 類型的前端主入口殼 (AppRouter/Layout)，確保 npm run dev 可看到首頁框架。請在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | ... |`
-        });
-      }
-      continue;
+    if (!types.has('ROUTE') && !types.has('APP') && items.length > 0) {
+      issues.push({
+        level: 'BLOCKER', code: 'VSC-001',
+        msg: `[${modName}] Foundation 模組必須包含 ROUTE 類型的前端主入口殼 (AppRouter/Layout)，確保 npm run dev 可看到首頁框架。請在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | ... |`
+      });
     }
+  }
 
-    // ── CURRENT iter：完整 VSC 檢查（BLOCKER）──
-    if (isCurrent && !isStub) {
-      const missingLayers = [];
-      if (!types.has('ROUTE')) missingLayers.push('ROUTE (使用者進入點)');
-      if (!types.has('SVC') && !types.has('API')) missingLayers.push('SVC 或 API (業務邏輯層)');
-      const hasFrontend = types.has('HOOK') || types.has('UI') || types.has('ROUTE');
-      if (hasFrontend && !types.has('UI')) missingLayers.push('UI (前端展示層)');
+  // ── per-iter 聚合：收集每個 iter 的 type 組成 ──
+  const iterTypes = {}; // { iterNum: { backend: bool, frontend: bool, modules: [] } }
 
-      if (missingLayers.length > 0) {
-        issues.push({
-          level: 'BLOCKER', code: 'VSC-002',
-          msg: `${prefix} 功能模組缺少垂直切片層次: ${missingLayers.join(' | ')} — 每個 Story 必須可被使用者實際使用`
-        });
-      }
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.fillLevel === 'done') continue;
+    if (isFoundationModule(modName)) continue;
 
-      const planEntry = draft.iterationPlan.find(e => e.module === modName && e.iter === mod.iter);
-      if (planEntry) {
-        const delivery = (planEntry.delivery || 'FULL').toUpperCase();
-        if (delivery === 'BACKEND' || delivery === 'FRONTEND') {
-          issues.push({
-            level: 'BLOCKER', code: 'VSC-003',
-            msg: `${prefix} 功能模組交付類型為 "${delivery}"，必須為 "FULL"（前後端一套）。不可將前後端拆到不同 iter`
-          });
-        }
-      }
+    const iterNum = mod.iter;
+    if (!iterTypes[iterNum]) iterTypes[iterNum] = { backend: false, frontend: false, modules: [], isStub: false };
+
+    const items = mod.items || [];
+    const isStub = mod.fillLevel === 'stub';
+    if (isStub) iterTypes[iterNum].isStub = true;
+    iterTypes[iterNum].modules.push(modName);
+
+    for (const item of items) {
+      const t = (item.type || '').toUpperCase();
+      if (BACKEND_TYPES.has(t)) iterTypes[iterNum].backend = true;
+      if (FRONTEND_TYPES.has(t)) iterTypes[iterNum].frontend = true;
     }
+  }
 
-    // ── STUB iter：檢查前後端分離反模式（BLOCKER）──
-    // 即使是 STUB，藍圖設計階段就不能把前後端拆成不同 iter
-    if (isStub && items.length > 0) {
-      const hasBackend = [...types].some(t => BACKEND_TYPES.has(t));
-      const hasFrontend = [...types].some(t => FRONTEND_TYPES.has(t));
+  // ── CURRENT iter：per-iter 聚合 WARN ──
+  const currentIterData = iterTypes[targetIter];
+  if (currentIterData && !currentIterData.isStub) {
+    const { backend, frontend, modules } = currentIterData;
+    const modList = modules.join(', ');
 
-      // 只有後端類型，沒有任何前端類型
-      if (hasBackend && !hasFrontend) {
-        issues.push({
-          level: 'BLOCKER', code: 'VSC-004',
-          msg: `[Stub: ${modName}] iter-${mod.iter} 只有後端類型 (${[...types].filter(t => BACKEND_TYPES.has(t)).join('/')})，缺少前端層 (UI/ROUTE)。業務功能 iter 必須前後端一套，請將前端合併到同一 iter，或拆成 Story-X.0 後端 + Story-X.1 前端`
-        });
-      }
-      // 只有前端類型，沒有任何後端類型
-      if (hasFrontend && !hasBackend) {
-        issues.push({
-          level: 'BLOCKER', code: 'VSC-005',
-          msg: `[Stub: ${modName}] iter-${mod.iter} 只有前端類型 (${[...types].filter(t => FRONTEND_TYPES.has(t)).join('/')})，缺少後端層 (SVC/API)。業務功能 iter 必須前後端一套，請將後端合併到同一 iter，或拆成 Story-X.0 後端 + Story-X.1 前端`
-        });
-      }
+    if (backend && !frontend) {
+      issues.push({
+        level: 'WARN', code: 'VSC-002',
+        msg: `iter-${targetIter} [${modList}] 只有後端 story，沒有前端層 (UI/ROUTE)。如果是刻意的純 API iter 可忽略，否則建議加入前端 story 讓使用者可操作`
+      });
+    }
+    if (frontend && !backend) {
+      issues.push({
+        level: 'WARN', code: 'VSC-003',
+        msg: `iter-${targetIter} [${modList}] 只有前端 story，沒有後端層 (SVC/API)。建議確認後端邏輯是否已在前一個 iter 完成`
+      });
+    }
+  }
+
+  // ── STUB iter：per-iter 聚合 WARN（設計草稿，不強制）──
+  for (const [iterNum, data] of Object.entries(iterTypes)) {
+    if (parseInt(iterNum) === targetIter) continue;
+    if (!data.isStub) continue;
+    const { backend, frontend, modules } = data;
+    const modList = modules.join(', ');
+
+    if (backend && !frontend) {
+      issues.push({
+        level: 'WARN', code: 'VSC-004',
+        msg: `[Stub] iter-${iterNum} [${modList}] 目前只規劃了後端 story。建議在同一個 iter 加入前端 story，或確認前端會在後續 iter 補上`
+      });
+    }
+    if (frontend && !backend) {
+      issues.push({
+        level: 'WARN', code: 'VSC-005',
+        msg: `[Stub] iter-${iterNum} [${modList}] 目前只規劃了前端 story，缺少後端層。建議補上 SVC/API story`
+      });
     }
   }
 
   return issues;
+}
+
+/**
+ * 21. Blueprint Score — 藍圖健康評分 (不擋，純輸出)
+ *
+ * 5 個維度，100 分：
+ *   垂直切片覆蓋  25 分 — 有前後端的 iter 數 / 非 Foundation iter 總數
+ *   Story 密度    20 分 — 非 Foundation iter 平均 story 數（目標 ≥2）
+ *   Flow 品質     20 分 — 有業務語意 flow 的動作 / 總動作數
+ *   AC 覆蓋率     20 分 — 有 AC 的 P0/P1 動作 / P0/P1 總數
+ *   基礎建設完整度 15 分 — Foundation iter 必要元素覆蓋
+ *
+ * 分級: 90+ EXCELLENT / 75-89 GOOD / 60-74 FAIR / 0-59 WEAK
+ */
+function calcBlueprintScore(draft, rawContent = '') {
+  const BACKEND_TYPES = new Set(['SVC', 'API', 'DATA', 'REPO', 'DB']);
+  const FRONTEND_TYPES = new Set(['UI', 'HOOK', 'ROUTE', 'PAGE', 'COMPONENT']);
+  const GENERIC_STEPS = new Set(['INIT', 'PROCESS', 'RETURN', 'START', 'END', 'EXECUTE', 'INPUT', 'OUTPUT', 'HANDLE', 'RUN', 'DO', 'FINISH']);
+
+  const isFoundationModule = (name) => {
+    const lower = name.toLowerCase();
+    return lower === 'shared' || lower.includes('foundation') || lower.includes('infra') || lower.includes('config');
+  };
+
+  // ── 1. 垂直切片覆蓋 (25 分) ──
+  // 收集非 Foundation iter 的前後端覆蓋情況
+  const iterCoverage = {}; // { iterNum: { backend, frontend } }
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.fillLevel === 'done') continue;
+    if (isFoundationModule(modName)) continue;
+    const iterNum = mod.iter;
+    if (!iterCoverage[iterNum]) iterCoverage[iterNum] = { backend: false, frontend: false };
+    for (const item of (mod.items || [])) {
+      const t = (item.type || '').toUpperCase();
+      if (BACKEND_TYPES.has(t)) iterCoverage[iterNum].backend = true;
+      if (FRONTEND_TYPES.has(t)) iterCoverage[iterNum].frontend = true;
+    }
+  }
+  const nonFoundationIters = Object.keys(iterCoverage).length;
+  const fullSliceIters = Object.values(iterCoverage).filter(c => c.backend && c.frontend).length;
+  const backendOnlyIters = Object.values(iterCoverage).filter(c => c.backend && !c.frontend).length;
+  const vscScore = nonFoundationIters === 0 ? 25 : Math.round((fullSliceIters / nonFoundationIters) * 25);
+
+  // ── 2. Story 密度 (20 分) ──
+  // 每個非 Foundation iter 的 story 數，目標 ≥2
+  const iterStoryCounts = {};
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.fillLevel === 'done') continue;
+    if (isFoundationModule(modName)) continue;
+    const iterNum = mod.iter;
+    if (!iterStoryCounts[iterNum]) iterStoryCounts[iterNum] = 0;
+    iterStoryCounts[iterNum]++;
+  }
+  const storyCounts = Object.values(iterStoryCounts);
+  let densityScore = 20;
+  if (storyCounts.length > 0) {
+    const avg = storyCounts.reduce((a, b) => a + b, 0) / storyCounts.length;
+    const singleStoryIters = storyCounts.filter(c => c < 2).length;
+    // 每個只有 1 個 story 的 iter 扣 5 分，最多扣完
+    densityScore = Math.max(0, 20 - singleStoryIters * 5);
+  }
+
+  // ── 3. Flow 品質 (20 分) ──
+  let totalActions = 0;
+  let goodFlowActions = 0;
+  for (const [, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.fillLevel === 'done') continue;
+    for (const item of (mod.items || [])) {
+      totalActions++;
+      if (!item.flow) continue;
+      const steps = item.flow.split('→').map(s => s.trim().toUpperCase());
+      const genericCount = steps.filter(s => GENERIC_STEPS.has(s)).length;
+      // flow 有 3+ 步且不全是泛用詞 = 好的 flow
+      if (steps.length >= 3 && genericCount < steps.length) goodFlowActions++;
+    }
+  }
+  const flowScore = totalActions === 0 ? 20 : Math.round((goodFlowActions / totalActions) * 20);
+
+  // ── 4. AC 覆蓋率 (20 分) ──
+  let p01Total = 0;
+  let p01WithAC = 0;
+  for (const [, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.fillLevel === 'done') continue;
+    for (const item of (mod.items || [])) {
+      const p = (item.priority || '').toUpperCase();
+      if (p !== 'P0' && p !== 'P1') continue;
+      p01Total++;
+      const ac = (item.ac || item['AC'] || '').trim();
+      if (ac && ac !== '-' && ac !== '無') p01WithAC++;
+    }
+  }
+  const acScore = p01Total === 0 ? 20 : Math.round((p01WithAC / p01Total) * 20);
+
+  // ── 5. 基礎建設完整度 (15 分) ──
+  // 檢查 Foundation iter 是否有 4 個必要元素
+  let infraScore = 0;
+  let hasTypes = false;    // CONST 型別定義 (+4)
+  let hasContract = false; // CONST API 介面契約 (+4)
+  let hasShell = false;    // ROUTE 前端殼 (+4)
+  let hasStyle = false;    // 樣式策略定義 (+3)
+
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (!isFoundationModule(modName)) continue;
+    if (mod.fillLevel === 'done') continue;
+    for (const item of (mod.items || [])) {
+      const t = (item.type || '').toUpperCase();
+      const name = (item.techName || '').toLowerCase();
+      if (t === 'CONST' && (name.includes('type') || name.includes('core') || name.includes('enum'))) hasTypes = true;
+      if (t === 'CONST' && (name.includes('service') || name.includes('contract') || name.includes('interface') || name.startsWith('i'))) hasContract = true;
+      if (t === 'ROUTE' || t === 'APP') hasShell = true;
+    }
+  }
+  // 樣式策略：從 rawContent 偵測 **樣式策略**: 或從 modules 定義中找
+  for (const [, mod] of Object.entries(draft.modules)) {
+    if (mod.styleStrategy && mod.styleStrategy.trim() !== '') { hasStyle = true; break; }
+  }
+  if (!hasStyle && rawContent) {
+    hasStyle = /\*\*樣式策略\*\*\s*:\s*\S/.test(rawContent);
+  }
+
+  if (hasTypes) infraScore += 4;
+  if (hasContract) infraScore += 4;
+  if (hasShell) infraScore += 4;
+  if (hasStyle) infraScore += 3;
+
+  // ── 總分 ──
+  const total = vscScore + densityScore + flowScore + acScore + infraScore;
+  const grade = total >= 90 ? 'EXCELLENT' : total >= 75 ? 'GOOD' : total >= 60 ? 'FAIR' : 'WEAK';
+
+  // ── 建議清單 ──
+  const suggestions = [];
+  if (backendOnlyIters > 0) {
+    const iterNums = Object.entries(iterCoverage)
+      .filter(([, c]) => c.backend && !c.frontend)
+      .map(([n]) => `iter-${n}`).join(', ');
+    suggestions.push(`${iterNums} 只有後端 story，考慮加入前端 story 或確認這是刻意的純 API iter`);
+  }
+  const singleStoryIterNums = Object.entries(iterStoryCounts)
+    .filter(([, c]) => c < 2).map(([n]) => `iter-${n}`);
+  if (singleStoryIterNums.length > 0) {
+    suggestions.push(`${singleStoryIterNums.join(', ')} 只有 1 個 story，建議拆為後端 story + 前端 story`);
+  }
+  if (!hasTypes) suggestions.push('Foundation 缺少核心型別定義 (CoreTypes/enums)');
+  if (!hasContract) suggestions.push('Foundation 缺少 API 介面契約 (IXxxService interface)');
+  if (!hasShell) suggestions.push('Foundation 缺少前端主入口殼 (AppRouter/Layout ROUTE)');
+  if (!hasStyle) suggestions.push('Foundation 缺少樣式策略定義 (CSS Modules / Tailwind / ...)');
+
+  return {
+    total,
+    grade,
+    breakdown: { vsc: vscScore, density: densityScore, flow: flowScore, ac: acScore, infra: infraScore },
+    details: { fullSliceIters, backendOnlyIters, nonFoundationIters, avgStories: storyCounts.length > 0 ? (storyCounts.reduce((a,b)=>a+b,0)/storyCounts.length).toFixed(1) : 'N/A', goodFlowActions, totalActions, p01WithAC, p01Total, hasTypes, hasContract, hasShell, hasStyle },
+    suggestions,
+  };
 }
 
 // ============================================
@@ -891,7 +1131,7 @@ function printExistingFunctionsSnapshot(projectRoot, currentIter) {
   console.log('');
 }
 
-function generateReport(draft, allIssues, args) {
+function generateReport(draft, allIssues, args, rawContent = '') {
   const stats = parser.calculateStats(draft);
   const blockers = allIssues.filter(i => i.level === 'BLOCKER');
   const warns = allIssues.filter(i => i.level === 'WARN');
@@ -946,10 +1186,48 @@ function generateReport(draft, allIssues, args) {
 
   const details = detailLines.join('\n');
 
+  // ── Blueprint Score 輸出 ──
+  const score = calcBlueprintScore(draft, rawContent);
+  const gradeEmoji = { EXCELLENT: '🏆', GOOD: '✅', FAIR: '⚠️', WEAK: '🔴' }[score.grade] || '?';
+  const bar = (val, max) => {
+    const filled = Math.round((val / max) * 6);
+    return '█'.repeat(filled) + '░'.repeat(6 - filled);
+  };
+  console.log('');
+  console.log(`📊 Blueprint Score: ${score.total}/100 [${score.grade}] ${gradeEmoji}`);
+  console.log('');
+  console.log(`  垂直切片覆蓋  ${bar(score.breakdown.vsc, 25)}  ${score.breakdown.vsc}/25  (${score.details.fullSliceIters}/${score.details.nonFoundationIters} iter 有前後端)`);
+  console.log(`  Story 密度    ${bar(score.breakdown.density, 20)}  ${score.breakdown.density}/20  (平均 ${score.details.avgStories} story/iter)`);
+  console.log(`  Flow 品質     ${bar(score.breakdown.flow, 20)}  ${score.breakdown.flow}/20  (${score.details.goodFlowActions}/${score.details.totalActions} 動作有業務語意 flow)`);
+  console.log(`  AC 覆蓋率     ${bar(score.breakdown.ac, 20)}  ${score.breakdown.ac}/20  (${score.details.p01WithAC}/${score.details.p01Total} P0/P1 有 AC)`);
+  console.log(`  基礎建設      ${bar(score.breakdown.infra, 15)}  ${score.breakdown.infra}/15  (型別:${score.details.hasTypes?'✓':'✗'} 介面契約:${score.details.hasContract?'✓':'✗'} 前端殼:${score.details.hasShell?'✓':'✗'} 樣式:${score.details.hasStyle?'✓':'✗'})`);
+  if (score.suggestions.length > 0) {
+    console.log('');
+    console.log('  💡 建議:');
+    for (const s of score.suggestions) console.log(`     - ${s}`);
+  }
+  console.log('');
+
   // 注入既有函式快照（讓 AI 在修藍圖時知道之前已有什麼）
   printExistingFunctionsSnapshot(projectRoot, args.iter || 1);
 
   if (finalPass) {
+    // Score 門檻：低於 70 分升為 BLOCKER
+    const SCORE_THRESHOLD = 70;
+    if (score.total < SCORE_THRESHOLD) {
+      const scoreBlocker = `Blueprint Score ${score.total}/100 低於門檻 ${SCORE_THRESHOLD} — 必須改善 draft 品質才能進入 PLAN`;
+      const scoreDetails = score.suggestions.map(s => `  - ${s}`).join('\n');
+      const fixCmd = `修復藍圖後重跑: node sdid-tools/blueprint-gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
+      console.log(`\n@BLOCKER: ${scoreBlocker}`);
+      console.log(scoreDetails);
+      if (projectRoot) {
+        logOutput.emitBlock({ scope: `Blueprint Gate | iter-${args.iter || 1}`, summary: scoreBlocker, nextCmd: fixCmd }, logOptions);
+      } else {
+        console.log(`NEXT: ${fixCmd}`);
+      }
+      return { passed: false, blockers: 1, warns: warns.length, issues: [...allIssues, { level: 'BLOCKER', code: 'SCORE-001', msg: scoreBlocker }] };
+    }
+
     const nextCmd = `node sdid-tools/draft-to-plan.cjs --draft=${args.draft} --iter=${args.iter || 1} --target=<project>`;
     const summary = `Blueprint Gate 通過 (${blockers.length} blocker, ${warns.length} warn)`;
 
@@ -1010,40 +1288,60 @@ function inferProjectRoot(draftPath) {
  */
 function getFixGuidance(code) {
   const guidance = {
-    'FMT-001': '在藍圖中加入「## 一句話目標」區塊，至少 10 字描述 MVP 目標',
-    'FMT-005': '加入「### 4. 獨立模組」區塊，定義至少一個模組',
-    'FMT-006': '加入「## 📅 迭代規劃表」表格，定義 iter/範圍/目標/模組/交付/依賴/狀態',
-    'FMT-007': '加入「## 📋 模組動作清單」區塊，定義每個 iter 的動作表格',
-    'TAG-001': '動作清單中每一行都必須有「技術名稱」欄位 (函式名或型別名)',
-    'TAG-002': '優先級必須是 P0/P1/P2/P3 其中之一',
-    'TAG-003': '流向欄位必須有 3-7 個步驟，用 → 分隔 (例: INIT→PROCESS→RETURN)',
-    'PH-001': '替換所有 {placeholder} 為實際內容',
-    'DEP-001': '重新安排模組依賴，消除循環引用',
-    'DAG-001': '確保每個 iter 只依賴更早 iter 的模組',
-    'CONS-001': '為迭代規劃表中的每個模組加入對應的動作清單',
+    'FMT-001': '加入「## 一句話目標」區塊，至少 10 字描述 MVP 目標，例如: 開發一個整合 Google Sheets 的 React 儀表板，提供寬表視圖與逾期提醒',
+    'FMT-002': '補充「## 用戶原始需求」區塊，至少 50 字描述使用者痛點、現況與期望，越具體越好',
+    'FMT-003': '加入「### 1. 族群識別」表格，格式: | 族群 | 痛點 | 目標 |，至少列出 1 個使用者族群',
+    'FMT-004': '加入「### 2. 實體定義」區塊，每個實體用 #### EntityName + 欄位表格定義，格式: | 欄位 | 型別 | 說明 |，每個實體至少 3 個欄位',
+    'FMT-005': '加入「### 4. 獨立模組」區塊，每個模組用 #### 模組：Name 定義，包含依賴和公開 API',
+    'FMT-006': '加入「## 📅 迭代規劃表」表格，欄位: | Iter | 範圍 | 目標 | 模組 | 交付 | 依賴 | 狀態 |',
+    'FMT-007': '加入「## 📋 模組動作清單」區塊，每個 iter 用 ### Iter N: ModuleName [CURRENT/STUB] 定義，包含動作表格',
+    'FMT-008': '在「### 3. 共用模組」區塊加入樣式策略，例如: **樣式策略**: CSS Modules (.module.css) 或 Tailwind CSS 或 Global CSS',
+    'FMT-009': '動作類型只能是: CONST(常數/型別) / LIB(函式庫) / API(API端點) / SVC(服務層) / HOOK(React Hook) / UI(元件) / ROUTE(路由/頁面) / SCRIPT(腳本)。feat/mock/ui/Data/View/Config 等都是無效值',
+    'FMT-010': '每個實體至少需要 3 個欄位（含型別和說明），例如 TrainingClass 應有 id/name/startDate 等核心欄位',
+    'FMT-011': '公開 API 必須有完整型別簽名，格式: functionName(param: Type): ReturnType，例如: parseSheet(rows: SheetRow[]): TrainingClass[]',
+    'FMT-012': '加入「### 5. 路由結構」區塊，用 code block 描述 src/ 目錄樹，例如: src/ ├── shared/ │   └── types/ ├── modules/ │   └── {moduleName}/ └── index.ts',
+    'TAG-001': '動作清單中每一行都必須有「技術名稱」欄位 (函式名或型別名，例如: CoreTypes / parseSheet / WideTable)',
+    'TAG-002': '優先級必須是 P0/P1/P2/P3 其中之一 (P0=核心必做, P1=重要, P2=一般, P3=可延後)',
+    'TAG-003': '流向欄位必須有 3-7 個步驟，用 → 分隔，例如: VALIDATE_INPUT→PARSE_DATA→TRANSFORM→RETURN',
+    'TAG-004': '建議在 deps 欄位標註依賴，格式: [Internal.FunctionName] 或 [Shared.TypeName] 或 無',
+    'PH-001': '替換所有 {placeholder} 為實際內容，例如 {moduleA} → Dashboard，{模組A中文名} → 儀表板',
+    'DEP-001': '重新安排模組依賴，消除循環引用。例如 A→B→A 是循環，應改為 A→B 或 B→A',
+    'DAG-001': '確保每個 iter 只依賴更早 iter 的模組，iter-2 不能依賴 iter-3 的模組',
+    'CONS-001': '為迭代規劃表中的每個模組加入對應的動作清單 (### Iter N: ModuleName)',
+    'CONS-002': '動作清單中的模組名稱應與迭代規劃表一致，或確認這是刻意的額外模組',
     'EVO-001': '演化層依賴違規: 低層動作不能依賴高層動作，調整依賴方向或演化層標記',
     'EVO-002': 'Modify 動作需要對應的 BASE 動作存在，確認基礎函式已定義',
-    'STS-002': '完成所有釐清項目後，將「草稿狀態」從 [~] PENDING 改為 [x] DONE',
+    'STS-001': '加入草稿狀態欄位，格式: **草稿狀態**: [x] DONE 或 [~] PENDING',
+    'STS-002': '完成所有釐清項目後，將「草稿狀態」從 [~] PENDING 改為 [x] DONE 才能進入 Gate',
+    'STS-003': '草稿狀態格式不明確，建議使用 **草稿狀態**: [x] DONE 或 **草稿狀態**: [~] PENDING',
     'LVL-001': '模組數超過參考值，確認範圍是否合理，或升級 Level (S→M 或 M→L)',
     'DEPCON-001': '同步迭代規劃表的「依賴」欄位，與模組定義的 deps 保持一致',
-    'DEPCON-002': '在動作清單的 deps 欄位標註具體依賴 (例: [Shared.CoreTypes])',
+    'DEPCON-002': '在動作清單的 deps 欄位標註具體依賴，例如: [Shared.CoreTypes] 或 [Internal.parseSheet]',
     'LOAD-001': '將部分模組移到下一個 iter，或升級 Level 以容納更多模組',
     'API-001': '確保公開 API 列出的每個函式在動作清單中都有對應的 techName 行',
     'API-002': '如果是內部函式，從公開 API 移除；如果是公開函式，加入公開 API 列表',
+    'FLOW-001': 'flow 步驟過少，建議 3-7 個步驟，例如: VALIDATE→FETCH→TRANSFORM→RETURN',
+    'FLOW-002': 'flow 步驟過多，建議拆分為多個函式，每個函式 3-7 個步驟',
     'FLOW-010': 'flow 步驟必須有業務語意，例如 VALIDATE_INPUT→SERIALIZE→FORMAT→RETURN，不能全部是 INIT→PROCESS→RETURN',
     'FLOW-011': '建議將泛用步驟替換為具體業務步驟，例如 INIT→PARSE_JSON→VALIDATE_SCHEMA→BUILD_OBJECTS→RETURN',
-    'SIG-001': '公開 API 應寫成完整簽名: functionName(param: Type): ReturnType',
-    'SIG-002': '公開 API 簽名應包含回傳型別，例如 ): Bookmark[] 或 ): ImportResult',
-    'SIG-003': '公開 API 參數應標註型別，例如 (data: string, format: string)',
+    'SIG-001': '公開 API 應寫成完整簽名: functionName(param: Type): ReturnType，例如: getClasses(orgId: string): TrainingClass[]',
+    'SIG-002': '公開 API 簽名應包含回傳型別，例如: ): TrainingClass[] 或 ): void 或 ): Promise<Result>',
+    'SIG-003': '公開 API 參數應標註型別，例如: (classId: string, date: string) 而非 (classId, date)',
+    'SIZE-001': '模組動作數超過 8 個，建議拆分為子模組，例如將 shared 拆為 shared/types + shared/storage',
     'ACC-001': 'P0/P1 動作必須有 AC 欄位。在動作清單的 AC 欄填入編號（如 AC-1.0），並在「## ✅ 驗收條件」區塊定義 Given/When/Then',
     'BUDGET-001': 'Story 動作數超過上限 10。請拆成多個 Story（不是多個 iter），每個 Story 建議 4-6 個動作',
     'BUDGET-002': 'Story 動作數超過建議值 6，注意開發品質，必要時拆為 Story-X.0 + Story-X.1',
-    'VSC-001': 'Foundation 模組必須加入 ROUTE 類型的前端主入口殼。在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.x |',
-    'VSC-003': '功能模組的交付類型必須是 FULL（前後端一套）。將前後端合併到同一個 iter，確保每個 iter 都能展示完整功能',
-    'VSC-004': '此 STUB iter 只有後端類型，缺少前端層。解法：(1) 把前端動作合併到同一個 iter，或 (2) 把這個 iter 拆成 Story-X.0（後端 SVC/API）+ Story-X.1（前端 UI/ROUTE），兩個 Story 在同一個 iter 裡',
-    'VSC-005': '此 STUB iter 只有前端類型，缺少後端層。解法：(1) 把後端動作合併到同一個 iter，或 (2) 把這個 iter 拆成 Story-X.0（後端 SVC/API）+ Story-X.1（前端 UI/ROUTE），兩個 Story 在同一個 iter 裡',
+    'STUB-001': 'Stub iter 應加入描述，格式: > 模組說明，依賴 shared + xxx',
+    'STUB-002': 'Stub iter 在迭代規劃表中應標註依賴，例如: | 2 | Core | ... | Dashboard | FULL | shared | [STUB] |',
+    'STUB-003': 'Stub iter 必須有函式 Flow 清單表格，格式: | 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |，每個公開 API 函式都要有 flow + AC 骨架',
+    'VSC-001': 'Foundation 模組必須加入 ROUTE 類型的前端主入口殼。在動作清單加入: | 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | ○○ | NEW | AC-0.x |',
+    'VSC-002': 'iter 只有後端 story，考慮加入前端 story (UI/ROUTE)，或在 Story 描述中說明這是刻意的純 API iter',
+    'VSC-003': 'iter 只有前端 story，確認後端邏輯是否已在前一個 iter 完成，或補上 SVC/API story',
+    'VSC-004': 'STUB iter 只有後端規劃，建議在同一個 iter 加入前端 story，或確認前端會在後續 iter 補上',
+    'VSC-005': 'STUB iter 只有前端規劃，建議補上 SVC/API story',
+    'SCORE-001': 'Blueprint Score 低於門檻，參考建議區塊改善各維度分數，重點補強: 垂直切片(前後端同 iter) + Story 密度(每 iter 至少 2 個 story)',
   };
-  return guidance[code] || '參考 enhanced-draft-golden.template.v2.md 修正格式';
+  return guidance[code] || '參考 task-pipe/templates/enhanced-draft-golden.template.v2.md 修正格式，或查看 task-pipe/templates/examples/enhanced-draft-ecotrack.example.md 範例';
 }
 
 // ============================================
@@ -1086,10 +1384,14 @@ Blueprint Gate v1.1 - 活藍圖品質門控
   DEPCON-001~002 依賴一致性 (v1.1)
   LOAD-001     迭代模組負載 (v1.1)
   BUDGET-001~002 迭代動作預算 (v1.3, per-Story: WARN>6/BLOCKER>10)
-  VSC-001      Foundation 必含前端主入口殼 ROUTE (v1.3: 升為 BLOCKER)
-  VSC-003      功能模組交付類型必須 FULL (v1.3)
-  VSC-004/005  STUB iter 前後端分離反模式 (v1.4: 設計階段就擋)
+  VSC-001      Foundation 必含前端主入口殼 ROUTE (BLOCKER)
+  VSC-002~005  垂直切片覆蓋 (v2.0: per-iter 聚合 WARN，不再 per-story BLOCKER)
   ACC-001      AC 驗收條件完整性 (v2.2, P0/P1 必填)
+  STUB-003     Stub 必須有函式 flow 清單 (v2.3, BLOCKER)
+
+📊 Blueprint Score (不擋，純輸出):
+  垂直切片覆蓋 25分 / Story密度 20分 / Flow品質 20分 / AC覆蓋率 20分 / 基礎建設 15分
+  分級: 90+ EXCELLENT / 75-89 GOOD / 60-74 FAIR / 0-59 WEAK
 
 輸出:
   @PASS     — 品質合格 (log 存檔到 .gems/iterations/iter-X/logs/)
@@ -1162,8 +1464,8 @@ Blueprint Gate v1.1 - 活藍圖品質門控
 
   // 執行所有驗證
   const allIssues = [
-    ...checkFormatCompleteness(draft),
-    ...checkPlaceholders(rawContent),
+    ...checkFormatCompleteness(draft, rawContent),
+    ...checkPlaceholders(rawContent, args.draft),
     ...checkDraftStatus(rawContent),
     ...checkTagIntegrity(draft, args.iter),
     ...checkFlowStepCount(draft, args.iter),
@@ -1185,7 +1487,7 @@ Blueprint Gate v1.1 - 活藍圖品質門控
   ];
 
   // 生成報告
-  const result = generateReport(draft, allIssues, args);
+  const result = generateReport(draft, allIssues, args, rawContent);
   process.exit(result.passed ? 0 : 1);
 }
 
@@ -1213,6 +1515,7 @@ module.exports = {
   checkIterActionBudget,
   checkVerticalSliceCompleteness,
   checkACIntegrity,
+  calcBlueprintScore,
   getFixGuidance,
 };
 

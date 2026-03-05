@@ -65,19 +65,19 @@ function parse(content) {
   if (reqMatch) draft.requirement = reqMatch[1].replace(/^>\s*/gm, '').trim();
 
   // 族群
-  draft.groups = parseTable(content, /### 1\. 族群識別/);
+  draft.groups = parseTable(content, /#{2,4}\s*1\.\s*族群識別/);
 
   // 實體
   draft.entities = parseEntities(content);
 
   // 共用模組
-  draft.sharedModules = parseChecklist(content, /### [23]\. 共用模組/);
+  draft.sharedModules = parseChecklist(content, /#{2,4}\s*[23]\.\s*共用模組/);
 
   // 獨立模組 (v2: 含公開 API)
   draft.modules = parseModules(content);
 
   // 路由
-  const routeMatch = content.match(/### [45]\. 路由結構[\s\S]*?```([\s\S]*?)```/);
+  const routeMatch = content.match(/#{2,4}\s*[45]\.\s*路由結構[\s\S]*?```([\s\S]*?)```/);
   if (routeMatch) draft.routes = routeMatch[1].trim();
 
   // 迭代規劃表 (v2: 含交付 + 狀態)
@@ -127,7 +127,7 @@ function parseTable(content, headerPattern) {
 // === 實體解析 ===
 function parseEntities(content) {
   const entities = {};
-  const section = extractSection(content, /### 2\. 實體定義/);
+  const section = extractSection(content, /#{2,4}\s*2\.\s*實體定義/);
   if (!section) return entities;
   const blocks = section.split(/####\s+/).slice(1);
   for (const block of blocks) {
@@ -153,7 +153,7 @@ function parseEntities(content) {
 // === 模組解析 (v2: 含公開 API) ===
 function parseModules(content) {
   const modules = {};
-  const section = extractSection(content, /### [34]\. 獨立模組/);
+  const section = extractSection(content, /#{2,4}\s*[34]\.\s*獨立模組/);
   if (!section) return modules;
   const blocks = section.split(/####\s+模組[：:]\s*/).slice(1);
   for (const block of blocks) {
@@ -243,12 +243,39 @@ function parseModuleActions(content) {
       // v2: 解析 Stub 的預估和公開 API
       const estimateMatch = block.match(/預估:\s*(.+)/);
       const apiMatch = block.match(/公開 API:\s*(.+)/);
+
+      // v2.4: 解析 Stub 裡的函式 Flow 清單表格（STUB-003 需要）
+      const cleanStubBlock = block.replace(/<!--[\s\S]*?-->/g, '');
+      const stubLines = cleanStubBlock.split('\n').filter(l => l.includes('|') && l.trim().startsWith('|'));
+      const stubItems = [];
+      if (stubLines.length >= 3) {
+        const stubHeaders = stubLines[0].split('|').map(h => h.trim()).filter(Boolean);
+        for (let i = 2; i < stubLines.length; i++) {
+          const cells = stubLines[i].split('|').map(c => c.trim()).filter(Boolean);
+          if (cells.length < 3) continue;
+          const item = {};
+          stubHeaders.forEach((h, idx) => { item[h.toLowerCase()] = cells[idx] || ''; });
+          stubItems.push({
+            semantic: item['業務語意'] || item['semantic'] || '',
+            type: item['類型'] || item['type'] || '',
+            techName: item['技術名稱'] || item['techname'] || '',
+            priority: item['優先級'] || item['p'] || item['priority'] || 'P2',
+            flow: item['流向'] || item['flow'] || '',
+            deps: item['依賴'] || item['deps'] || '無',
+            status: item['狀態'] || item['status'] || '○○',
+            evolution: item['演化'] || item['evolution'] || 'BASE',
+            ac: item['ac'] || item['AC'] || '',
+            operation: resolveOperation(item['操作'] || item['operation'] || '', item['技術名稱'] || item['techname'] || ''),
+          });
+        }
+      }
+
       actions[moduleName] = {
         iter, module: moduleName, fillLevel: 'stub', status: blockStatus || 'STUB',
         stubDescription: stubDesc ? stubDesc[1].trim() : '',
         estimate: estimateMatch ? estimateMatch[1].trim() : '',
         stubAPI: apiMatch ? apiMatch[1].split(',').map(s => s.trim()) : [],
-        items: [],
+        items: stubItems,
       };
       continue;
     }

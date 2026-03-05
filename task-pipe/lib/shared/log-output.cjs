@@ -179,7 +179,7 @@ function outputError(options) {
     console.log(`@${type} | ${summary}`);
     console.log(`NEXT: ${nextCommand}`);
 
-    // 2. 詳情存檔
+    // 2. 詳情存檔或直接輸出
     if (details && projectRoot) {
         const logPath = saveLog({
             projectRoot,
@@ -191,6 +191,9 @@ function outputError(options) {
         });
         console.log(`@READ: ${logPath}`);
         console.log(`  ↳ 包含: 錯誤詳情`);
+    } else if (details && !projectRoot) {
+        console.log('');
+        console.log(details);
     }
 }
 

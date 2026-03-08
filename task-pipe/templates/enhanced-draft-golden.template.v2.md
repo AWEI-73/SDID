@@ -226,11 +226,26 @@ src/
   - New: 全新函式
   - Modify: 修改既有函式 (加參數/改邏輯，v2.1 新增)
 
-  優先級定義:
-  - P0: 端到端協議 (API/DB/第三方串接) → Unit + Integration 測試
-  - P1: 整合依賴 (跨模組呼叫) → Unit + Integration 測試
-  - P2: 獨立功能 (純邏輯/獨立 UI) → Unit 測試
-  - P3: 輔助功能 (日誌/格式化/工具) → Unit 測試
+  優先級定義 (業務重要性，與測試策略無關):
+  - P0: 核心流程，Gate 必須驗收 (AC 必填)
+  - P1: 主要功能，整合依賴較多 (AC 必填)
+  - P2: 輔助功能，獨立可運作 (AC 選填)
+  - P3: 工具/格式化，低風險 (AC 選填)
+
+  測試策略推導 (由 draft-to-plan 機械執行，不需手填):
+  v2.3 起測試策略從「P 決定」改為「GEMS-FLOW + GEMS-DEPS 機械推導」
+
+  條件 C (最優先): 流向含 SHEET/GAS/FETCH/DOM → poc-html (人工 POC 驗收)
+  條件 A: 流向含 CALC/PARSE/FORMAT/CONVERT/DATE/ROC
+    + 有 AC 驗收條件 → ac-runner (contract 鎖定期望值，Phase 5 機械驗證)
+    + 無 AC          → jest-unit
+  條件 B: 有外部依賴 且 DEPS-RISK >= MEDIUM → jest-integ
+  其他: skip (不需要測試)
+
+  AC 欄位說明 (v2.2):
+  - 純計算函式 (條件 A): 必填，格式 AC-X.Y，對應下方「驗收條件」I/O 對
+  - 外部資源函式 (條件 C): 填 poc (對應 POC.HTML 人工確認)
+  - 其他: 選填或填 -
 -->
 
 ### Iter 1: shared [CURRENT]

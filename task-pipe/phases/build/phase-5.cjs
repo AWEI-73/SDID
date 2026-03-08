@@ -157,23 +157,38 @@ function executeTests(projectRoot, testCommand = 'npm test', iteration = 'iter-1
   console.log('='.repeat(80));
 
   try {
-    result.output = execSync(testCommand, {
+    // Jest 預設把輸出寫到 stderr，所以必須同時捕捉 stderr
+    // 用 shell redirect 合併 stderr → stdout
+    const shellCmd = process.platform === 'win32'
+      ? `${testCommand} 2>&1`
+      : `${testCommand} 2>&1`;
+    result.output = execSync(shellCmd, {
       cwd: projectRoot,
       encoding: 'utf8',
       stdio: 'pipe',
-      timeout: 120000 // 2 分鐘超時
+      timeout: 120000, // 2 分鐘超時
+      shell: true
     });
     result.success = true;
 
-    // 即時輸出測試結果到 console（讓 IDE agent 看到）
-    console.log(result.output);
+    // 完整輸出只存 result.output，終端機只印摘要（PASS 行 + 統計）
+    const passLines = result.output.split('\n').filter(l => /^(PASS|✓)\s/.test(l));
+    if (passLines.length > 0) console.log(passLines.join('\n'));
   } catch (error) {
     result.success = false;
-    result.output = (error.stdout || '') + '\n' + (error.stderr || '');
+    result.output = (error.stdout || '') + (error.stderr || '');
     result.error = error.message;
 
-    // 即時輸出錯誤到 console（讓 IDE agent 看到）
-    console.log(result.output);
+    // 完整輸出存 log，終端機只印失敗的檔案行（FAIL xxx.test.ts），不印 stack trace
+    const failLines = result.output.split('\n').filter(l => /^(FAIL|✕|×)\s/.test(l));
+    if (failLines.length > 0) {
+      console.log(failLines.join('\n'));
+    } else {
+      // 找不到 FAIL 行時才印最後 10 行（避免完全沒資訊）
+      const last10 = result.output.split('\n').filter(l => l.trim()).slice(-10);
+      console.log(last10.join('\n'));
+    }
+    console.log('↳ 完整錯誤詳情已存入 log 檔，請讀取 @READ_FIRST 指定的 log');
   }
 
   result.duration = Date.now() - startTime;
@@ -319,6 +334,30 @@ function extractFailedTests(output) {
 }
 
 /**
+ * 從測試輸出抓取真正失敗的測試檔案路徑
+ * Jest:   "FAIL src/config/__tests__/foo.test.ts"
+ * Vitest: "❯ src/config/__tests__/foo.test.ts"
+ */
+function extractFailedFiles(output, target) {
+  const files = new Set();
+
+  // Jest: FAIL src/...
+  const jestPattern = /^(?:FAIL|✕)\s+(.+\.(?:test|spec)\.[jt]sx?)$/gm;
+  let m;
+  while ((m = jestPattern.exec(output)) !== null) {
+    files.add(m[1].trim());
+  }
+
+  // Vitest: ❯ src/... (failed)
+  const vitestPattern = /^[❯✗×]\s+(.+\.(?:test|spec)\.[jt]sx?)/gm;
+  while ((m = vitestPattern.exec(output)) !== null) {
+    files.add(m[1].trim());
+  }
+
+  return [...files];
+}
+
+/**
  * 解析測試輸出的統計數據
  * @param {string} output - 測試輸出
  * @returns {object|null} 統計數據
@@ -388,6 +427,7 @@ function parseTestStats(output) {
 
 /**
  * 偵測 stub 測試：只有 toBeDefined()/toBeTruthy() 的 test case
+ * 同時偵測 hardcoded-false：toBe(false) 作為唯一斷言（debug 殘留）
  * @param {string[]} testFiles - 測試檔案路徑列表
  * @param {string} projectRoot - 專案根目錄
  * @returns {Array} stub issues
@@ -396,6 +436,8 @@ function detectTestStubs(testFiles, projectRoot) {
   const issues = [];
   const WEAK_ONLY = /expect\([\s\S]*?\)\.(toBeDefined|toBeTruthy|not\.toBeUndefined|not\.toBeNull)\(\)/g;
   const VALID_ASSERT = /expect\([\s\S]*?\)\.(toBe|toEqual|toContain|toHaveLength|toMatchObject|toHaveBeenCalledWith|toThrow|toHaveProperty|toMatch)\(/;
+  // 偵測 hardcoded false：toBe(false) / toEqual(false) 作為斷言（debug 殘留）
+  const HARDCODED_FALSE = /expect\([\s\S]*?\)\.(toBe|toEqual)\(\s*false\s*\)/;
 
   for (const file of testFiles) {
     const absFile = path.isAbsolute(file) ? file : path.join(projectRoot, file);
@@ -415,18 +457,29 @@ function detectTestStubs(testFiles, projectRoot) {
       const hasWeak = WEAK_ONLY.test(block);
       WEAK_ONLY.lastIndex = 0;
       const hasValid = VALID_ASSERT.test(block);
+      const hasHardcodedFalse = HARDCODED_FALSE.test(block);
+
+      // 嘗試從 import 推斷被測函式（排除 test framework imports）
+      const imports = [...content.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)];
+      const appImport = imports.find(m => !m[2].match(/^(vitest|jest|@jest|@testing-library)/));
+      const fnName = appImport ? appImport[1].trim().split(',')[0].trim() : null;
 
       if (hasWeak && !hasValid) {
-        // 嘗試從 import 推斷被測函式（排除 test framework imports）
-        const imports = [...content.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)];
-        const appImport = imports.find(m => !m[2].match(/^(vitest|jest|@jest|@testing-library)/));
-        const fnName = appImport ? appImport[1].trim().split(',')[0].trim() : null;
-
         issues.push({
           file: path.relative(projectRoot, absFile),
           testName,
           fnName,
-          reason: '只有 toBeDefined/toBeTruthy，無實質行為驗證'
+          reason: '只有 toBeDefined/toBeTruthy，無實質行為驗證',
+          type: 'STUB'
+        });
+      } else if (hasHardcodedFalse && !block.includes('// intentional') && !block.includes('// expected false')) {
+        // hardcoded false 且沒有明確標注「預期為 false」的 comment
+        issues.push({
+          file: path.relative(projectRoot, absFile),
+          testName,
+          fnName,
+          reason: '@SUSPICIOUS_ASSERT: toBe(false) 可能是 debug 殘留，請確認是否為預期行為',
+          type: 'SUSPICIOUS'
         });
       }
     }
@@ -544,7 +597,7 @@ function run(options) {
   // Step 4: 執行測試
   // ========================================
   console.log(`[RUN] 執行測試: ${envInfo.testCommand || 'npm test'}`);
-  const testResult = executeTests(target, envInfo.testCommand || 'npm test', iteration, story, '3');
+  const testResult = executeTests(target, envInfo.testCommand || 'npm test', iteration, story, '5');
 
   // ========================================
   // Step 5: 儲存 LOG (通過/失敗都要)
@@ -599,21 +652,23 @@ function run(options) {
     // ========================================
     const stubIssues = detectTestStubs(testFiles, target);
     if (stubIssues.length > 0) {
-      const attempt = errorHandler.recordError('STUB', `${stubIssues.length} 個 stub 測試`);
+      // 分類：STUB vs SUSPICIOUS
+      const realStubs = stubIssues.filter(s => s.type === 'STUB');
+      const suspicious = stubIssues.filter(s => s.type === 'SUSPICIOUS');
+      const attempt = errorHandler.recordError('STUB', stubIssues.length + ' 個測試品質問題');
 
-      // 讀取被測函式的原始碼片段，幫助 AI 理解該驗證什麼
       const taskDetails = stubIssues.slice(0, 8).map(s => {
         let srcSnippet = '';
         if (s.fnName) {
-          // 嘗試從 import 找到原始檔案並讀取函式簽名
           const testAbsPath = path.isAbsolute(s.file) ? s.file : path.join(target, s.file);
           try {
             const testContent = fs.readFileSync(testAbsPath, 'utf8');
-            const fromMatch = testContent.match(new RegExp(`import\\s*\\{[^}]*${s.fnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^}]*\\}\\s*from\\s*['"]([^'"]+)['"]`));
+            // 用字串拼接避免 regex escape 問題
+            const pat = 'import\\s*\\{[^}]*' + s.fnName.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') + '[^}]*\\}\\s*from\\s*[\'"]([\'"^]+)[\'"]';
+            const fromMatch = testContent.match(new RegExp(pat));
             if (fromMatch) {
               const importPath = fromMatch[1];
               const testDir = path.dirname(testAbsPath);
-              // 嘗試解析 import 路徑
               const candidates = [
                 path.resolve(testDir, importPath + '.ts'),
                 path.resolve(testDir, importPath + '.tsx'),
@@ -622,66 +677,129 @@ function run(options) {
               ];
               for (const candidate of candidates) {
                 if (fs.existsSync(candidate)) {
-                  const srcContent = fs.readFileSync(candidate, 'utf8');
-                  // 取前 20 行作為摘要
-                  srcSnippet = srcContent.split('\n').slice(0, 20).join('\n');
+                  srcSnippet = fs.readFileSync(candidate, 'utf8').split('\n').slice(0, 20).join('\n');
                   break;
                 }
               }
             }
           } catch { /* 忽略 */ }
         }
-        return { ...s, srcSnippet };
+        return Object.assign({}, s, { srcSnippet });
+      });
+
+      const summaryParts = [];
+      if (realStubs.length > 0) summaryParts.push(realStubs.length + ' 個 STUB（toBeDefined/toBeTruthy）');
+      if (suspicious.length > 0) summaryParts.push(suspicious.length + ' 個 @SUSPICIOUS_ASSERT（toBe(false) 可能是 debug 殘留）');
+
+      const detailLines = [];
+      if (realStubs.length > 0) {
+        detailLines.push('=== STUB 定義 ===');
+        detailLines.push('STUB 測試 = 只用 toBeDefined()/toBeTruthy() 確認「東西存在」，不驗證任何行為。');
+        detailLines.push('❌ BEFORE (stub): expect(MyFunc).toBeDefined()');
+        detailLines.push('✅ AFTER (real):  expect(MyFunc()).toEqual({ key: "value" })');
+        detailLines.push('');
+      }
+      if (suspicious.length > 0) {
+        detailLines.push('=== @SUSPICIOUS_ASSERT ===');
+        detailLines.push('toBe(false) 作為斷言通常是 debug 殘留（故意讓測試失敗）。');
+        detailLines.push('如果這是預期行為，在該行加 // expected false 或 // intentional 來消除警告。');
+        detailLines.push('❌ SUSPICIOUS: expect(isValid(obj)).toBe(false) // 故意製造錯誤');
+        detailLines.push('✅ 修復: expect(isValid(obj)).toBe(true)  // 或加 // expected false 說明原因');
+        detailLines.push('');
+      }
+      detailLines.push('=== 被標記的測試 ===');
+      taskDetails.forEach(function(s, i) {
+        const tag = s.type === 'SUSPICIOUS' ? '[SUSPICIOUS]' : '[STUB]';
+        detailLines.push((i + 1) + '. ' + tag + ' ' + s.file + ' → it(\'' + s.testName + '\')');
+        detailLines.push('   原因: ' + s.reason);
+        detailLines.push('   被測函式: ' + (s.fnName || '(請從 import 推斷)'));
+        if (s.srcSnippet) detailLines.push('   原始碼摘要:\n   ' + s.srcSnippet.split('\n').slice(0, 5).join('\n   '));
       });
 
       emitBlock({
-        scope: `BUILD Phase 5 | ${story}`,
-        summary: `@STUB_DETECTED: ${stubIssues.length} 個測試只有 toBeDefined()/toBeTruthy()，這是 STUB（佔位測試），必須改為驗證實際行為`,
-        context: `Phase 5 | ${story} | Stub 偵測`,
-        details: [
-          '=== STUB 定義 ===',
-          'STUB 測試 = 只用 toBeDefined()/toBeTruthy() 確認「東西存在」，不驗證任何行為。',
-          '這種測試永遠會過，等於沒測。門控要求每個 test case 必須驗證函式的回傳值或副作用。',
-          '',
-          '=== 修復方式 ===',
-          '❌ BEFORE (stub): expect(MyFunc).toBeDefined()',
-          '✅ AFTER (real):  expect(MyFunc()).toEqual({ key: "value" })',
-          '✅ AFTER (real):  expect(MyFunc().someField).toBe("expected")',
-          '✅ AFTER (real):  expect(MyFunc().length).toBeGreaterThan(0)',
-          '',
-          '=== 被標記的測試 ===',
-          ...taskDetails.map((s, i) => {
-            const lines = [`${i + 1}. ${s.file} → it('${s.testName}')`];
-            lines.push(`   被測函式: ${s.fnName || '(請從 import 推斷)'}`);
-            if (s.srcSnippet) {
-              lines.push(`   原始碼摘要:`);
-              lines.push(`   ${s.srcSnippet.split('\n').slice(0, 5).join('\n   ')}`);
-            }
-            return lines.join('\n');
-          }),
-        ].join('\n'),
-        tasks: taskDetails.map(s => ({
-          action: 'REWRITE_TEST',
-          file: s.file,
-          expected: `呼叫 ${s.fnName || '被測函式'}() 並用 toBe/toEqual/toContain 驗證回傳值。不要只檢查存在性。`,
-          reference: s.srcSnippet ? `原始碼前 5 行:\n${s.srcSnippet.split('\n').slice(0, 5).join('\n')}` : `函式: ${s.fnName || '(unknown)'}`
-        })),
+        scope: 'BUILD Phase 5 | ' + story,
+        summary: '測試品質問題: ' + summaryParts.join(' | '),
+        context: 'Phase 5 | ' + story + ' | Stub 偵測',
+        details: detailLines.join('\n'),
+        tasks: taskDetails.map(function(s) {
+          return {
+            action: s.type === 'SUSPICIOUS' ? 'FIX_SUSPICIOUS_ASSERT' : 'REWRITE_TEST',
+            file: s.file,
+            expected: s.type === 'SUSPICIOUS'
+              ? '確認 toBe(false) 是否為預期行為。若是 debug 殘留請改為 toBe(true)；若確實預期 false 請加 // expected false 說明。'
+              : '呼叫 ' + (s.fnName || '被測函式') + '() 並用 toBe/toEqual/toContain 驗證回傳值。不要只檢查存在性。',
+            reference: s.srcSnippet
+              ? '原始碼前 5 行:\n' + s.srcSnippet.split('\n').slice(0, 5).join('\n')
+              : '函式: ' + (s.fnName || '(unknown)')
+          };
+        }),
         forbidden: [
           '禁止用 toBeDefined()/toBeTruthy()/not.toBeNull() 作為唯一斷言',
           '禁止辯稱「這不是 stub」— 門控已自動掃描確認，只有 toBeDefined/toBeTruthy 的 test case 就是 stub',
           '每個 test case 必須呼叫函式並驗證回傳值或副作用'
         ],
-        nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
-        attempt,
+        nextCmd: getRetryCmd('BUILD', '5', { story: story, target: relativeTarget, iteration: iteration }),
+        attempt: attempt,
         maxAttempts: MAX_ATTEMPTS
       }, {
         projectRoot: target,
         iteration: iterNum,
         phase: 'build',
         step: 'phase-5',
-        story
+        story: story
       });
       return { verdict: 'BLOCKER', reason: 'stub_tests', count: stubIssues.length };
+    }
+
+    // ========================================
+    // Step 6.2: AC 機械驗收（ac-runner）
+    // 在 npm test 通過 + stub 掃描通過後，再跑純計算函式的行為驗收
+    // ========================================
+    const acRunnerPath = path.resolve(__dirname, '..', '..', '..', 'sdid-tools', 'ac-runner.cjs');
+    const contractPath = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, 'poc', `contract_iter-${iterNum}.ts`);
+
+    if (fs.existsSync(acRunnerPath) && fs.existsSync(contractPath)) {
+      console.log('\n[AC] 執行 AC 機械驗收...');
+      let acOutput = '';
+      let acPass = false;
+      try {
+        acOutput = execSync(
+          `node "${acRunnerPath}" --contract="${contractPath}" --target="${target}" --iter=${iterNum}`,
+          { encoding: 'utf8', cwd: target, stdio: 'pipe' }
+        );
+        acPass = true;
+      } catch (e) {
+        acOutput = (e.stdout || '') + (e.stderr || '');
+        acPass = false;
+      }
+      console.log(acOutput);
+
+      if (!acPass) {
+        const attempt = errorHandler.recordError('AC', 'AC 機械驗收失敗');
+        emitBlock({
+          scope: `BUILD Phase 5 | ${story}`,
+          summary: `AC 機械驗收失敗 — 純計算函式回傳值與 contract.ts @GEMS-AC-EXPECT 不符`,
+          context: `contract: ${path.relative(target, contractPath)}`,
+          details: acOutput.split('\n').slice(-20).join('\n'),
+          nextCmd: getRetryCmd('BUILD', '5', { story, target: relativeTarget, iteration }),
+          attempt,
+          maxAttempts: MAX_ATTEMPTS,
+          forbidden: [
+            '禁止修改 contract.ts 的 @GEMS-AC-EXPECT（Gate 鎖定的規格）',
+            '禁止修改 @GEMS-AC-INPUT（Gate 鎖定的測試案例）',
+            '只能修改 src/ 下的函式實作'
+          ]
+        }, {
+          projectRoot: target,
+          iteration: iterNum,
+          phase: 'build',
+          step: 'phase-5',
+          story
+        });
+        return { verdict: 'BLOCKER', reason: 'ac_runner_fail' };
+      }
+    } else if (fs.existsSync(acRunnerPath) && !fs.existsSync(contractPath)) {
+      console.log(`[AC] 跳過 AC 驗收（contract 不存在: .gems/iterations/iter-${iterNum}/poc/contract_iter-${iterNum}.ts）`);
     }
 
     writeCheckpoint(target, iteration, story, '5', {
@@ -728,7 +846,12 @@ function run(options) {
           expected: '確認 testMatch 包含測試檔案路徑，執行 npx jest --listTests 確認 jest 能找到測試',
           reference: `找到 ${testFiles.length} 個測試檔案但 jest 執行了 0 個`
         }]
-      : testFiles.slice(0, 5).map(f => ({
+      : extractFailedFiles(testResult.output, target).slice(0, 5).map(f => ({
+          action: 'FIX_TEST',
+          file: f,
+          expected: '修正測試失敗原因，確保測試通過',
+          reference: `測試失敗: ${testResult.stats.failed} 個`
+        })) || testFiles.slice(0, 5).map(f => ({
           action: 'FIX_TEST',
           file: path.relative(target, f),
           expected: '修正測試失敗原因，確保測試通過',

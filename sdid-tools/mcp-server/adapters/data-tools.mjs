@@ -17,7 +17,7 @@ const dictSync = require(path.join(TOOLS_DIR, 'dict-sync.cjs'));
 export const dictSyncTool = {
   schema: {
     title: 'SDID Dict Sync',
-    description: '行號回寫 — 掃描源碼，將函式的 lineRange 和 status 同步回 .gems/specs/*.json。status 只升不降。',
+    description: '🔧 手動補充工具 — 行號回寫。掃描源碼，將函式的 lineRange 和 status 同步回 .gems/specs/*.json。BUILD 完成後手動呼叫。',
     inputSchema: {
       project: z.string().describe('專案根目錄路徑'),
       src: z.string().optional().describe('源碼子目錄（預設 src）'),
@@ -47,7 +47,7 @@ export const dictSyncTool = {
 export const scannerTool = {
   schema: {
     title: 'SDID GEMS Scanner',
-    description: 'GEMS 標籤掃描 — 掃描源碼中的 @GEMS 標籤，產出 function-index-v2.json 和覆蓋率報告。',
+    description: '🔍 查詢工具 — GEMS 標籤掃描。掃描源碼中的 @GEMS 標籤，產出 function-index-v2.json 和覆蓋率報告。不執行流程，純查詢用。',
     inputSchema: {
       project: z.string().describe('專案根目錄路徑'),
       src: z.string().optional().describe('源碼子目錄（預設 src）'),

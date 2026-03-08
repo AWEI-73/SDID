@@ -64,7 +64,7 @@
 - [x] 前端主入口殼 (AppRouter / Layout — npm run dev 可見首頁框架)
 - [ ] 通用 UI 元件 (表單、表格、通知)
 
-**樣式策略**: {CSS Modules (.module.css) / Tailwind CSS / Global CSS / CSS-in-JS}
+**樣式策略**: CSS Modules (.module.css)
 
 <!--
   樣式策略說明（專案級別決策，所有 UI/ROUTE 動作共用）：
@@ -80,6 +80,7 @@
 ### 4. 獨立模組 (Modules)
 
 #### 模組：{moduleA} ({中文名稱})
+- layer: feature
 - 依賴: [shared/types, shared/storage]
 - 公開 API (index.ts):
   - {functionA}(args): ReturnType
@@ -89,6 +90,7 @@
   - [ ] {待定的功能描述}
 
 #### 模組：{moduleB} ({中文名稱})
+- layer: feature
 - 依賴: [shared/types, moduleA]
 - 公開 API (index.ts):
   - {functionC}(args): ReturnType
@@ -137,6 +139,14 @@ src/
     - ❌ 反模式：iter-2 做 Mock，iter-3 才做 UI；每個 iter 只有 Story-0
 
   狀態: [CURRENT] 當前迭代 | [STUB] 待展開 | [DONE] 已完成
+
+  **Blueprint Score 評分維度** (gate 執行後自動輸出，不擋但可見):
+  - 垂直切片覆蓋 25分: 有前後端的 iter 數 / 非 Foundation iter 總數
+  - Story 密度 20分: 非 Foundation iter 平均 story 數（目標 ≥2，只有 1 個扣分）
+  - Flow 品質 20分: 有業務語意 flow 的動作比例
+  - AC 覆蓋率 20分: P0/P1 動作有 AC 的比例
+  - 基礎建設完整度 15分: Foundation 有型別/API介面/前端殼/樣式策略
+  - 分級: 90+ EXCELLENT / 75-89 GOOD / 60-74 FAIR / 0-59 WEAK
 
   Action Budget 上限 (blueprint-gate BUDGET):
     每個 Story (模組) 建議最多 6 個動作 → WARN
@@ -235,18 +245,49 @@ src/
 ### Iter 2: {moduleA} [STUB]
 
 > {模組描述}，依賴 shared
-> 預估: {N} 個動作 ({M}×P0, {K}×P1)  ⚠ 每個 Story 建議 4-6 個動作，超過 6 個考慮拆 Story
-> 公開 API: {functionA}, {functionB}
-> 必含: SVC/API + ROUTE + UI（前後端一套，delivery = FULL）
 > Story 拆法: Story-0 後端 (SVC/API), Story-1 前端串接 (UI/ROUTE)
+
+**函式 Flow 清單** (expand 時直接搬運):
+
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
+|---------|------|---------|---|------|------|----|
+| {functionA 業務描述} | SVC | {functionA} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types] | AC-1.0 |
+| {functionB 業務描述} | SVC | {functionB} | P1 | {STEP1→STEP2→RETURN} | [Internal.{functionA}] | AC-1.1 |
+| {UI 元件描述} | UI | {ModuleView} | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionA}] | AC-1.2 |
+| {路由描述} | ROUTE | {ModulePage} | P1 | CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT | [Internal.{ModuleView}] | AC-1.3 |
+
+**驗收條件骨架**:
+
+**AC-1.0** — {functionA} 核心邏輯
+- Given: {前置狀態，例如: 空的 DataStore / 已有 N 筆資料}
+- When: 呼叫 `{functionA}({ {param}: '{testValue}' })`
+- Then: 回傳值包含 `{關鍵欄位}` 為 `'{預期值}'`
+- And: 呼叫 `{查詢函式}()` 返回 1 筆資料
+
+**AC-1.1** — {functionB} 過濾/變更
+- Given: 已存在 `{條件A}` 的資料 2 筆，`{條件B}` 的資料 1 筆
+- When: 呼叫 `{functionB}('{過濾值}')`
+- Then: 只返回符合 `{條件A}` 的 2 筆，不包含 `{條件B}` 的資料
 
 ### Iter 3: {moduleB} [STUB]
 
 > {模組描述}，依賴 shared + {moduleA}
-> 預估: {N} 個動作  ⚠ 每個 Story 建議 4-6 個動作，超過 6 個考慮拆 Story
-> 公開 API: {functionC}
-> 必含: SVC/API + ROUTE + UI（前後端一套，delivery = FULL）
 > Story 拆法: Story-0 後端 (SVC/API), Story-1 前端串接 (UI/ROUTE)
+
+**函式 Flow 清單** (expand 時直接搬運):
+
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
+|---------|------|---------|---|------|------|----|
+| {functionC 業務描述} | SVC | {functionC} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types, {moduleA}.{functionA}] | AC-2.0 |
+| {UI 元件描述} | UI | {ModuleBView} | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionC}] | AC-2.1 |
+
+**驗收條件骨架**:
+
+**AC-2.0** — {functionC} 跨模組整合
+- Given: {moduleA} 已有資料（依賴前一個 iter 的函式）
+- When: 呼叫 `{functionC}({ {param}: '{testValue}' })`
+- Then: 回傳值正確整合 `{moduleA}` 的資料
+- And: `{關鍵欄位}` 為 `'{預期值}'`
 
 ---
 
@@ -269,26 +310,42 @@ src/
 ### Iter 1: shared
 
 **AC-0.0** — CoreTypes 型別定義
-- Given: 專案初始化
-- When: import CoreTypes
-- Then: 所有核心型別可用，TypeScript 編譯無錯誤
+- Given: 專案已初始化，包含 TypeScript 設定
+- When: 執行 `tsc --noEmit` 編譯
+- Then: 編譯成功，無 TypeScript 錯誤
+- And: 所有核心型別 (EntityA, EntityB, Status enum) 可正常 import
 
-**AC-0.1** — 儲存層封裝
-- Given: 空的 MemoryStore
-- When: 呼叫 CRUD 操作
-- Then: 資料正確存取，不同 key 互不干擾
+**AC-0.1** — API 介面契約
+- Given: IServiceContracts 已定義
+- When: 實作類別 `implements IXxxService`
+- Then: TypeScript 強制要求實作所有方法簽名
+- And: 缺少任何方法時編譯報錯
+
+**AC-0.2** — 前端主入口殼
+- Given: `npm run dev` 啟動
+- When: 瀏覽器開啟 localhost
+- Then: 首頁框架可見（Header + 主內容區 + 導覽）
+- And: 無 console error
 
 ### Iter 2: {moduleA}
 
-**AC-1.0** — {functionA 的驗收條件}
-- Given: {前置條件}
-- When: {呼叫 functionA(args)}
-- Then: {預期結果，可斷言}
+**AC-1.0** — {functionA} 核心業務邏輯
+- Given: {前置狀態，例如: DataStore 中無資料 / 使用者已登入}
+- When: 呼叫 `{functionA}({ {必要參數}: '{測試值}', {另一參數}: '{測試值}' })`
+- Then: 回傳值包含 `id`（非空字串）且 `{關鍵欄位}` 為 `'{預期值}'`
+- And: 呼叫 `{查詢函式}('{過濾條件}')` 返回 1 筆資料
 
-**AC-1.1** — {functionB 的驗收條件}
-- Given: {前置條件}
-- When: {呼叫 functionB(args)}
-- Then: {預期結果，可斷言}
+**AC-1.1** — {functionB} 狀態變更
+- Given: 已存在一筆 `{狀態欄位}='{初始狀態}'` 的資料（id = testId）
+- When: 呼叫 `{functionB}(testId)`
+- Then: `{狀態欄位}` 變為 `'{預期狀態}'`
+- And: 其他欄位不受影響
+
+**AC-1.2** — {ModuleView} 渲染與互動
+- Given: DataStore 中有 2 筆 `{過濾條件}` 的資料
+- When: 渲染 `<{ModuleView} {prop}="{值}" />`
+- Then: 畫面顯示 2 筆資料卡片
+- And: 點擊操作按鈕後呼叫對應的 service 函式
 
 ---
 

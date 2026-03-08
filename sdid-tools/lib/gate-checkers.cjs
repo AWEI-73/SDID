@@ -20,7 +20,13 @@ function checkFormatCompleteness(draft, rawContent = '') {
     issues.push({ level: 'WARN', code: 'FMT-003', msg: '缺少「族群識別」表格' });
   }
   if (Object.keys(draft.entities).length === 0) {
-    issues.push({ level: 'WARN', code: 'FMT-004', msg: '缺少「實體定義」(Entity Tables)' });
+    // 區分「完全沒寫」和「有寫但 parser 解不到（格式錯誤）」
+    const hasEntitySection = /#{2,4}\s*2\.\s*實體定義/.test(rawContent);
+    if (hasEntitySection) {
+      issues.push({ level: 'BLOCKER', code: 'FMT-004', msg: '「實體定義」區塊存在但無法解析 — 請使用標準格式：每個實體用 #### EntityName 開頭，下方接欄位表格；或使用扁平表格（第一欄為「實體名稱」）' });
+    } else {
+      issues.push({ level: 'BLOCKER', code: 'FMT-004', msg: '缺少「實體定義」(Entity Tables)，請加入 ## 2. 實體定義 區塊' });
+    }
   }
   if (Object.keys(draft.modules).length === 0) {
     // iter-2+ 的藍圖可能省略模組定義（已在 iter-1 定義過）
@@ -37,10 +43,16 @@ function checkFormatCompleteness(draft, rawContent = '') {
     issues.push({ level: 'BLOCKER', code: 'FMT-007', msg: '缺少「模組動作清單」' });
   }
 
-  // FMT-008: 樣式策略
-  const hasStyleStrategy = /\*\*樣式策略\*\*\s*:\s*\S/.test(rawContent);
-  if (!hasStyleStrategy) {
+  // FMT-008: 樣式策略 — 必須是單一值，不能用 / 並列多個
+  const styleMatch = rawContent.match(/\*\*樣式策略\*\*\s*:\s*(.+)/);
+  if (!styleMatch) {
     issues.push({ level: 'BLOCKER', code: 'FMT-008', msg: '缺少「樣式策略」定義 (在共用模組區塊加上 **樣式策略**: CSS Modules / Tailwind / Global CSS / CSS-in-JS)' });
+  } else {
+    const styleValue = styleMatch[1].trim();
+    // 不能用 / 並列多個選項（代表還沒選）
+    if (/\s*\/\s*/.test(styleValue)) {
+      issues.push({ level: 'BLOCKER', code: 'FMT-008', msg: `樣式策略必須選定單一值，不能並列多個: "${styleValue}"。請從以下選一個: CSS Modules / Tailwind CSS / Global CSS / CSS-in-JS` });
+    }
   }
 
   // FMT-009: 動作類型必須是合法值
@@ -83,12 +95,18 @@ function checkFormatCompleteness(draft, rawContent = '') {
     issues.push({ level: 'BLOCKER', code: 'FMT-010', msg: `實體定義欄位不足，請補齊欄位（型別/約束/說明）:\n  ${thinEntities.join('\n  ')}` });
   }
 
-  // FMT-011: 模組公開 API 必須有型別簽名 (含括號)
+  // FMT-011: 模組公開 API 必須有型別簽名 (含括號 + 參數型別或回傳型別)
   const noSigModules = [];
   for (const [name, mod] of Object.entries(draft.modules)) {
     const apis = mod.publicAPI || [];
     if (apis.length === 0) continue;
-    const hasTypedSig = apis.some(a => /\(.*\)/.test(a) && a.length > 5);
+    const hasTypedSig = apis.some(a => {
+      if (!/\(.*\)/.test(a)) return false;       // 沒括號
+      if (a.length <= 5) return false;            // 太短
+      const hasReturnType = /\)\s*:\s*\w+/.test(a);  // 有回傳型別
+      const hasParamType = /\(\s*\w+\s*:\s*\w+/.test(a); // 有參數型別
+      return hasReturnType || hasParamType;
+    });
     if (!hasTypedSig) {
       noSigModules.push(`${name}: ${apis.slice(0, 2).join(', ')}`);
     }
@@ -532,6 +550,48 @@ function checkIterActionBudget(draft) {
 }
 
 /**
+ * 20. MODIFY 函式存在性驗證 — evolution=MODIFY 的動作必須在 functions.json 中存在
+ * 防止 AI 在 draft-to-plan 時修改一個根本不存在的函式
+ */
+function checkModifyFunctionExists(draft, targetIter, projectRoot) {
+  const issues = [];
+  if (!projectRoot) return issues;
+
+  // 讀 functions.json
+  const functionsPath = require('path').join(projectRoot, '.gems', 'docs', 'functions.json');
+  if (!require('fs').existsSync(functionsPath)) return issues; // 第一個 iter 還沒有 functions.json，跳過
+
+  let existingFns;
+  try {
+    const fj = JSON.parse(require('fs').readFileSync(functionsPath, 'utf8'));
+    existingFns = new Set((fj.functions || []).map(f => f.name));
+  } catch { return issues; }
+
+  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.iter !== targetIter) continue;
+    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+
+    for (const item of (mod.items || [])) {
+      const isModify = (item.operation === 'MOD') ||
+        (item.evolution || '').toUpperCase() === 'MODIFY' ||
+        (item.techName || '').includes('[Modify]');
+      if (!isModify) continue;
+
+      const cleanName = (item.techName || '').replace(/\s*\[Modify\]/i, '').trim();
+      if (cleanName && !existingFns.has(cleanName)) {
+        issues.push({
+          level: 'BLOCKER',
+          code: 'MOD-001',
+          msg: `[${modName}/${cleanName}] evolution=MODIFY 但 functions.json 中找不到此函式。請確認函式名稱正確，或改為 NEW（新增）`
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+/**
  * 11. 演化層依賴驗證 (v2.1) — 確保 L(N) 的動作不依賴 L(N+1) 的動作
  */
 function checkEvolutionLayers(draft) {
@@ -767,11 +827,36 @@ function checkAPISignatureCompleteness(draft, targetIter) {
 }
 
 /**
- * 19. AC 完整性 (v2.2) — P0/P1 動作的 AC 欄位不能空白
- * Gate 規則 ACC-001
+ * 解析 draft rawContent 的「驗收條件」區塊，回傳所有已定義的 AC 編號 Set
+ * 支援格式：
+ *   - **AC-1.0**: ...
+ *   ### AC-1.0: ...
+ *   **AC-1.0** — ...
  */
-function checkACIntegrity(draft, targetIter) {
+function parseDefinedACs(rawContent) {
+  const defined = new Set();
+  if (!rawContent) return defined;
+  const lines = rawContent.split('\n');
+  let inACSection = false;
+  for (const line of lines) {
+    if (/^#+\s*.*驗收(條件|標準)/i.test(line)) { inACSection = true; continue; }
+    if (inACSection && /^#{1,2}\s/.test(line) && !/驗收|AC/i.test(line) && !/^###/.test(line)) break;
+    if (!inACSection) continue;
+    // 匹配 ### AC-1.0 或 - **AC-1.0** 或 **AC-1.0**
+    const m = line.match(/AC[-_]?(\d+[\.\-]\d+)/i);
+    if (m) defined.add(`AC-${m[1].replace('-', '.')}`);
+  }
+  return defined;
+}
+
+/**
+ * 19. AC 完整性 (v2.3) — 雙向驗證
+ *   ACC-001: P0/P1 動作缺少 AC 欄位（動作清單 → 驗收條件）
+ *   ACC-002: 動作清單的 AC 編號在「驗收條件」區塊找不到定義（防止空殼 AC）
+ */
+function checkACIntegrity(draft, targetIter, rawContent) {
   const issues = [];
+  const definedACs = parseDefinedACs(rawContent);
 
   for (const [modName, mod] of Object.entries(draft.moduleActions)) {
     if (mod.iter !== targetIter) continue;
@@ -788,6 +873,22 @@ function checkACIntegrity(draft, targetIter) {
           code: 'ACC-001',
           msg: `[${modName}/${item.techName}] P0/P1 動作缺少 AC 欄位。請在動作清單加入 AC 編號（如 AC-1.0），並在「驗收條件」區塊定義 Given/When/Then`
         });
+        continue;
+      }
+
+      // ACC-002: AC 編號有填，但驗收條件區塊找不到對應定義
+      if (rawContent && definedACs.size > 0) {
+        // 支援多個 AC（逗號分隔，如 "AC-1.0, AC-1.1"）
+        const acIds = ac.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^AC-\d+\.\d+$/i.test(s));
+        for (const acId of acIds) {
+          if (!definedACs.has(acId)) {
+            issues.push({
+              level: 'BLOCKER',
+              code: 'ACC-002',
+              msg: `[${modName}/${item.techName}] AC 編號 "${acId}" 在「驗收條件」區塊找不到對應定義。請在 ## ✅ 驗收條件 區塊加入 **${acId}**: Given ... When ... Then ...`
+            });
+          }
+        }
       }
     }
   }
@@ -818,6 +919,13 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
     return lower === 'shared' || lower.includes('foundation') || lower.includes('infra') || lower.includes('config');
   };
 
+  // 純後端模組豁免 VSC-002（GAS/API/Backend 模組本來就沒有前端）
+  const isApiOnlyModule = (name) => {
+    const lower = name.toLowerCase();
+    return lower.includes('gas') || lower.includes('gasapi') || lower.includes('backend') ||
+      lower.includes('api-only') || lower.includes('server') || lower.includes('worker');
+  };
+
   // ── Foundation：只檢查 ROUTE 殼（BLOCKER 維持）──
   for (const [modName, mod] of Object.entries(draft.moduleActions)) {
     if (mod.iter !== targetIter) continue;
@@ -835,19 +943,21 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
   }
 
   // ── per-iter 聚合：收集每個 iter 的 type 組成 ──
-  const iterTypes = {}; // { iterNum: { backend: bool, frontend: bool, modules: [] } }
+  const iterTypes = {}; // { iterNum: { backend: bool, frontend: bool, modules: [], apiOnly: bool } }
 
   for (const [modName, mod] of Object.entries(draft.moduleActions)) {
     if (mod.fillLevel === 'done') continue;
     if (isFoundationModule(modName)) continue;
 
     const iterNum = mod.iter;
-    if (!iterTypes[iterNum]) iterTypes[iterNum] = { backend: false, frontend: false, modules: [], isStub: false };
+    if (!iterTypes[iterNum]) iterTypes[iterNum] = { backend: false, frontend: false, modules: [], isStub: false, apiOnly: false };
 
     const items = mod.items || [];
     const isStub = mod.fillLevel === 'stub';
     if (isStub) iterTypes[iterNum].isStub = true;
     iterTypes[iterNum].modules.push(modName);
+    // 如果 iter 內所有模組都是純後端模組，標記豁免
+    if (isApiOnlyModule(modName)) iterTypes[iterNum].apiOnly = true;
 
     for (const item of items) {
       const t = (item.type || '').toUpperCase();
@@ -859,10 +969,11 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
   // ── CURRENT iter：per-iter 聚合 WARN ──
   const currentIterData = iterTypes[targetIter];
   if (currentIterData && !currentIterData.isStub) {
-    const { backend, frontend, modules } = currentIterData;
+    const { backend, frontend, modules, apiOnly } = currentIterData;
     const modList = modules.join(', ');
 
-    if (backend && !frontend) {
+    // 純後端模組（GAS/API/Backend）豁免 VSC-002
+    if (backend && !frontend && !apiOnly) {
       issues.push({
         level: 'WARN', code: 'VSC-002',
         msg: `iter-${targetIter} [${modList}] 只有後端 story，沒有前端層 (UI/ROUTE)。如果是刻意的純 API iter 可忽略，否則建議加入前端 story 讓使用者可操作`
@@ -880,10 +991,11 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
   for (const [iterNum, data] of Object.entries(iterTypes)) {
     if (parseInt(iterNum) === targetIter) continue;
     if (!data.isStub) continue;
-    const { backend, frontend, modules } = data;
+    const { backend, frontend, modules, apiOnly } = data;
     const modList = modules.join(', ');
 
-    if (backend && !frontend) {
+    // 純後端模組豁免 VSC-004
+    if (backend && !frontend && !apiOnly) {
       issues.push({
         level: 'WARN', code: 'VSC-004',
         msg: `[Stub] iter-${iterNum} [${modList}] 目前只規劃了後端 story。建議在同一個 iter 加入前端 story，或確認前端會在後續 iter 補上`
@@ -934,4 +1046,5 @@ module.exports = {
   checkIterActionBudget,
   checkVerticalSliceCompleteness,
   checkACIntegrity,
+  checkModifyFunctionExists,
 };

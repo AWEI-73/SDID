@@ -64,15 +64,45 @@ function inferDepsRisk(depsStr) {  if (!depsStr || depsStr === '無') return 'LO
   return 'LOW';
 }
 
-/** 根據 priority 推導測試策略 */
-function inferTestStrategy(priority) {
-  switch (priority) {
-    case 'P0': return '✓ Unit | ✓ Integration | ✓ E2E';
-    case 'P1': return '✓ Unit | ✓ Integration | - E2E';
-    case 'P2': return '✓ Unit | - Integration | - E2E';
-    case 'P3': return '✓ Unit | - Integration | - E2E';
-    default: return '✓ Unit | - Integration | - E2E';
+/**
+ * 根據 GEMS-FLOW + GEMS-DEPS + hasAC 機械推導測試策略
+ * 
+ * 條件 C（優先）：GEMS-FLOW 含 SHEET/GAS/FETCH/DOM 或 deps 含外部資源 → poc-html
+ * 條件 A：GEMS-FLOW 含 CALC/COMPUTE/PARSE/FORMAT/CONVERT/ROC/DATE → ac-runner（有AC）或 jest-unit
+ * 條件 B：有 deps 且 DEPS-RISK >= MEDIUM → jest-integ
+ * 無 A/B/C → skip
+ * 
+ * @param {string} flow - GEMS-FLOW 字串
+ * @param {string} deps - GEMS-DEPS 字串
+ * @param {string} depsRisk - GEMS-DEPS-RISK 字串
+ * @param {boolean} hasAC - 是否有 AC 驗收條件
+ * @returns {string} 測試策略字串
+ */
+function inferTestStrategy(flow, deps, depsRisk, hasAC) {
+  const steps = (flow || '').toUpperCase().split('→').map(s => s.trim());
+  const depsStr = (deps || '').toUpperCase();
+
+  // 條件 C：外部資源依賴（GAS/Spreadsheet/fetch/DOM）
+  const hasExternal =
+    steps.some(s => /SHEET|GAS|SPREADSHEET|FETCH|DOM|LOCALSTORAGE/.test(s)) ||
+    /GAS|FETCH|DOM|LOCALSTORAGE/.test(depsStr);
+  if (hasExternal) return 'poc-html';
+
+  // 條件 A：非顯然計算（CALC/PARSE/FORMAT/CONVERT 等）
+  const hasCalc = steps.some(s => /CALC|COMPUTE|PARSE|FORMAT|CONVERT|ROC|DATE|FILTER|SORT|MAP|REDUCE/.test(s));
+  if (hasCalc) {
+    if (hasAC) return 'ac-runner';
+    return 'jest-unit';
   }
+
+  // 條件 B：跨邊界格式假設（用 DEPS-RISK 近似，MEDIUM 以上保守假設有格式轉換）
+  const hasDeps = deps && deps !== '無' && deps.trim() !== '';
+  if (hasDeps && (depsRisk === 'HIGH' || depsRisk === 'MEDIUM')) {
+    return 'jest-integ';
+  }
+
+  // 無 A/B/C → skip
+  return 'skip';
 }
 
 /** 根據 type 推導測試檔案名 */
@@ -111,7 +141,7 @@ function inferVscType(specType, techName, isModify) {
 }
 
 /** 根據 type 推導檔案路徑（委派給 Architecture Contract） */
-function inferFilePath(techName, type, moduleName) {
+function inferFilePath(techName, type, moduleName, layer) {
   const kebab = techName
     .replace(/([a-z])([A-Z])/g, '$1-$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
@@ -119,7 +149,7 @@ function inferFilePath(techName, type, moduleName) {
 
   // 使用 Architecture Contract 統一路徑規則，確保與 phase-1 一致
   const contract = require('../sdid-core/architecture-contract.cjs');
-  return contract.inferFilePath(type, moduleName, kebab);
+  return contract.inferFilePath(type, moduleName, kebab, layer);
 }
 
 /** 從 flow 字串生成 [STEP] 錨點 */
@@ -156,12 +186,14 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
     const fileAction = isModify ? 'Modify' : 'New';
     const evolution = a.evolution || a['演化'] || 'BASE';
 
-    const testStrategy = inferTestStrategy(a.priority);
-    const testFile = inferTestFile(cleanName, a.type);
     const depsStr = resolveDeps(a.deps, moduleInfo.deps);
     const depsRisk = inferDepsRisk(depsStr);
+    const acRef2 = (a.ac || a['AC'] || '').trim();
+    const hasAC = acRef2 && acRef2 !== '-';
+    const testStrategy = inferTestStrategy(a.flow, depsStr, depsRisk, hasAC);
+    const testFile = testStrategy.startsWith('jest') ? inferTestFile(cleanName, a.type) : null;
     const stepAnchors = generateStepAnchors(a.flow);
-    const filePath = inferFilePath(cleanName, a.type, moduleName);
+    const filePath = inferFilePath(cleanName, a.type, moduleName, moduleInfo.layer);
     const acRef = (a.ac || a['AC'] || '').trim();
     const acBlock = acRef && acRef !== '-'
       ? `\n**驗收條件**: ${acRef}`
@@ -179,7 +211,7 @@ function generatePlan(draft, iterNum, storyIndex, moduleName, actions, options =
  * GEMS-DEPS: ${depsStr}
  * GEMS-DEPS-RISK: ${depsRisk}
  * GEMS-TEST: ${testStrategy}
- * GEMS-TEST-FILE: ${testFile}
+ * GEMS-TEST-FILE: ${testFile || '-'}
  */
 ${acRef && acRef !== '-' ? acRef.split(/[,;]\s*/).map(ac => `// ${ac.trim()}`).join('\n') + '\n' : ''}${stepAnchors}
 \`\`\`
@@ -289,6 +321,69 @@ function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, o
   const result = { generated: [], skipped: [] };
   const moduleDeps = options.moduleDeps || [];
 
+  // 讀取 contract（如果存在），用於注入型別
+  let contractData = null;
+  try {
+    const { loadContract } = require('../sdid-tools/blueprint-contract-writer.cjs');
+    contractData = loadContract(targetDir, iterNum);
+  } catch { /* contract 不存在或解析失敗，繼續用 stub */ }
+
+  /**
+   * 從 contract 找到對應 Story 的 Entity 名稱，生成 re-export 而非重複定義
+   * 比對策略：先找 story 完全符合，找不到就找所有 entity（CONST 通常是 Story-1.0 的型別層）
+   */
+  function resolveContractReExport(storyId) {
+    if (!contractData) return null;
+    let entities = contractData.entities.filter(e => e.story === storyId);
+    // fallback：如果 story 沒有對應 entity，取所有 entity（適合 CONST 型別層）
+    if (entities.length === 0) entities = contractData.entities;
+    if (entities.length === 0) return null;
+    const names = entities.map(e => e.name);
+    return `// 型別統一來源: core-types.ts（禁止在此重複定義）\nexport type { ${names.join(', ')} } from '../config/core-types';`;
+  }
+
+  /**
+   * 從 contract 找到對應的 @GEMS-API interface，注入 SVC 骨架
+   * 比對策略：techName 包含 api.name（不區分大小寫，去掉 I 前綴），story 不限
+   */
+  function resolveContractInterface(storyId, techName) {
+    if (!contractData) return null;
+    const cleanTech = techName.toLowerCase().replace(/^i/, ''); // 去掉 I 前綴
+    const apis = contractData.apis.filter(a => {
+      const cleanApi = a.name.toLowerCase().replace(/^i/, '');
+      return (
+        a.story === storyId ||
+        cleanApi.includes(cleanTech) ||
+        cleanTech.includes(cleanApi)
+      );
+    });
+    if (apis.length === 0) return null;
+    return apis.map(api => {
+      const methods = api.methods.map(m =>
+        `  ${m.name}(${m.params}): ${m.returnType};`
+      ).join('\n');
+      return `export interface ${api.name} {\n${methods}\n}`;
+    }).join('\n\n');
+  }
+
+  /**
+   * 從 contract 找到對應 Story 的 @GEMS-SEED 初始資料
+   * CONST 類型用此方法，生成帶初始值的常數
+   */
+  function resolveContractSeed(storyId, techName) {
+    if (!contractData) return null;
+    const seeds = (contractData.seeds || []).filter(s =>
+      s.story === storyId ||
+      s.name.toLowerCase().includes(techName.toLowerCase())
+    );
+    if (seeds.length === 0) return null;
+    return seeds.map(s => {
+      const json = JSON.stringify(s.data, null, 2)
+        .split('\n').join('\n');
+      return `export const ${s.constName || s.name.toUpperCase()}: ${s.type}[] = ${json};`;
+    }).join('\n\n');
+  }
+
   for (const a of actions) {
     // v2.3: 用 operation 欄位判斷（向後相容 [Modify] 標記）
     const isMod = (a.operation === 'MOD') || (a.techName || '').includes('[Modify]');
@@ -303,7 +398,7 @@ function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, o
       .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
       .toLowerCase();
 
-    const filePath = inferFilePath(cleanName, a.type, moduleName);
+    const filePath = inferFilePath(cleanName, a.type, moduleName, options.moduleLayer);
     const fullPath = path.join(targetDir, filePath);
 
     // 如果檔案已存在，跳過（不覆蓋）
@@ -315,11 +410,12 @@ function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, o
     const isTsx = filePath.endsWith('.tsx');
     const depsStr = resolveDeps(a.deps, moduleDeps);
     const depsRisk = inferDepsRisk(depsStr);
-    const testStrategy = inferTestStrategy(a.priority);
-    const testFile = inferTestFile(cleanName, a.type);
+    const acRef = (a.ac || a['AC'] || '').trim();
+    const hasAC = acRef && acRef !== '-';
+    const testStrategy = inferTestStrategy(a.flow, depsStr, depsRisk, hasAC);
+    const testFile = testStrategy.startsWith('jest') ? inferTestFile(cleanName, a.type) : null;
 
     // AC 行
-    const acRef = (a.ac || a['AC'] || '').trim();
     const acLines = [];
     if (acRef && acRef !== '-') {
       // 支援多個 AC（逗號分隔）
@@ -347,14 +443,42 @@ function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, o
       ` * GEMS-DEPS: ${depsStr}`,
       ` * GEMS-DEPS-RISK: ${depsRisk}`,
       ` * GEMS-TEST: ${testStrategy}`,
-      ` * GEMS-TEST-FILE: ${testFile}`,
+      ` * GEMS-TEST-FILE: ${testFile || '-'}`,
       ' */',
       ...acLines,
       ...stepLines,
     ];
 
-    // export 簽名
-    if (isTsx) {
+    // 根據 type 決定骨架內容策略
+    const actionType = (a.type || '').toUpperCase();
+    const reExport = resolveContractReExport(storyId);
+    const seedData = resolveContractSeed(storyId, cleanName);
+    const ifaceBody = resolveContractInterface(storyId, cleanName);
+
+    if (actionType === 'CONST' || actionType === 'LIB') {
+      // 問題 1: re-export 而非重複定義
+      lines.push('');
+      if (reExport) {
+        lines.push(reExport);
+      }
+      // 問題 4: 如果有 @GEMS-SEED，展開常數初始值
+      if (seedData) {
+        lines.push('');
+        lines.push(seedData);
+      } else if (!reExport) {
+        lines.push(`export const ${cleanName.toUpperCase()}: unknown[] = []; // TODO: 填入初始資料`);
+      }
+    } else if (actionType === 'SVC' || actionType === 'API') {
+      // 問題 2: SVC 類型注入 interface 本體
+      lines.push('');
+      if (ifaceBody) {
+        lines.push(ifaceBody);
+        lines.push('');
+      }
+      lines.push(`export function ${cleanName}(/* TODO */) {`);
+      lines.push(`  throw new Error('Not implemented — ${storyId}');`);
+      lines.push('}');
+    } else if (isTsx) {
       lines.push(`export default function ${cleanName}() {`);
       lines.push(`  throw new Error('Not implemented — ${storyId}');`);
       lines.push('}');
@@ -542,7 +666,7 @@ Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
 
       const scaffoldResult = generateScaffold(
         args.target, args.iter, scaffoldIdx, mod.id, mod.actions,
-        { dryRun: args.dryRun, moduleDeps: mod.deps }
+        { dryRun: args.dryRun, moduleDeps: mod.deps, moduleLayer: mod.layer }
       );
 
       for (const g of scaffoldResult.generated) {
@@ -567,7 +691,7 @@ Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
 
       const scaffoldResult = generateScaffold(
         args.target, args.iter, scaffoldIdx, mod.id, mod.actions,
-        { dryRun: true, moduleDeps: mod.deps }
+        { dryRun: true, moduleDeps: mod.deps, moduleLayer: mod.layer }
       );
 
       for (const g of scaffoldResult.generated) {

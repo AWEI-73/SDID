@@ -918,7 +918,7 @@ function compareFlowSteps(planPath, scanResult) {
 
     // 2. 比對 [STEP] 錨點
     // 從實際程式碼的原始檔案讀取 [STEP] 錨點（含行號）
-    const stepDetail = extractActualStepsDetailed(codeFn);
+    const stepDetail = extractActualStepsDetailed(codeFn, planPath);
     const actualSteps = stepDetail.steps;
 
     if (plan.expectedSteps.length > 0 && actualSteps.length > 0) {
@@ -975,11 +975,15 @@ function compareFlowSteps(planPath, scanResult) {
  * 從掃描結果的原始檔案讀取 [STEP] 錨點（含行號）
  * @returns {{ steps: string[], stepLines: { name: string, line: number }[], filePath: string|null }}
  */
-function extractActualStepsDetailed(codeFn) {
+function extractActualStepsDetailed(codeFn, planPath) {
   const filePath = codeFn.file;
   if (!filePath) return { steps: [], stepLines: [], filePath: null };
 
-  const candidates = [filePath, path.resolve(filePath)];
+  // v1.1: 支援從 planPath 逆推專案根目錄，解決路徑不一致問題
+  const projectRoot = planPath ? path.resolve(path.dirname(planPath), '../../../../') : process.cwd();
+  const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(projectRoot, filePath);
+
+  const candidates = [absolutePath, filePath, path.resolve(filePath)];
 
   for (const fp of candidates) {
     if (fs.existsSync(fp)) {
@@ -1089,6 +1093,32 @@ function extractActualSteps(codeFn, scanResult) {
   return extractActualStepsDetailed(codeFn).steps;
 }
 
+/**
+ * 從 implementation_plan_Story-X.Y.md 提取所有 P0/P1 驗收條件 ID
+ * 格式：**驗收條件**: AC-X.Y 或 **驗收條件**: AC-X.Y, AC-X.Z
+ * @param {string} planPath
+ * @returns {string[]} AC ID 陣列，如 ['AC-0.0', 'AC-0.1']
+ */
+function extractPlanACs(planPath) {
+  const fs = require('fs');
+  if (!fs.existsSync(planPath)) return [];
+  const content = fs.readFileSync(planPath, 'utf8');
+  const acSet = new Set();
+  // 只收集 P0/P1 的 AC（往前找 Priority 行）
+  const lines = content.split('\n');
+  let lastPriority = null;
+  for (const line of lines) {
+    const pMatch = line.match(/\*\*Priority\*\*:\s*(P[0-3])/i);
+    if (pMatch) lastPriority = pMatch[1];
+    const acMatch = line.match(/\*\*驗收條件\*\*:\s*(.+)/);
+    if (acMatch && (lastPriority === 'P0' || lastPriority === 'P1')) {
+      const ids = acMatch[1].match(/AC-[\d.]+/g) || [];
+      ids.forEach(id => acSet.add(id));
+    }
+  }
+  return [...acSet];
+}
+
 module.exports = {
   // 原有功能
   extractPlanSpec,
@@ -1107,5 +1137,8 @@ module.exports = {
   compareFilePaths,
 
   // FLOW↔STEP 一致性 v1.0
-  compareFlowSteps
+  compareFlowSteps,
+
+  // AC 清單 — 從 plan 提取所有 P0/P1 驗收條件 ID
+  extractPlanACs,
 };

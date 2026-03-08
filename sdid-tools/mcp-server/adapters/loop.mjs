@@ -27,23 +27,26 @@ function inferBlueprintState(projectRoot, iterNum) {
 
 export const schema = {
   title: 'SDID Loop (主入口)',
-  description: `★ 推薦入口 — 自動偵測專案狀態並執行下一步，支援四條路線：
-  Blueprint: GATE → PLAN → BUILD (Phase 1-8) → SHRINK → VERIFY
-  Task-Pipe: POC → PLAN → BUILD → SCAN
+  description: `🔁 唯一主流程入口 — 所有 SDID 開發流程必須從此工具開始，禁止直接呼叫其他 sdid-* 工具。自動偵測專案狀態並執行下一步，支援四條路線：
+  Blueprint: GATE → PLAN → BUILD (Phase 1-8) → VERIFY
+  Task-Pipe: POC → PLAN → BUILD → SCAN → VERIFY
   POC-FIX:   micro-fix-gate → 修復循環
   MICRO-FIX: micro-fix-gate → DONE
 每次呼叫會：(1) 偵測路線+當前階段 (2) 執行對應工具 (3) 回傳結果 + @TASK 或 @NEXT 指示。
 收到 @TASK 時請修改程式碼，修完後再次呼叫此工具。收到 @PASS 時直接再次呼叫。
-⚠️ 不要自行組合其他工具，此工具會自動處理完整流程。`,
+💡 route 參數: 新專案可指定 route="Task-Pipe" 強制走 POC→PLAN→BUILD→SCAN 流程，或 route="Blueprint" 走活藍圖流程。省略則自動偵測。
+⛔ 嚴禁在 sdid-loop 之外自行呼叫 sdid-blueprint-gate、sdid-spec-gen、sdid-spec-gate、sdid-build、sdid-scan、sdid-micro-fix-gate、sdid-poc-scaffold。
+⛔ 嚴禁讀取 sdid-tools/*.cjs、task-pipe/**/*.cjs、sdid-core/*.cjs 等框架腳本原始碼 — 不得透過讀腳本推斷驗證邏輯來針對性修改 draft 或 src 過關。只根據 @TASK/@BLOCKER 的錯誤訊息修復。`,
   inputSchema: {
     project: z.string().describe('專案根目錄路徑'),
     iter: z.number().optional().describe('迭代編號（省略則自動偵測最新）'),
     story: z.string().optional().describe('指定 Story ID（BUILD 階段用，省略則自動偵測）'),
-    forceStart: z.string().optional().describe('強制從指定階段開始（GATE/PLAN/BUILD-N/SHRINK/VERIFY）'),
+    forceStart: z.string().optional().describe('強制從指定階段開始（GATE/PLAN/BUILD-N/VERIFY/POC/SCAN）。SHRINK 已移為可選工具，可手動執行 node task-pipe/tools/shrink-tags.cjs。'),
+    route: z.enum(['Blueprint', 'Task-Pipe']).optional().describe('強制指定開發路線。Blueprint=活藍圖流程(GATE→PLAN→BUILD→VERIFY)；Task-Pipe=漸進式流程(POC→PLAN→BUILD→SCAN→VERIFY)。省略則自動偵測。'),
   },
 };
 
-export async function handler({ project, iter, story, forceStart }) {
+export async function handler({ project, iter, story, forceStart, route }) {
   const fs = require('fs');
   const projectRoot = resolvePath(project);
 
@@ -76,10 +79,10 @@ export async function handler({ project, iter, story, forceStart }) {
       const inferred = inferBlueprintState(projectRoot, iterNum);
       state = { phase: 'BUILD', step: parseInt(buildMatch[1] || '1'), story: story || inferred.plannedStories?.[0], draftPath: inferred.draftPath, plannedStories: inferred.plannedStories, completedStories: inferred.completedStories };
     } else {
-      const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'NEXT-ITER': 'NEXT_ITER', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX', 'CYNEFIN-CHECK': 'CYNEFIN_CHECK', 'CYNEFIN': 'CYNEFIN_CHECK' };
+      const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'NEXT-ITER': 'NEXT_ITER', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX', 'CYNEFIN-CHECK': 'CYNEFIN_CHECK', 'CYNEFIN': 'CYNEFIN_CHECK', 'CONTRACT': 'CONTRACT' };
       const phase = phaseMap[forceStart.toUpperCase()];
       if (!phase) {
-        return { content: [{ type: 'text', text: `ERROR: 無效的 forceStart: ${forceStart}\n有效值: GATE, PLAN, BUILD-N, SHRINK, VERIFY, POC, SCAN, NEXT-ITER, POC-FIX, MICRO-FIX` }] };
+        return { content: [{ type: 'text', text: `ERROR: 無效的 forceStart: ${forceStart}\n有效值: GATE, PLAN, BUILD-N, VERIFY, POC, SCAN, NEXT-ITER, POC-FIX, MICRO-FIX, CONTRACT\n💡 SHRINK 已移為可選工具，請直接執行: node task-pipe/tools/shrink-tags.cjs --target=<project>` }] };
       }
       const inferred = inferBlueprintState(projectRoot, iterNum);
       state = { phase, draftPath: inferred.draftPath, plannedStories: inferred.plannedStories, completedStories: inferred.completedStories };
@@ -96,19 +99,39 @@ export async function handler({ project, iter, story, forceStart }) {
   lines.push('');
   lines.push(`📁 專案: ${projectRoot}`);
   lines.push(`📍 迭代: iter-${iterNum}`);
-  const route = stateMachine.detectRoute(projectRoot);
-  lines.push(`📍 路線: ${route}`);
+  const detectedRoute = stateMachine.detectRoute(projectRoot, `iter-${iterNum}`);
+  const effectiveRoute = route || detectedRoute;
+  lines.push(`📍 路線: ${effectiveRoute}${route && route !== detectedRoute ? ` (強制，偵測為 ${detectedRoute})` : ''}`);
+
+  // 如果明確指定 Task-Pipe，強制走 POC 路線
+  // 條件：沒有 requirement_spec_iter-N.md（POC Step 5 產物）時，強制回 POC
+  // 有 spec 代表 POC 已完成，可以繼續 PLAN/BUILD
+  if (route === 'Task-Pipe') {
+    const pocDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc');
+    const hasSpec = fs.existsSync(pocDir) &&
+      fs.readdirSync(pocDir).some(f => f.startsWith('requirement_spec_'));
+    if (!hasSpec) {
+      const wasAlreadyPoc = state.phase === 'POC';
+      state.phase = 'POC';
+      if (!wasAlreadyPoc) state.step = '1';
+    }
+  }
   lines.push(`📍 狀態: ${state.phase}${state.step ? ' Phase ' + state.step : ''}${state.story ? ' ' + state.story : ''}`);
 
   // ========== HUB: 注入現有程式碼 context ==========
   const functionsPath = path.join(projectRoot, '.gems', 'docs', 'functions.json');
-  const shouldInjectFull = ['GATE', 'PLAN'].includes(state.phase) ||
+  const shouldInjectFull = ['GATE', 'PLAN', 'POC'].includes(state.phase) ||
     (state.phase === 'BUILD' && (state.step || 1) === 1);
   const shouldInjectStory = state.phase === 'BUILD' && (state.step || 1) > 1;
 
   if (fs.existsSync(functionsPath) && (shouldInjectFull || shouldInjectStory)) {
     try {
       const fj = JSON.parse(fs.readFileSync(functionsPath, 'utf8'));
+      // generatedBy 警告：若 functions.json 由 VERIFY auto-scan 產出，行號可能不準
+      if (fj.generatedBy === 'blueprint-verify auto-scan') {
+        lines.push('  ⚠️  [HUB] functions.json 由 VERIFY auto-scan 產出（非正式 SCAN），行號可能與源碼不符');
+        lines.push('       建議：執行 sdid-loop forceStart=SCAN 更新正式快照');
+      }
       const allFns = fj.functions || [];
       let fnsToShow = allFns;
 
@@ -121,9 +144,27 @@ export async function handler({ project, iter, story, forceStart }) {
       if (fnsToShow.length > 0) {
         lines.push('');
         lines.push(`📋 現有函式清單 (functions.json, ${fnsToShow.length}/${allFns.length}):`);
+
+        // M11: 先列出 MODIFY 函式警示
+        const modifyFns = fnsToShow.filter(fn =>
+          (fn.evolution || '').toUpperCase() === 'MODIFY' ||
+          (fn.name || '').includes('[Modify]')
+        );
+        if (modifyFns.length > 0) {
+          lines.push(`  ⚠️ evolution=MODIFY 函式（修改既有實作，請勿重新建立）:`);
+          for (const fn of modifyFns) {
+            const risk = fn.risk || fn.priority || '?';
+            const storyId = fn.storyId ? ` | ${fn.storyId}` : '';
+            lines.push(`    ⚠️ ${fn.name} | ${risk} | ${fn.file}${storyId}`);
+          }
+        }
+
         for (const fn of fnsToShow) {
           const risk = fn.risk || fn.priority || '?';
-          lines.push(`  - ${fn.name} | ${risk} | ${fn.file} | ${fn.flow}`);
+          const storyId = fn.storyId ? ` | ${fn.storyId}` : '';
+          const isModify = (fn.evolution || '').toUpperCase() === 'MODIFY' || (fn.name || '').includes('[Modify]');
+          const prefix = isModify ? '  ⚠️' : '  -';
+          lines.push(`${prefix} ${fn.name} | ${risk} | ${fn.file} | ${fn.flow}${storyId}`);
         }
         lines.push('');
       }
@@ -145,25 +186,91 @@ export async function handler({ project, iter, story, forceStart }) {
 
   // Special states
   if (state.phase === 'NO_DRAFT') {
+    const draftTarget = `${projectRoot}/.gems/iterations/iter-${iterNum}/poc/requirement_draft_iter-${iterNum}.md`;
     lines.push('');
-    lines.push('@BLOCKER: 找不到 requirement_draft');
-    lines.push(`請先建立活藍圖: ${projectRoot}/.gems/iterations/iter-${iterNum}/poc/requirement_draft_iter-${iterNum}.md`);
-    lines.push('參考模板: task-pipe/templates/enhanced-draft-golden.template.v2.md');
+    lines.push('@ARCHITECT: 找不到 requirement_draft — 啟動 Blueprint Architect 引導模式');
     lines.push('');
-    lines.push('⚠️ 寫 draft 注意事項:');
-    lines.push('  - UI/HOOK/ROUTE 的 flow 必須描述業務行為，不是 React 機制');
-    lines.push('  - ✅ UI: FETCH_DATA→RENDER→BIND_EVENTS  ❌ 禁止: CONFIG→MOUNT→RENDER');
-    lines.push('  - ✅ HOOK: CALL_API→UPDATE_STATE→RETURN  ❌ 禁止: USESTATE→USEEFFECT→RETURN');
-    lines.push('  - ✅ ROUTE: CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT  ❌ 禁止: MOUNT→RENDER');
-    lines.push('  - 詳細詞彙表: .agent/skills/sdid/references/action-type-mapping.md');
+    lines.push('════════════════════════════════════════════════');
+    lines.push('  SDID Blueprint Architect — 互動式需求引導');
+    lines.push('════════════════════════════════════════════════');
+    lines.push('');
+    lines.push('@TASK');
+    lines.push('ACTION: 以下列 5 輪對話引導使用者，完成後自行撰寫 draft 存檔');
+    lines.push(`FILE: ${draftTarget}`);
+    lines.push('');
+    lines.push('─── Round 1: 目標釐清 ───────────────────────');
+    lines.push('問使用者:');
+    lines.push('  1. 這個系統要解決什麼問題？（一句話，≥10 字）');
+    lines.push('  2. 誰會用？（列出角色 + 每個角色的主要任務）');
+    lines.push('  3. 有沒有「彈性/可變/不固定」的需求？（觸發變異點分析）');
+    lines.push('確認後輸出: 一句話目標 + 族群識別表');
+    lines.push('');
+    lines.push('─── Round 2: 實體識別 ───────────────────────');
+    lines.push('問使用者:');
+    lines.push('  系統需要管理哪些資料？每筆資料有什麼欄位？');
+    lines.push('確認後輸出: 實體定義表格（欄位/型別/約束）');
+    lines.push('');
+    lines.push('─── Round 3: 模組拆分 ───────────────────────');
+    lines.push('問使用者:');
+    lines.push('  哪些功能是所有人共用的？哪些是特定角色專屬的？');
+    lines.push('確認後輸出: 模組清單 + 每個模組的公開 API + 樣式策略');
+    lines.push('');
+    lines.push('─── Round 4: 迭代規劃 ───────────────────────');
+    lines.push('問使用者:');
+    lines.push('  第一版 MVP 要做到什麼程度？哪些可以後面再做？');
+    lines.push('確認後輸出: 迭代規劃表（七欄: Iter/範圍/目標/模組/交付/依賴/狀態）');
+    lines.push('⚠️ 規則: Iter-1 = Foundation (型別+介面契約+前端殼)，功能性 iter 必須是垂直切片');
+    lines.push('');
+    lines.push('─── Round 5: 動作細化 ───────────────────────');
+    lines.push('問使用者:');
+    lines.push('  每個模組具體要做哪些操作？資料怎麼流動？');
+    lines.push('確認後輸出: 動作清單（業務語意/類型/技術名稱/P/流向/依賴/操作/狀態）');
+    lines.push('⚠️ 動作類型: CONST/LIB/API/SVC/HOOK/UI/ROUTE');
+    lines.push('⚠️ 優先級: P0=端到端協議 P1=跨模組整合 P2=獨立功能 P3=輔助');
+    lines.push('⚠️ flow 必須描述業務行為，不是框架機制:');
+    lines.push('   ✅ UI: FETCH_DATA→RENDER→BIND_EVENTS');
+    lines.push('   ❌ 禁止: CONFIG→MOUNT→RENDER');
+    lines.push('   ✅ HOOK: CALL_API→UPDATE_STATE→RETURN');
+    lines.push('   ❌ 禁止: USESTATE→USEEFFECT→RETURN');
+    lines.push('');
+    lines.push('─── 完成後: 寫入 draft ──────────────────────');
+    lines.push(`@EXPECTED: 將完整活藍圖寫入 ${draftTarget}`);
+    lines.push('格式參考: task-pipe/templates/enhanced-draft-golden.template.v2.md');
+    lines.push('');
+    lines.push('必要區塊:');
+    lines.push('  - 一句話目標 (≥10 字)');
+    lines.push('  - 族群識別表');
+    lines.push('  - 實體定義');
+    lines.push('  - 模組清單 + 公開 API + 樣式策略');
+    lines.push('  - 迭代規劃表 (七欄)');
+    lines.push('  - 動作清單 (含 P/flow/deps/操作欄位)');
+    lines.push('  - 草稿狀態: [x] DONE');
+    lines.push('  - 方法論: SDID v2.1');
+    lines.push('');
+    lines.push('@NEXT_COMMAND: 寫完 draft 後再次呼叫 sdid-loop 繼續流程');
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
 
   if (state.phase === 'COMPLETE') {
     lines.push('');
     lines.push('@PASS: iter-' + iterNum + ' 全部完成！');
-    lines.push(`<promise>${route === 'Blueprint' ? 'BLUEPRINT' : route.toUpperCase()}-COMPLETE</promise>`);
+    lines.push(`<promise>${effectiveRoute === 'Blueprint' ? 'BLUEPRINT' : effectiveRoute.toUpperCase()}-COMPLETE</promise>`);
     return { content: [{ type: 'text', text: lines.join('\n') }] };
+  }
+
+  // Task-Pipe 路線：BUILD 全部完成後 → SCAN（不經過 SHRINK，state machine 返回 VERIFY 時重導向）
+  if (effectiveRoute === 'Task-Pipe' && state.phase === 'VERIFY') {
+    const hasScanLog = (() => {
+      try {
+        const logsDir = require('path').join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+        return require('fs').existsSync(logsDir) &&
+          require('fs').readdirSync(logsDir).some(f => f.startsWith('scan-pass-'));
+      } catch { return false; }
+    })();
+    if (!hasScanLog) {
+      state.phase = 'SCAN';
+      lines.push(`↪️  Task-Pipe: VERIFY → SCAN（尚未執行 SCAN）`);
+    }
   }
 
   // Execute the appropriate tool
@@ -178,9 +285,17 @@ export async function handler({ project, iter, story, forceStart }) {
       break;
     }
     case 'PLAN': {
-      if (!state.draftPath) { lines.push('@BLOCKER: 找不到 draft 檔案'); return { content: [{ type: 'text', text: lines.join('\n') }] }; }
-      lines.push(`🚀 執行: draft-to-plan.cjs`);
-      result = await runCli('draft-to-plan.cjs', [`--draft=${state.draftPath}`, `--iter=${iterNum}`, `--target=${projectRoot}`]);
+      if (effectiveRoute === 'Task-Pipe') {
+        // Task-Pipe 路線：spec 已有 5.5 函式規格表，直接機械轉換
+        lines.push(`🚀 執行: spec-to-plan.cjs (spec → plan 機械轉換，跳過 PLAN 步驟)`);
+        result = await runCli('../task-pipe/tools/spec-to-plan.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
+      } else {
+        // Blueprint 路線：機械轉換 draft/spec → plan
+        lines.push(`🚀 執行: draft-to-plan.cjs`);
+        const dtpArgs = [`--iter=${iterNum}`, `--target=${projectRoot}`];
+        if (state.draftPath) dtpArgs.unshift(`--draft=${state.draftPath}`);
+        result = await runCli('draft-to-plan.cjs', dtpArgs);
+      }
       break;
     }
     case 'BUILD': {
@@ -192,9 +307,24 @@ export async function handler({ project, iter, story, forceStart }) {
       break;
     }
     case 'SHRINK': {
+      // SHRINK 已移為可選工具，自動流程不再強制執行
+      // 若由 forceStart=SHRINK 觸發，仍可手動執行（向後相容）
+      lines.push(`ℹ️  SHRINK 已移為可選工具，自動跳至下一階段`);
+      lines.push(`💡 若需壓縮 GEMS 標籤，請手動執行: node task-pipe/tools/shrink-tags.cjs --target=${projectRoot}`);
+      lines.push(`💡 若需壓縮 draft/plan 文件，請手動執行: node sdid-tools/blueprint-shrink.cjs --draft=<draft> --target=${projectRoot} --iter=${iterNum}`);
+      lines.push('');
+      // 根據路線決定下一步
+      state.phase = effectiveRoute === 'Task-Pipe' ? 'SCAN' : 'VERIFY';
+      lines.push(`↪️  自動重導向至: ${state.phase}`);
+      // fall through to next phase by re-invoking logic below
+      if (state.phase === 'SCAN') {
+        lines.push(`🚀 執行: runner.cjs SCAN`);
+        result = await runRunner([`--phase=SCAN`, `--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
+        break;
+      }
       if (!state.draftPath) { lines.push('@BLOCKER: 找不到 draft 檔案'); return { content: [{ type: 'text', text: lines.join('\n') }] }; }
-      lines.push(`🚀 執行: blueprint-shrink.cjs`);
-      result = await runCli('blueprint-shrink.cjs', [`--draft=${state.draftPath}`, `--iter=${iterNum}`, `--target=${projectRoot}`]);
+      lines.push(`🚀 執行: blueprint-verify.cjs`);
+      result = await runCli('blueprint-verify.cjs', [`--draft=${state.draftPath}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
       break;
     }
     case 'VERIFY': {
@@ -232,8 +362,58 @@ export async function handler({ project, iter, story, forceStart }) {
       lines.push(`FILE: ${inputPath}`);
       lines.push(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectRoot} --iter=${iterNum}`);
       lines.push('');
-      lines.push('@REMINDER: 分析完成後必須執行 cynefin-log-writer.cjs 存 log，@PASS 才能進 PLAN');
+      lines.push('@REMINDER: 分析完成後必須執行 cynefin-log-writer.cjs 存 log，@PASS 才能進 CONTRACT');
 
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    }
+    case 'CONTRACT': {
+      const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
+      const contractPath = path.join(iterPath, 'poc', `contract_iter-${iterNum}.ts`);
+
+      // contract 已存在 → 直接跑 gate 驗證（含 dirty 重新 gate）
+      if (fs.existsSync(contractPath)) {
+        if (state.contractDirty) {
+          lines.push(`🔄 CONTRACT: contract.ts 已變動，重新 gate 驗證`);
+        } else {
+          lines.push(`🚀 執行: blueprint-contract-writer.cjs (gate 驗證)`);
+        }
+        const writerArgs = [
+          `--contract=${contractPath}`,
+          `--target=${projectRoot}`,
+          `--iter=${iterNum}`,
+        ];
+        if (state.draftPath) writerArgs.push(`--draft=${state.draftPath}`);
+        result = await runCli('blueprint-contract-writer.cjs', writerArgs);
+        break;
+      }
+
+      // contract 不存在 → 輸出 @TASK 讓 AI 從 draft 推導
+      const draftPath = state.draftPath;
+      lines.push(`📝 CONTRACT: 推導介面邊界`);
+      lines.push('');
+      lines.push('@TASK');
+      lines.push('ACTION: 讀 draft，推導所有實體邊界，寫 contract_iter-N.ts');
+      lines.push(`FILE: ${contractPath}`);
+      lines.push('');
+      lines.push('推導規則:');
+      lines.push('1. 從「實體定義」區塊提取所有 Entity → 使用單行注釋格式:');
+      lines.push('   // @GEMS-CONTRACT: EntityName');
+      lines.push('   // @GEMS-TABLE: tbl_xxx');
+      lines.push('   // @GEMS-STORY: Story-X.Y');
+      lines.push('   export interface EntityName { ... }');
+      lines.push('   ⚠️ 禁止用 JSDoc /** @GEMS-CONTRACT */ 格式，必須是 // 單行注釋');
+      lines.push('2. 每個欄位加 DB 型別註解（VARCHAR/UUID/INT/DECIMAL/ENUM/TIMESTAMP）');
+      lines.push('3. 為每個 Entity 建立對應的 View（前端不需要的欄位標 api-only）');
+      lines.push('4. 從「模組動作清單」的 API 欄位提取 → @GEMS-API interface');
+      lines.push('5. 每個 @GEMS-CONTRACT/@GEMS-API 標註對應的 @GEMS-STORY');
+      lines.push('');
+      lines.push('格式參考: .agent/poc/gems-next/BLUEPRINT_CONTRACT_DESIGN.md');
+      if (draftPath) lines.push(`Draft: ${draftPath}`);
+      lines.push('');
+      lines.push(`@EXPECTED: 寫完後執行:`);
+      lines.push(`node sdid-tools/blueprint-contract-writer.cjs --contract=${contractPath} --target=${projectRoot}${draftPath ? ` --draft=${draftPath}` : ''} --iter=${iterNum}`);
+      lines.push('');
+      lines.push('@REMINDER: 執行 contract-writer @PASS 後再次呼叫 sdid-loop 繼續流程');
       return { content: [{ type: 'text', text: lines.join('\n') }] };
     }
     case 'NEXT_ITER': {
@@ -267,19 +447,47 @@ export async function handler({ project, iter, story, forceStart }) {
   if (result.ok) {
     lines.push('✅ 執行完成');
     lines.push('');
-    lines.push('@NEXT: 請讀取上方輸出：');
-    lines.push('  - 如果有 @TASK → 根據指示修改程式碼，修完後再次呼叫 sdid-loop');
-    lines.push('  - 如果有 @PASS → 直接再次呼叫 sdid-loop（會自動進入下一階段）');
-    lines.push('  - 如果有 @BLOCKER → 根據錯誤訊息修正，修完後再次呼叫 sdid-loop');
+    lines.push('@NEXT: 有 @TASK → 修完再呼叫 | 有 @PASS → 直接再呼叫 | 有 @BLOCKER → 修完再呼叫');
   } else {
     lines.push('❌ 執行失敗');
     lines.push('');
-    lines.push('@NEXT: 請讀取上方錯誤訊息，修正問題後再次呼叫 sdid-loop');
-    lines.push(`  logs 目錄: ${projectRoot}/.gems/iterations/iter-${iterNum}/logs/`);
+    // 主動找最新的 error log，注入 @READ_FIRST 讓 AI 直接讀結構化錯誤
+    // 優先找當前 phase/story 相關的 log，避免抓到舊的 gate log
+    const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+    let latestErrorLog = null;
+    try {
+      const fs = require('fs');
+      if (fs.existsSync(logsDir)) {
+        const allErrorLogs = fs.readdirSync(logsDir)
+          .filter(f => /-error-\d{4}-/.test(f) || f.includes('-blocker-'))
+          .map(f => ({ name: f, mtime: fs.statSync(path.join(logsDir, f)).mtimeMs }))
+          .sort((a, b) => b.mtime - a.mtime);
+
+        // 優先：當前 phase + story 的 error log
+        const phaseKey = state.phase === 'BUILD' ? `build-phase-${state.step}` : state.phase?.toLowerCase();
+        const storyKey = state.story ? state.story.toLowerCase() : null;
+        const specific = allErrorLogs.find(f => {
+          const n = f.name.toLowerCase();
+          return phaseKey && n.includes(phaseKey) && (!storyKey || n.includes(storyKey));
+        });
+
+        // Fallback：全域最新
+        latestErrorLog = (specific || allErrorLogs[0])?.name || null;
+      }
+    } catch (e) { }
+
+    if (latestErrorLog) {
+      lines.push(`🛑 @READ_FIRST (必讀，禁止跳過): ${path.join(logsDir, latestErrorLog)}`);
+      lines.push('  ↳ 此 log 含有 @TASK、EXPECTED、GATE_SPEC — 是唯一授權的修復依據');
+      lines.push('  ↳ 未讀此 log 前，禁止修改任何程式碼');
+    } else {
+      lines.push('@NEXT: 請讀取上方錯誤訊息，修正問題後再次呼叫 sdid-loop');
+      lines.push(`  logs 目錄: ${logsDir}`);
+    }
   }
 
   lines.push('');
-  lines.push('⚠️ 不要自行呼叫 spec-gen、spec-gate、scanner 等工具，sdid-loop 會處理完整流程。');
+  lines.push('@FORBIDDEN ❌ 禁呼叫 spec-gen/scanner 等工具 | ❌ 禁讀框架腳本推斷邏輯 | ✅ 只照 @TASK 修復');
 
   return { content: [{ type: 'text', text: lines.join('\n') }] };
 }

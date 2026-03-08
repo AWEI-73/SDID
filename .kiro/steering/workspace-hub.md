@@ -3,23 +3,23 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-04 02:37:24 UTC
+**更新**: 2026-03-08 14:07:30 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
-## ROADMAP 進度
-Strategy Roadmap v2.8，最後更新 2026-02-16
+## SDID 框架架構
+ARCHITECTURE.md v5.0，更新 2026-03-04
 
-| Phase | 狀態 |
-|-------|------|
-| P0: project-memory 接入 runner.cjs ✅ (2026-02-14 完成) | ✅ |
-| P0.5: 輸出對齊強化 ✅ (2026-02-15 完成) | ✅ |
-| P0.8: Health Report + Plan Schema (2026-02-15 完成) | ✅ |
-| P1: state.json 整合 (2026-02-15 完成) | ✅ |
-| P1.5: Plan Protocol — 中間層協定化 (2026-02-15 完成) | ✅ |
-| P2: 雙入口互通 — POC Step 1 支援 `--from-draft` (2026-02-15 完成) | ✅ |
-| P3: Blueprint Flow 的 loop.cjs 整合 (2026-02-15 完成) | ✅ |
-| P4: @GUARD 可配置化 (2026-02-15 完成) | ✅ |
+**四條路線**:
+- 路線 A: Blueprint Flow（主線）
+- 路線 B: POC-FIX
+- 路線 C: MICRO-FIX
+- 路線 D: Task-Pipe Flow（備用）
+
+## ROADMAP Milestone
+最後更新 —
+
+**待做**: M11 — MODIFY 函式提示：loop.mjs HUB 注入加 ⚠️ evolution=MODIFY 警示 | M12 — iter 函式快照保存：SCAN 後存 functions-snapshot.json 到 iter 目錄供跨 iter diff | M13 — shrink 後 storyId 保留（技術債）
 
 ## SDID 框架
 這些是框架本身，不是被管理的 project，通常不需要大量掃描：
@@ -34,6 +34,7 @@ Strategy Roadmap v2.8，最後更新 2026-02-16
 **Worktrees**:
 - `main` → C:/Users/user/Desktop/SDID
 - `claude/agitated-saha` → C:/Users/user/Desktop/SDID/.claude/worktrees/agitated-saha
+- `claude/agitated-taussig` → C:/Users/user/Desktop/SDID/.claude/worktrees/agitated-taussig
 - `claude/determined-beaver` → C:/Users/user/Desktop/SDID/.claude/worktrees/determined-beaver
 - `claude/eager-lichterman` → C:/Users/user/Desktop/SDID/.claude/worktrees/eager-lichterman
 - `claude/hungry-snyder` → C:/Users/user/Desktop/SDID/.claude/worktrees/hungry-snyder
@@ -42,28 +43,29 @@ Strategy Roadmap v2.8，最後更新 2026-02-16
 - `claude/silly-agnesi` → C:/Users/user/Desktop/SDID/.claude/worktrees/silly-agnesi
 - `claude/stoic-black` → C:/Users/user/Desktop/SDID/.claude/worktrees/stoic-black
 - `claude/sweet-proskuriakova` → C:/Users/user/Desktop/SDID/.claude/worktrees/sweet-proskuriakova
+- `claude/trusting-fermi` → C:/Users/user/Desktop/SDID/.claude/worktrees/trusting-fermi
 - `claude/vigilant-heyrovsky` → C:/Users/user/Desktop/SDID/.claude/worktrees/vigilant-heyrovsky
 
 **最近 commits**:
-- d698e3e fix(refs): 清除所有舊 loop script 引用 — 統一指向 MCP sdid-loop
-- 2fddba7 fix(loop): build-execution.md 改用 MCP sdid-loop + state-machine 加 POC-FIX 完成判斷
-- 95f838f docs: 清理過時文件 + ARCHITECTURE.md v5.0 + workspace-hub ROADMAP 補全
-- e532c83 feat(mcp): micro-fix-gate 加 iter 參數 + 新增 sdid-poc-scaffold tool
-- 41a3725 feat(poc-fix): micro-fix-gate 加 --iter + log 寫入 + poc-fix.md Phase 4 加 poc-to-scaffold 步驟
-- 6fae224 feat(poc-fix): consolidation-parser + poc-to-scaffold — POC-FIX 骨架遷移工具
-- 3b6fd58 feat(verify): AC 未標記降為 @WARN — PASS 判定加 acAllTagged 條件
-- cdedd20 feat(docs+deps): v3 文件更新 + DEPS 模組推導 resolveDeps()
+- eba6573 feat(phase-5): 整合 ac-runner — Step 6.2 AC 機械驗收
+- 5529917 feat(sdid-tools): ac-runner v1.0 — 純計算函式機械驗收工具
+- 0957326 fix(blueprint-verify): Wave 3.3 — 載入 functions.json 後自動補 acIds
+- f35e01c fix(phase-7): findNewPages 改用 path-first 判斷 Page 類型
+- a8a3a9f fix(framework): Bug1 + Bug2 — functions.json 繼承 + STUB 不再覆蓋 CURRENT
+- eab9168 refactor(gate): 拆分 blueprint-gate.cjs 為 lib/gate-checkers + gate-score + gate-report
+- 29ef154 feat(gate): v1.4 — FMT-010/011/012 + score 樣式修正 + stub flow 解析 + parser 放寬 heading + 完整 getFixGuidance
+- 0a53ad5 feat(gate): 綠地偵測 — 自動找 draft + 無藍圖時輸出 @TASK 引導去 Gem chatbot
 
 ## 專案狀態（SDID 管理中）
 
 | Project | Iter | Phase | Badge | Tech |
 |---------|------|-------|-------|------|
+| 訓練資源管理 | iter-2 | DONE | @PASS | — |
 | ExamForge | iter-11 | DONE | @PASS | — |
 | my_workflow | iter-4 | BUILD-1 | @BLOCK | — |
-| sdid-blueprint-lab | iter-1 | PLAN-1 | @BLOCK | — |
-| test-blueprint-flow | iter-1 | DONE | @PASS | — |
+| test-blueprint-flow | iter-2 | — | — | — |
 
-**無 .gems（非 SDID 管理）**: ralph-main, sdid-core
+**無 .gems（非 SDID 管理）**: sdid-core
 
 ## 關鍵路徑
 ```

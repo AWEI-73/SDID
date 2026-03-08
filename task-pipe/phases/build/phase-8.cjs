@@ -312,6 +312,15 @@ NEXT: node task-pipe/runner.cjs --phase=SCAN --target=${relativeTarget}`
         // 保留原始 console.log 給終端機看
         console.log(warningNote + execWarningNote);
 
+        // 寫 pass log，讓 state-machine 的 log-based inference 能正確推進到 SHRINK
+        try {
+          const logsDir = path.join(target, '.gems', 'iterations', iteration, 'logs');
+          if (fs.existsSync(logsDir)) {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            fs.writeFileSync(path.join(logsDir, `build-phase-8-${story}-pass-${ts}.log`), '@PASS\n', 'utf8');
+          }
+        } catch (e) { }
+
         return { verdict: 'PASS', nextPhase: 'SCAN', iterationComplete: true, smokeResult };
       }
 

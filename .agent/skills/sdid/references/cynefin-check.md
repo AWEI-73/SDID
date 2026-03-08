@@ -113,4 +113,9 @@
 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=<N>
 ```
 
-log 寫入成功後才算 `@PASS`，loop 才會放行進入 PLAN/BUILD。
+log 寫入成功後才算 `@PASS`，loop 才會放行進入 **CONTRACT** 節點。
+
+> ⚠️ Blueprint 路線：CYNEFIN-CHECK @PASS 後的下一步是 **CONTRACT**（推導型別邊界），不是直接 PLAN。
+> CONTRACT @PASS 後才進 PLAN（draft-to-plan）。
+>
+> Task-Pipe 路線：CYNEFIN-CHECK @PASS 後直接進 PLAN Step 1。

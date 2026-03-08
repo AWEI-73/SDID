@@ -52,55 +52,58 @@ function safeExec(cmd, cwd) {
 }
 
 // ─── ROADMAP 解析 ────────────────────────────────────────────
-// 從 STRATEGY_ROADMAP.md 解析各 Phase 的完成狀態
+// 從根目錄 ROADMAP.md 解析 Milestone 狀態
 
 function parseRoadmap() {
-  const roadmapPath = path.join(WORKSPACE_ROOT, 'task-pipe', 'docs', 'STRATEGY_ROADMAP.md');
+  const roadmapPath = path.join(WORKSPACE_ROOT, 'ROADMAP.md');
   const raw = safeRead(roadmapPath);
   if (!raw) return null;
 
-  // 取第一行的版本資訊
-  const versionMatch = raw.match(/# SDID 戰略藍圖 (v[\d.]+)/);
-  const version = versionMatch ? versionMatch[1] : '—';
-
   // 取更新日期
-  const dateMatch = raw.match(/更新日期: ([\d-]+)/);
+  const dateMatch = raw.match(/最後更新[：:]\s*([\d-]+)/);
   const updatedAt = dateMatch ? dateMatch[1] : '—';
 
-  // 解析每個 Phase 區塊：### P{N}... 開頭
-  const phases = [];
-  const phaseRegex = /^### (P[\d.]+[^(]+?)(?:\s*\(([\d-]+[^)]*)\))?\s*(✅|⏸|🚧)?\s*$/gm;
+  // 解析 Milestone：### ★ M{N} 或 ### M{N}
+  const milestones = [];
+  const msRegex = /^###\s+(?:★\s+)?(M\d+[^|✅⬜🟡\n]+?)\s*(✅[^\n]*|🟡[^\n]*|⬜[^\n]*)?$/gm;
   let match;
-  while ((match = phaseRegex.exec(raw)) !== null) {
+  while ((match = msRegex.exec(raw)) !== null) {
     const label = match[1].trim();
-    const date  = match[2] ? match[2].trim() : null;
-    const icon  = match[3] || null;
-
-    // 判斷狀態：有 ✅ 或括號內有「完成」→ done；有 ⏸ 或「暫緩」→ paused；其他 → pending
+    const statusStr = (match[2] || '').trim();
     let status = 'pending';
-    if (icon === '✅' || (date && /完成|done/i.test(date))) status = 'done';
-    else if (icon === '⏸' || /暫緩|pause|deferred/i.test(label + (date || ''))) status = 'paused';
-    else if (icon === '🚧') status = 'wip';
-
-    // 補充：用內文的 ✅ 計數比對（取 ### 後下一個 ### 前的區塊）
-    phases.push({ label, date, status });
+    if (statusStr.startsWith('✅')) status = 'done';
+    else if (statusStr.startsWith('🟡')) status = 'wip';
+    milestones.push({ label, status });
   }
 
-  // 若 regex 沒抓到（格式可能略有不同），改用更寬鬆的方式
-  if (phases.length === 0) {
-    const lines = raw.split('\n');
-    for (const line of lines) {
-      const m = line.match(/^###\s+(P[\d.]+.+)/);
-      if (!m) continue;
-      const label = m[1].trim();
-      let status = 'pending';
-      if (/✅/.test(label) || /完成/.test(label)) status = 'done';
-      else if (/⏸/.test(label) || /暫緩/.test(label)) status = 'paused';
-      phases.push({ label: label.replace(/✅|⏸|🚧/g, '').trim(), status });
-    }
+  return { updatedAt, milestones };
+}
+
+// ─── ARCHITECTURE 摘要 ───────────────────────────────────────
+// 從根目錄 ARCHITECTURE.md 提取路線與腳本地圖摘要
+
+function parseArchitecture() {
+  const archPath = path.join(WORKSPACE_ROOT, 'ARCHITECTURE.md');
+  const raw = safeRead(archPath);
+  if (!raw) return null;
+
+  // 取版本
+  const verMatch = raw.match(/版本:\s*(v[\d.]+)/);
+  const version = verMatch ? verMatch[1] : '—';
+
+  // 取更新日期
+  const dateMatch = raw.match(/更新:\s*([\d-]+)/);
+  const updatedAt = dateMatch ? dateMatch[1] : '—';
+
+  // 提取四條路線名稱
+  const routes = [];
+  const routeRegex = /^### 路線\s*[A-D][：:]\s*(.+)$/gm;
+  let m;
+  while ((m = routeRegex.exec(raw)) !== null) {
+    routes.push(m[1].trim());
   }
 
-  return { version, updatedAt, phases };
+  return { version, updatedAt, routes };
 }
 
 // ─── 讀 project 最新 iter 的 .state.json ─────────────────────
@@ -293,10 +296,22 @@ function scan() {
     }
   }
 
+  // 合併 roadmap：保留 hub.json 手動維護的 milestones，只更新 updatedAt
+  const parsedRoadmap = parseRoadmap();
+  const existingHub = safeJSON(OUT_FILE);
+  const existingMilestones = existingHub?.roadmap?.milestones || [];
+  const roadmap = {
+    updatedAt: parsedRoadmap?.updatedAt || '—',
+    milestones: parsedRoadmap?.milestones?.length > 0
+      ? parsedRoadmap.milestones   // ROADMAP.md 有解析到就用（未來支援）
+      : existingMilestones,        // 否則保留現有 hub.json 的手動資料
+  };
+
   return {
     generatedAt:   new Date().toISOString(),
     workspaceRoot: WORKSPACE_ROOT,
-    roadmap:       parseRoadmap(),
+    roadmap,
+    architecture:  parseArchitecture(),
     git:           getGitInfo(),
     framework,
     projects,
@@ -361,6 +376,124 @@ function deriveBadge(projData) {
   return { iter: latestIter, phase, badge };
 }
 
+// ─── 生成 ROADMAP.md（架構快照 + 導航）─────────────────────
+
+function generateRoadmap(hub) {
+  const lines = [];
+  const ts = hub.generatedAt.replace('T', ' ').slice(0, 19);
+
+  lines.push(`# SDID 快速導航`);
+  lines.push(`> 自動生成 — ${ts} UTC | 手動更新: \`node sdid-monitor/update-hub.cjs\``);
+  lines.push('');
+
+  // ── 框架路線 ──
+  lines.push(`## 框架路線`);
+  if (hub.architecture) {
+    const { version, routes } = hub.architecture;
+    lines.push(`ARCHITECTURE.md ${version}`);
+    lines.push('');
+    const routeKeys = ['A', 'B', 'C', 'D'];
+    const routeDesc = [
+      '需求模糊 / 大型功能',
+      '第三方串接 / 特化模組',
+      '單函式微調 / 快速修復',
+      '漸進式設計 / 小型專案（備用）',
+    ];
+    routes.forEach((r, i) => {
+      lines.push(`**路線 ${routeKeys[i]}**: ${r}`);
+      if (routeDesc[i]) lines.push(`  → 適用: ${routeDesc[i]}`);
+    });
+  } else {
+    lines.push(`_找不到 ARCHITECTURE.md_`);
+  }
+  lines.push('');
+
+  // ── 專案動向 ──
+  lines.push(`## 專案動向`);
+  lines.push('');
+
+  const sdidProjects = Object.entries(hub.projects)
+    .filter(([, p]) => p.hasGems)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  if (sdidProjects.length === 0) {
+    lines.push('_無 SDID 管理中的專案_');
+  } else {
+    for (const [name, p] of sdidProjects) {
+      const info = deriveBadge(p);
+      const iter  = info?.iter  || '—';
+      const phase = info?.phase || '—';
+      const badge = info?.badge || '';
+
+      // 推斷下一步指令
+      let nextCmd = null;
+      if (phase && phase !== 'DONE' && phase !== '—') {
+        if (phase === 'GATE' || phase.startsWith('GATE')) {
+          nextCmd = `node sdid-tools/blueprint-gate.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
+        } else if (phase === 'PLAN') {
+          nextCmd = `node sdid-tools/draft-to-plan.cjs --draft=<draft.md> --iter=${iter.replace('iter-', '')} --target=${name}`;
+        } else if (phase.startsWith('BUILD-')) {
+          const phaseNum = parseInt(phase.replace('BUILD-', '')) || 1;
+          const nextPhase = badge === '@BLOCK' ? phaseNum : phaseNum + 1;
+          nextCmd = `node task-pipe/runner.cjs --phase=BUILD --step=${nextPhase} --target=${name}`;
+        } else if (phase === 'SHRINK✓' || phase === 'VERIFY') {
+          nextCmd = `node sdid-tools/blueprint-verify.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
+        } else if (phase.startsWith('POC-')) {
+          const stepNum = parseInt(phase.replace('POC-', '')) || 1;
+          nextCmd = `node task-pipe/runner.cjs --phase=POC --step=${stepNum} --target=${name}`;
+        } else if (phase.startsWith('PLAN-')) {
+          const stepNum = parseInt(phase.replace('PLAN-', '')) || 1;
+          nextCmd = `node task-pipe/runner.cjs --phase=PLAN --step=${stepNum} --target=${name}`;
+        }
+      }
+
+      const badgeStr = badge ? ` \`${badge}\`` : '';
+      lines.push(`### ${name}${badgeStr}`);
+      lines.push(`- iter: ${iter} | phase: ${phase}`);
+      if (nextCmd) lines.push(`- 下一步: \`${nextCmd}\``);
+
+      // project-memory pitfall 摘要（最多 2 條）
+      const memPath = path.join(WORKSPACE_ROOT, name, '.gems', 'project-memory.json');
+      const mem = safeJSON(memPath);
+      if (mem?.pitfalls?.length) {
+        const recent = mem.pitfalls.slice(-2);
+        lines.push(`- ⚠ pitfall: ${recent.map(p => p.summary || p.message || String(p)).join(' | ')}`);
+      }
+      lines.push('');
+    }
+  }
+
+  const nonSdid = Object.entries(hub.projects).filter(([, p]) => !p.hasGems);
+  if (nonSdid.length) {
+    lines.push(`_非 SDID 管理: ${nonSdid.map(([n]) => n).join(', ')}_`);
+    lines.push('');
+  }
+
+  // ── 工具快速參考 ──
+  lines.push(`## 工具快速參考`);
+  lines.push('');
+  lines.push('```bash');
+  lines.push('# Blueprint Flow');
+  lines.push('node sdid-tools/blueprint-gate.cjs --draft=<path> --target=<proj> --iter=N');
+  lines.push('node sdid-tools/draft-to-plan.cjs  --draft=<path> --iter=N --target=<proj>');
+  lines.push('node task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<proj>');
+  lines.push('node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=N --target=<proj>');
+  lines.push('node sdid-tools/blueprint-verify.cjs --draft=<path> --target=<proj> --iter=N');
+  lines.push('');
+  lines.push('# POC-FIX / MICRO-FIX');
+  lines.push('node sdid-tools/micro-fix-gate.cjs --changed=<files> --target=<proj> --iter=N');
+  lines.push('');
+  lines.push('# 狀態查詢');
+  lines.push('node sdid-tools/state-guide.cjs --project=<proj>');
+  lines.push('');
+  lines.push('# Monitor');
+  lines.push('node sdid-monitor/server.cjs   # http://localhost:3737');
+  lines.push('node sdid-monitor/update-hub.cjs  # 手動刷新');
+  lines.push('```');
+
+  return lines.join('\n');
+}
+
 // ─── 生成 workspace-hub.md（Claude 認知快照）────────────────
 
 function generateMarkdown(hub) {
@@ -373,25 +506,40 @@ function generateMarkdown(hub) {
   lines.push(`**Monitor**: http://localhost:3737`);
   lines.push('');
 
-  // ── 1. ROADMAP 進度 ──
-  lines.push(`## ROADMAP 進度`);
-  if (hub.roadmap) {
-    const { version, updatedAt, phases } = hub.roadmap;
-    lines.push(`Strategy Roadmap ${version}，最後更新 ${updatedAt}`);
-    lines.push('');
-    lines.push(`| Phase | 狀態 |`);
-    lines.push(`|-------|------|`);
-    for (const p of phases) {
-      const icon = p.status === 'done' ? '✅' : p.status === 'paused' ? '⏸' : p.status === 'wip' ? '🚧' : '⬜';
-      const dateStr = p.date ? ` (${p.date})` : '';
-      lines.push(`| ${p.label}${dateStr} | ${icon} |`);
+  // ── 1. SDID 框架架構 ──
+  lines.push(`## SDID 框架架構`);
+  if (hub.architecture) {
+    const { version, updatedAt, routes } = hub.architecture;
+    lines.push(`ARCHITECTURE.md ${version}，更新 ${updatedAt}`);
+    if (routes.length > 0) {
+      lines.push('');
+      lines.push(`**四條路線**:`);
+      const routeLabels = ['A', 'B', 'C', 'D'];
+      routes.forEach((r, i) => lines.push(`- 路線 ${routeLabels[i] || i+1}: ${r}`));
     }
   } else {
-    lines.push(`_找不到 STRATEGY_ROADMAP.md_`);
+    lines.push(`_找不到 ARCHITECTURE.md_`);
   }
   lines.push('');
 
-  // ── 2. SDID 框架目錄 ──
+  // ── 2. ROADMAP Milestone ──
+  lines.push(`## ROADMAP Milestone`);
+  if (hub.roadmap) {
+    const { updatedAt, milestones } = hub.roadmap;
+    lines.push(`最後更新 ${updatedAt}`);
+    lines.push('');
+    const wip  = milestones.filter(m => m.status === 'wip');
+    const todo = milestones.filter(m => m.status === 'pending');
+    const done = milestones.filter(m => m.status === 'done');
+    if (wip.length)  lines.push(`**進行中**: ${wip.map(m => m.label).join(' | ')}`);
+    if (todo.length) lines.push(`**待做**: ${todo.map(m => m.label).join(' | ')}`);
+    if (done.length) lines.push(`**完成**: ${done.map(m => m.label).join(' | ')}`);
+  } else {
+    lines.push(`_找不到 ROADMAP.md_`);
+  }
+  lines.push('');
+
+  // ── 3. SDID 框架目錄 ──
   lines.push(`## SDID 框架`);
   lines.push(`這些是框架本身，不是被管理的 project，通常不需要大量掃描：`);
   lines.push('');
@@ -401,7 +549,7 @@ function generateMarkdown(hub) {
   }
   lines.push('');
 
-  // ── 3. Git 狀態 ──
+  // ── 4. Git 狀態 ──
   lines.push(`## Git`);
   if (hub.git) {
     const { branch, commits, worktrees } = hub.git;
@@ -421,7 +569,7 @@ function generateMarkdown(hub) {
   }
   lines.push('');
 
-  // ── 4. 專案即時狀態 ──
+  // ── 5. 專案即時狀態 ──
   lines.push(`## 專案狀態（SDID 管理中）`);
   lines.push('');
   lines.push(`| Project | Iter | Phase | Badge | Tech |`);
@@ -462,7 +610,7 @@ function generateMarkdown(hub) {
   }
   lines.push('');
 
-  // ── 5. 關鍵路徑提示 ──
+  // ── 6. 關鍵路徑提示 ──
   lines.push(`## 關鍵路徑`);
   lines.push(`\`\`\``);
   lines.push(`SDID 核心腳本:`);
@@ -479,7 +627,7 @@ function generateMarkdown(hub) {
   lines.push(`\`\`\``);
   lines.push('');
 
-  // ── 6. Log 命名規則（保留，Claude 常需要） ──
+  // ── 7. Log 命名規則（保留，Claude 常需要） ──
   lines.push(`## Log 命名規則`);
   lines.push(`\`\`\``);
   lines.push(`build-phase-{N}-Story-{X.Y}-{status}-{ts}.log`);
@@ -490,7 +638,7 @@ function generateMarkdown(hub) {
   lines.push(`scan-scan-{status}-{ts}.log`);
   lines.push(`\`\`\``);
 
-  // ── 7. 規則 ──
+  // ── 8. 規則 ──
   lines.push('');
   lines.push(`## 規則`);
   lines.push(`- 先讀這個快照，不要直接 Glob 掃整個 SDID root（會 timeout）`);
@@ -536,11 +684,17 @@ const total   = Object.keys(hub.projects).length;
 const hasGems = Object.values(hub.projects).filter(p => p.hasGems).length;
 const hasFn   = Object.values(hub.projects).filter(p => p.fnData).length;
 
+// 覆寫 ROADMAP.md（架構快照 + 導航）
+const roadmapFile = path.join(WORKSPACE_ROOT, 'ROADMAP.md');
+fs.writeFileSync(roadmapFile, generateRoadmap(hub), 'utf8');
+console.log(`  roadmap   : regenerated ${roadmapFile}`);
+
 console.log(`[update-hub] ${new Date().toISOString()}`);
 console.log(`  workspace : ${WORKSPACE_ROOT}`);
 console.log(`  framework : ${Object.keys(hub.framework).join(', ')}`);
 console.log(`  projects  : ${total} total, ${hasGems} with .gems, ${hasFn} with functions`);
-console.log(`  roadmap   : ${hub.roadmap ? hub.roadmap.phases.length + ' phases parsed' : 'not found'}`);
+console.log(`  roadmap   : ${hub.roadmap ? hub.roadmap.milestones.length + ' milestones parsed' : 'not found'}`);
+console.log(`  arch      : ${hub.architecture ? hub.architecture.version + ', ' + hub.architecture.routes.length + ' routes' : 'not found'}`);
 console.log(`  git       : branch=${hub.git?.branch}, worktrees=${hub.git?.worktrees?.length || 0}`);
 console.log(`  hub.json  : ${OUT_FILE}`);
 console.log(`  hub.md    : updated ${mdWritten} memory file(s)`);

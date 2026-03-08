@@ -138,7 +138,7 @@ mkdir -p ${planPath}
   const storyMatch = story.match(/Story-(\d+)\.(\d+)/);
   const storyX = storyMatch ? parseInt(storyMatch[1]) : 1;
   const storyY = storyMatch ? parseInt(storyMatch[2]) : 0;
-  const isFoundation = storyX === 1 && storyY === 0;
+  const isFoundation = storyY === 0; // Story-X.0 都是 Foundation（基礎建設 Story）
 
   // ========================================
   // 🔍 VSC 垂直切片完整性檢查 (v1.0)
@@ -518,11 +518,11 @@ modules/[module-name]/
           console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在（部分預生成）`);
         }
       }
-      // v3.1: Story-1.0 範圍檢查 - 偵測 Plan 外的多餘檔案
-      if (isFoundation && manifest.hasManifest) {
-        const extraFiles = detectExtraFiles(srcDir, manifest, typeConfig.extensions);
+      // v3.1: 範圍檢查 - 偵測 Plan 外的多餘檔案（Story-1.0 及後續 Story 都檢查）
+      if (manifest.hasManifest) {
+        const iterNum = parseInt(iteration.replace('iter-', ''));
+        const extraFiles = detectExtraFiles(srcDir, manifest, typeConfig.extensions, iterNum);
         if (extraFiles.length > 0) {
-          const iterNum = parseInt(iteration.replace('iter-', ''));
           const retryCmd = getRetryCmd('BUILD', '1', { story, target: relativeTarget, iteration });
           const tasks = extraFiles.map(f => ({
             action: 'DELETE_FILE',
@@ -935,7 +935,7 @@ function validateModule0Structure(target, srcDir, projectType) {
  * @param {string[]} extensions - 副檔名列表
  * @returns {string[]} 多餘檔案的完整路徑列表
  */
-function detectExtraFiles(srcDir, manifest, extensions) {
+function detectExtraFiles(srcDir, manifest, extensions, iterNum = 1) {
   const extraFiles = [];
 
   // 收集 Plan 定義的檔案路徑（正規化）
@@ -952,7 +952,9 @@ function detectExtraFiles(srcDir, manifest, extensions) {
   if (plannedPaths.size === 0) return extraFiles;
 
   // 掃描 src/shared/ 和 src/config/ 下的檔案
-  const checkDirs = ['shared', 'config'].map(d => path.join(srcDir, d));
+  // iter > 1 時跳過 src/shared/（shared 是跨 iter 共用的，不應刪除前一個 iter 的產物）
+  const checkDirNames = iterNum > 1 ? ['config'] : ['shared', 'config'];
+  const checkDirs = checkDirNames.map(d => path.join(srcDir, d));
 
   for (const dir of checkDirs) {
     if (!fs.existsSync(dir)) continue;

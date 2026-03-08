@@ -58,8 +58,8 @@ function extractStories(content) {
   // 從 spec 標題提取專案名稱作為模組推導的上下文
   const projectName = extractProjectName(content);
 
-  // 匹配 ### Story X.Y: 標題 或 ### Story X.Y 標題
-  const storyPattern = /###\s+Story\s+(\d+\.\d+)[:\s]+(.+)/gi;
+  // 匹配 ### Story X.Y: 標題 或 ### Story-X.Y: 標題 或 ### Story X.Y 標題
+  const storyPattern = /###\s+Story[\s\-](\d+\.\d+)[:\s]+(.+)/gi;
   let match;
 
   while ((match = storyPattern.exec(content)) !== null) {
@@ -70,7 +70,7 @@ function extractStories(content) {
     // 提取這個 Story 區塊的內容（到下一個 ### Story 或 ## 為止）
     const blockStart = match.index;
     const remaining = content.slice(blockStart);
-    const nextStory = remaining.slice(1).search(/\n###\s+Story\s+\d+\.\d+/i);
+    const nextStory = remaining.slice(1).search(/\n###\s+Story[\s\-]\d+\.\d+/i);
     const nextSection = remaining.slice(1).search(/\n##\s+[^#]/);
     let blockEnd = remaining.length;
     if (nextStory !== -1) blockEnd = Math.min(blockEnd, nextStory + 1);

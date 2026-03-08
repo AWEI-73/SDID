@@ -22,7 +22,7 @@ const ERROR_PATTERNS = [
         pattern: /Missing GEMS-FUNC|缺少 GEMS|GEMS.*缺失|標籤覆蓋率.*不足|缺失函式|覆蓋率.*%|Missing function tags/i,
         type: 'GEMS_TAG_MISSING',
         recoverable: true,
-        suggestion: '執行 gems-fixer 自動補標籤'
+        suggestion: '在函式/介面/型別前補上 @GEMS-FUNCTION: 及 GEMS: name | P1 | ... 標籤，再重跑 blueprint-verify'
     },
     {
         pattern: /Route not registered|路由.*未註冊|未找到路由|Module.*not.*route/i,

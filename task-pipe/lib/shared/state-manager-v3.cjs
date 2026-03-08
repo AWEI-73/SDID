@@ -164,11 +164,7 @@ function getFlowSequence() {
     { phase: 'POC', step: '3' },
     { phase: 'POC', step: '4' },
     { phase: 'POC', step: '5' },
-    { phase: 'PLAN', step: '1' },
-    { phase: 'PLAN', step: '2' },
-    { phase: 'PLAN', step: '3' },
-    { phase: 'PLAN', step: '4' },
-    { phase: 'PLAN', step: '5' },
+    { phase: 'SPEC_TO_PLAN', step: 'run' },
     { phase: 'BUILD', step: '1' },
     { phase: 'BUILD', step: '2' },
     { phase: 'BUILD', step: '3' },
@@ -177,7 +173,7 @@ function getFlowSequence() {
     { phase: 'BUILD', step: '6' },
     { phase: 'BUILD', step: '7' },
     { phase: 'BUILD', step: '8' },
-    { phase: 'SHRINK', step: 'run' },
+    // SHRINK 已移為可選工具（node task-pipe/tools/shrink-tags.cjs），不再是強制節點
     { phase: 'SCAN', step: 'scan' },
     { phase: 'VERIFY', step: 'run' },
     { phase: 'NEXT_ITER', step: 'run' }

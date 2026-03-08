@@ -193,6 +193,9 @@ function parseModules(content) {
     const depsMatch = block.match(/依賴:\s*\[([^\]]*)\]/);
     const deps = depsMatch ? depsMatch[1].split(',').map(d => d.trim()).filter(Boolean) : [];
 
+    const layerMatch = block.match(/layer:\s*(feature|adapter|shared)/i);
+    const layer = layerMatch ? layerMatch[1].toLowerCase() : 'feature';
+
     // v2: 公開 API
     const apiLines = [];
     const apiSection = block.match(/公開 API[^:]*:\s*\n([\s\S]*?)(?=\n- (?:獨立功能|\[[ x]\])|\n####|\n$)/);
@@ -211,7 +214,7 @@ function parseModules(content) {
       if (text && !text.includes('{')) features.push({ text, checked });
     }
 
-    modules[name] = { name, deps, features, publicAPI: apiLines };
+    modules[name] = { name, deps, features, publicAPI: apiLines, layer };
   }
   return modules;
 }
@@ -264,6 +267,34 @@ function extractFirstTableLines(blockContent) {
     return allLines.slice(0, nextSepIdx - 1);
   }
   return allLines;
+}
+
+/**
+ * 從 block 內容提取所有子表格的資料行（合併多表格）
+ * 用第一個表格的 header，跳過後續表格的 header + separator，只保留資料行
+ * 用於 Story-0 / Story-1 分表格的 block 格式
+ */
+function extractAllTableLines(blockContent) {
+  const allLines = blockContent.split('\n').filter(l => l.includes('|') && l.trim().startsWith('|'));
+  if (allLines.length < 3) return allLines;
+  const isSep = (l) => l.split('|').map(c => c.trim()).filter(Boolean).every(c => /^:?-+:?$/.test(c));
+
+  // 找所有 separator 的位置
+  const sepIndices = allLines.map((l, i) => isSep(l) ? i : -1).filter(i => i >= 0);
+  if (sepIndices.length === 0) return allLines;
+
+  // 第一個表格：header(0) + sep(sepIndices[0]) + data rows
+  const result = [allLines[0], allLines[sepIndices[0]]]; // header + first sep
+
+  for (let s = 0; s < sepIndices.length; s++) {
+    const dataStart = sepIndices[s] + 1;
+    const dataEnd = s + 1 < sepIndices.length ? sepIndices[s + 1] - 1 : allLines.length; // 下一個 sep 前一行是 header，排除
+    for (let i = dataStart; i < dataEnd; i++) {
+      if (!isSep(allLines[i])) result.push(allLines[i]);
+    }
+  }
+
+  return result;
 }
 
 function parseModuleActions(content) {
@@ -347,9 +378,9 @@ function parseModuleActions(content) {
 
     // Full/Partial 解析
     const isPartial = block.includes('(Partial)');
-    // 移除 HTML 註解後再解析表格，只取第一個表格
+    // 移除 HTML 註解後再解析表格，合併所有子表格（支援 Story-0/Story-1 分表格格式）
     const cleanBlock = block.replace(/<!--[\s\S]*?-->/g, '');
-    const lines = extractFirstTableLines(cleanBlock);
+    const lines = extractAllTableLines(cleanBlock);
     if (lines.length < 3) {
       // Bug fix: don't overwrite CURRENT/FULL/PARTIAL with empty stub
       if (!actions[moduleName] || !['CURRENT', 'FULL', 'PARTIAL'].includes(actions[moduleName].status)) {
@@ -582,6 +613,7 @@ function getModulesByIter(draft, iter) {
         status: entry.status || actionData.status || '',
         features: moduleDetail.features || [],
         publicAPI: moduleDetail.publicAPI || [],
+        layer: moduleDetail.layer || 'feature',
         actions: actionData.items || [],
         fillLevel: actionData.fillLevel || 'stub',
       });
@@ -593,6 +625,7 @@ function getModulesByIter(draft, iter) {
         id: name, name, desc: '', deps: mod.deps || [],
         delivery: 'FULL', status: '',
         features: mod.features || [], publicAPI: mod.publicAPI || [],
+        layer: mod.layer || 'feature',
         actions: (draft.moduleActions[name] || {}).items || [],
         fillLevel: (draft.moduleActions[name] || {}).fillLevel || 'stub',
       });

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * Blueprint Expand v1.0 - Stub 展開器
+ * Blueprint Expand v2.0 - Stub 展開器 (搬運模式)
  * 
- * 進入新 iter 時，將 Stub 展開為 Full 動作清單。
- * 展開來源：Fillback suggestions + 公開 API + 模組定義。
+ * v2.0 變更: 不再「推導」動作清單，改為從 STUB 的函式 flow 清單「搬運」。
+ * STUB 必須已包含函式 flow 清單 + AC 骨架 (由 Gem Architect 在對話時填入)。
+ * 如果 STUB 沒有 flow 清單，報 BLOCKER 要求先補。
+ * 
+ * 進入新 iter 時，將 Stub 的函式 flow 清單格式化為完整動作表格。
  * 
  * 獨立工具，不 import task-pipe。
  * 
@@ -12,7 +15,7 @@
  *   node sdid-tools/blueprint-expand.cjs --draft=<path> --iter=2 --target=<project> --dry-run
  * 
  * 輸出:
- *   更新後的活藍圖 (Stub → Full 動作清單骨架)
+ *   更新後的活藍圖 (Stub 函式 flow 清單 → 完整動作表格 + 狀態欄位)
  */
 
 const fs = require('fs');
@@ -68,83 +71,52 @@ function loadPreviousFillback(projectRoot, currentIter) {
 }
 
 // ============================================
-// 動作清單推導
+// Stub Flow 清單解析
 // ============================================
 
 /**
- * 從公開 API 推導動作清單項目
+ * 從 STUB 區塊解析函式 flow 清單
+ * 格式: | 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
  */
-function inferActionsFromAPI(publicAPI, moduleName, deps) {
+function parseStubFlowTable(stubBlock) {
+  const lines = stubBlock.split('\n');
   const actions = [];
-  const depsStr = deps.length > 0
-    ? deps.map(d => `[Internal.${d}]`).join(', ')
-    : '無';
+  let inTable = false;
+  let headerParsed = false;
 
-  for (const api of publicAPI) {
-    // 解析 API 簽名: functionName(args): ReturnType
-    const match = api.match(/^(\w+)\s*\(/);
-    if (!match) continue;
-
-    const funcName = match[1];
-    const isQuery = /get|find|search|list|fetch|query/i.test(funcName);
-    const isMutation = /create|add|update|delete|remove|set/i.test(funcName);
-
-    // 推導優先級
-    let priority = 'P1';
-    if (isMutation) priority = 'P0';
-    else if (isQuery) priority = 'P1';
-
-    // 推導流向
-    let flow;
-    if (isMutation) {
-      flow = 'VALIDATE→PROCESS→PERSIST→RETURN';
-    } else if (isQuery) {
-      flow = 'VALIDATE→QUERY→TRANSFORM→RETURN';
-    } else {
-      flow = 'INIT→PROCESS→RETURN';
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // 偵測表格開始
+    if (trimmed.startsWith('| 業務語意') || trimmed.startsWith('| 業務語意')) {
+      inTable = true;
+      headerParsed = false;
+      continue;
     }
+    if (!inTable) continue;
+    // 跳過分隔行
+    if (/^\|[-| ]+\|$/.test(trimmed)) {
+      headerParsed = true;
+      continue;
+    }
+    // 結束表格
+    if (!trimmed.startsWith('|')) {
+      inTable = false;
+      continue;
+    }
+    if (!headerParsed) continue;
 
-    // 推導類型
-    const type = 'SVC';
-
-    actions.push({
-      semantic: `${funcName} 功能`,
-      type,
-      techName: funcName,
-      priority,
-      flow,
-      deps: depsStr,
-      status: '○○',
-    });
-  }
-
-  return actions;
-}
-
-/**
- * 從 Fillback suggestions 推導額外動作
- */
-function inferActionsFromFillback(suggestions, moduleName) {
-  const actions = [];
-
-  for (const s of suggestions) {
-    const text = s.description || s.title || s.suggestion || '';
-    if (!text) continue;
-
-    // 嘗試提取函式名
-    const funcMatch = text.match(/(\w+(?:Service|Handler|Manager|Controller|Validator|Helper))/);
-    const funcName = funcMatch ? funcMatch[1] : null;
-
-    if (funcName) {
+    // 解析行
+    const cols = trimmed.split('|').map(c => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1);
+    if (cols.length >= 6) {
       actions.push({
-        semantic: text.slice(0, 60),
-        type: 'SVC',
-        techName: funcName,
-        priority: s.priority || 'P2',
-        flow: 'TODO',
-        deps: '待確認',
+        semantic: cols[0],
+        type: cols[1],
+        techName: cols[2],
+        priority: cols[3],
+        flow: cols[4],
+        deps: cols[5],
+        ac: cols[6] || '-',
         status: '○○',
-        source: 'fillback',
       });
     }
   }
@@ -153,218 +125,166 @@ function inferActionsFromFillback(suggestions, moduleName) {
 }
 
 /**
- * 為模組生成基礎設施動作 (types)
+ * 從 STUB 區塊解析 AC 骨架
+ * 格式: **AC-X.Y** — 描述 \n Given/When/Then
  */
-function generateInfraActions(moduleName, deps) {
-  const depsStr = deps.length > 0
-    ? deps.map(d => `[Internal.${d}]`).join(', ')
-    : '無';
+function parseStubACs(stubBlock) {
+  const acBlocks = [];
+  const lines = stubBlock.split('\n');
+  let current = null;
 
-  return [{
-    semantic: `${moduleName} 模組型別定義`,
-    type: 'CONST',
-    techName: `${capitalize(moduleName)}Types`,
-    priority: 'P0',
-    flow: 'DEFINE→VALIDATE→FREEZE→EXPORT',
-    deps: depsStr,
-    status: '○○',
-  }];
+  for (const line of lines) {
+    const acMatch = line.match(/^\*\*(AC-[\d.]+)\*\*\s*[—-]\s*(.+)/);
+    if (acMatch) {
+      if (current) acBlocks.push(current);
+      current = { id: acMatch[1], title: acMatch[2], lines: [line] };
+    } else if (current) {
+      if (line.trim() === '' && current.lines.length > 3) {
+        acBlocks.push(current);
+        current = null;
+      } else {
+        current.lines.push(line);
+      }
+    }
+  }
+  if (current) acBlocks.push(current);
+
+  return acBlocks;
 }
 
-function capitalize(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+/**
+ * 找到 STUB 區塊的原始內容
+ */
+function findStubBlock(lines, iterNum, modName) {
+  const stubPatterns = [
+    new RegExp(`^###\\s+Iter\\s+${iterNum}:\\s*${escapeRegex(modName)}\\s*\\[STUB\\]`, 'i'),
+    new RegExp(`^###\\s+Iter\\s+${iterNum}:\\s*${escapeRegex(modName)}(?:\\s|$)`, 'i'),
+  ];
+
+  let headerIdx = -1;
+  for (const pattern of stubPatterns) {
+    for (let i = 0; i < lines.length; i++) {
+      if (pattern.test(lines[i])) { headerIdx = i; break; }
+    }
+    if (headerIdx >= 0) break;
+  }
+
+  if (headerIdx < 0) return { headerIdx: -1, endIdx: -1, block: '' };
+
+  let endIdx = lines.length;
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    if (/^###\s/.test(lines[i]) || /^---$/.test(lines[i].trim()) || /^##\s/.test(lines[i])) {
+      endIdx = i;
+      break;
+    }
+  }
+
+  return {
+    headerIdx,
+    endIdx,
+    block: lines.slice(headerIdx, endIdx).join('\n'),
+  };
 }
 
 // ============================================
-// 藍圖展開邏輯
+// 藍圖展開邏輯 (v2.0 搬運模式)
 // ============================================
 
 /**
- * 生成展開後的動作清單 Markdown
+ * 生成展開後的完整動作表格 Markdown
  */
-function generateExpandedActionTable(moduleName, iterNum, actions) {
+function generateExpandedSection(moduleName, iterNum, actions, acBlocks, storyLabel) {
   const lines = [];
   lines.push(`### Iter ${iterNum}: ${moduleName} [CURRENT]`);
   lines.push('');
-  lines.push('| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 狀態 |');
-  lines.push('|---------|------|---------|---|------|------|------|');
+  lines.push(`> Story 拆法: ${storyLabel}`);
+  lines.push('');
+  lines.push('| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 操作 | 狀態 | AC |');
+  lines.push('|---------|------|---------|---|------|------|------|------|----|');
 
   for (const a of actions) {
-    const sourceTag = a.source === 'fillback' ? ' ⚡' : '';
-    lines.push(`| ${a.semantic}${sourceTag} | ${a.type} | ${a.techName} | ${a.priority} | ${a.flow} | ${a.deps} | ${a.status} |`);
+    lines.push(`| ${a.semantic} | ${a.type} | ${a.techName} | ${a.priority} | ${a.flow} | ${a.deps} | NEW | ${a.status} | ${a.ac} |`);
   }
 
-  lines.push('');
-  lines.push(`> ⚠️ 此動作清單由 blueprint-expand 自動生成，請用 Gem chatbot 確認並補充 flow 細節`);
-  if (actions.some(a => a.source === 'fillback')) {
-    lines.push(`> ⚡ 標記項目來自前一迭代的 Fillback suggestions`);
+  // 搬運 AC 骨架
+  if (acBlocks.length > 0) {
+    lines.push('');
+    for (const ac of acBlocks) {
+      lines.push(...ac.lines);
+      lines.push('');
+    }
   }
 
   return lines.join('\n');
 }
 
 /**
- * 在原始 Markdown 中執行展開
+ * 在原始 Markdown 中執行展開 (v2.0 搬運模式)
  */
 function expandBlueprint(rawContent, draft, iterNum, projectRoot) {
   const changes = [];
   let result = rawContent;
 
-  // 取得目標 iter 的模組
   const targetModules = draft.iterationPlan.filter(e => e.iter === iterNum);
 
   if (targetModules.length === 0) {
     return { content: result, changes: [{ module: '(none)', status: 'SKIP', reason: `iter-${iterNum} 不在迭代規劃表中` }] };
   }
 
-  // 讀取 Fillback
-  const fillbackSuggestions = projectRoot ? loadPreviousFillback(projectRoot, iterNum) : [];
-
-  // 展開 targetModules，支援逗號分隔的多模組欄位（如 "exam_engine, user_grading"）
+  // 展開 targetModules，支援逗號分隔的多模組欄位
   const expandedEntries = [];
   for (const entry of targetModules) {
     const modNames = entry.module.split(',').map(m => m.trim()).filter(Boolean);
-    if (modNames.length > 1) {
-      // 多模組拆分為獨立條目
-      for (const m of modNames) {
-        expandedEntries.push(Object.assign({}, entry, { module: m }));
-      }
-    } else {
-      expandedEntries.push(entry);
+    for (const m of modNames) {
+      expandedEntries.push(Object.assign({}, entry, { module: m }));
     }
   }
 
   for (const entry of expandedEntries) {
     const modName = entry.module;
-    const actionData = draft.moduleActions[modName];
-
-    // 只展開 Stub（若 moduleActions 沒有此模組記錄，視為需要展開）
-    if (actionData && actionData.fillLevel !== 'stub') {
-      changes.push({ module: modName, status: 'SKIP', reason: `已是 ${actionData.fillLevel}，不需展開` });
-      continue;
-    }
-
-    // 收集展開來源
-    const moduleInfo = draft.modules[modName] || {};
-    const deps = entry.deps || moduleInfo.deps || [];
-    const publicAPI = moduleInfo.publicAPI || [];
-
-    // 推導動作清單
-    let actions = [];
-
-    // 1. 基礎設施動作 (types)
-    actions.push(...generateInfraActions(modName, deps));
-
-    // 2. 從公開 API 推導
-    if (publicAPI.length > 0) {
-      actions.push(...inferActionsFromAPI(publicAPI, modName, deps));
-    }
-
-    // 3. 從 Fillback 推導
-    const modSuggestions = fillbackSuggestions.filter(s => {
-      const text = JSON.stringify(s).toLowerCase();
-      return text.includes(modName.toLowerCase());
-    });
-    if (modSuggestions.length > 0) {
-      const fillbackActions = inferActionsFromFillback(modSuggestions, modName);
-      // 去重 (techName)
-      const existingNames = new Set(actions.map(a => a.techName));
-      for (const fa of fillbackActions) {
-        if (!existingNames.has(fa.techName)) {
-          actions.push(fa);
-          existingNames.add(fa.techName);
-        }
-      }
-    }
-
-    // 4. 如果沒有任何來源，生成最小骨架
-    if (actions.length <= 1 && publicAPI.length === 0) {
-      actions.push({
-        semantic: `${modName} 核心服務`,
-        type: 'SVC',
-        techName: `${modName}Service`,
-        priority: 'P1',
-        flow: 'TODO',
-        deps: deps.length > 0 ? deps.map(d => `[Internal.${d}]`).join(', ') : '無',
-        status: '○○',
-      });
-    }
-
-    // 生成展開後的 Markdown
-    const expandedTable = generateExpandedActionTable(modName, iterNum, actions);
-
-    // 找到原始 Stub 區塊並替換
     const lines = result.split('\n');
-    const stubPatterns = [
-      new RegExp(`### Iter ${iterNum}:\\s*${escapeRegex(modName)}\\s*\\[STUB\\]`, 'i'),
-      new RegExp(`### Iter ${iterNum}:\\s*${escapeRegex(modName)}\\s*\\[CURRENT\\]`, 'i'),
-      new RegExp(`### Iter ${iterNum}:\\s*${escapeRegex(modName)}(?:\\s|$)`, 'i'),
-    ];
-
-    let headerIdx = -1;
-    for (const pattern of stubPatterns) {
-      for (let i = 0; i < lines.length; i++) {
-        if (pattern.test(lines[i])) {
-          headerIdx = i;
-          break;
-        }
-      }
-      if (headerIdx >= 0) break;
-    }
+    const { headerIdx, endIdx, block } = findStubBlock(lines, iterNum, modName);
 
     if (headerIdx < 0) {
-      // 沒有 Stub 區塊（常見於 generateNextIteration 產生的簡化 draft）
-      // 直接在 draft 末尾注入展開後的動作清單
-      const lines2 = result.split('\n');
-      // 在文件末尾（最後一個 --- 之後，或文件尾）插入
-      let insertIdx = lines2.length;
-      for (let i = lines2.length - 1; i >= 0; i--) {
-        if (lines2[i].trim() === '---') {
-          insertIdx = i + 1;
-          break;
-        }
-      }
-      const injected = [...lines2.slice(0, insertIdx), '', expandedTable, '', ...lines2.slice(insertIdx)];
-      result = injected.join('\n');
+      changes.push({ module: modName, status: 'SKIP', reason: `找不到 iter-${iterNum} 的 STUB 區塊` });
+      continue;
+    }
+
+    // 解析 STUB 的函式 flow 清單
+    const actions = parseStubFlowTable(block);
+
+    if (actions.length === 0) {
+      // BLOCKER: STUB 沒有函式 flow 清單
       changes.push({
         module: modName,
-        status: 'INJECTED',
-        actionCount: actions.length,
-        sources: {
-          infra: 1,
-          api: publicAPI.length > 0 ? actions.filter(a => !a.source && a.type !== 'CONST').length : 0,
-          fillback: actions.filter(a => a.source === 'fillback').length,
-        },
+        status: 'BLOCKER',
+        reason: `STUB 沒有函式 flow 清單 — 請先用 Gem Architect 補充 iter-${iterNum} 的函式 flow 清單 + AC 骨架`,
       });
       continue;
     }
 
-    // 找到區塊結束位置
-    let endIdx = lines.length;
-    for (let i = headerIdx + 1; i < lines.length; i++) {
-      if (/^###\s/.test(lines[i]) || /^---$/.test(lines[i].trim()) || /^##\s/.test(lines[i])) {
-        endIdx = i;
-        break;
-      }
-    }
+    // 解析 AC 骨架
+    const acBlocks = parseStubACs(block);
+
+    // 取得 Story 拆法描述
+    const storyLabel = block.match(/Story 拆法[：:]\s*(.+)/)?.[1] || 'Story-0 後端 (SVC/API), Story-1 前端串接 (UI/ROUTE)';
+
+    // 生成展開後的 Markdown
+    const expandedSection = generateExpandedSection(modName, iterNum, actions, acBlocks, storyLabel);
 
     // 替換
-    const newLines = [...lines.slice(0, headerIdx), expandedTable, '', ...lines.slice(endIdx)];
+    const newLines = [...lines.slice(0, headerIdx), expandedSection, '', ...lines.slice(endIdx)];
     result = newLines.join('\n');
 
     changes.push({
       module: modName,
       status: 'EXPANDED',
       actionCount: actions.length,
-      sources: {
-        infra: 1,
-        api: publicAPI.length > 0 ? actions.filter(a => !a.source && a.type !== 'CONST').length : 0,
-        fillback: actions.filter(a => a.source === 'fillback').length,
-      },
+      acCount: acBlocks.length,
     });
   }
 
-  // 更新迭代規劃表: 第一個 [STUB] 改為 [CURRENT]
+  // 更新迭代規劃表: [STUB] → [CURRENT]
   const planLines = result.split('\n');
   let promoted = false;
   for (let i = 0; i < planLines.length; i++) {
@@ -486,25 +406,45 @@ Blueprint Expand v1.0 - Stub 展開器
 
   // 報告
   const expandedCount = changes.filter(c => c.status === 'EXPANDED').length;
-  const injectedCount = changes.filter(c => c.status === 'INJECTED').length;
+  const blockerCount = changes.filter(c => c.status === 'BLOCKER').length;
   const skipCount = changes.filter(c => c.status === 'SKIP').length;
 
   for (const change of changes) {
     if (change.status === 'EXPANDED') {
-      const src = change.sources;
-      console.log(`   ✅ ${change.module} → ${change.actionCount} 個動作 (infra:${src.infra}, api:${src.api}, fillback:${src.fillback})`);
-    } else if (change.status === 'INJECTED') {
-      const src = change.sources;
-      console.log(`   🆕 ${change.module} → ${change.actionCount} 個動作 [注入] (infra:${src.infra}, api:${src.api}, fillback:${src.fillback})`);
+      console.log(`   ✅ ${change.module} → ${change.actionCount} 個動作, ${change.acCount} 個 AC`);
+    } else if (change.status === 'BLOCKER') {
+      console.log(`   🔴 ${change.module} — BLOCKER: ${change.reason}`);
     } else if (change.status === 'SKIP') {
       console.log(`   ⏭️ ${change.module} — ${change.reason}`);
     }
   }
 
-  const totalExpanded = expandedCount + injectedCount;
-  console.log(`\n📊 結果: ${totalExpanded} 模組展開${injectedCount > 0 ? ` (${injectedCount} 注入)` : ''}, ${skipCount} 跳過`);
+  console.log(`\n📊 結果: ${expandedCount} 模組展開, ${blockerCount} BLOCKER, ${skipCount} 跳過`);
 
-  if (totalExpanded === 0) {
+  if (blockerCount > 0) {
+    const blockers = changes.filter(c => c.status === 'BLOCKER');
+    const logProjectRoot = args.target || null;
+    const details = blockers.map(b => `🔴 ${b.module}: ${b.reason}`).join('\n');
+    if (logProjectRoot) {
+      logOutput.anchorError('TACTICAL_FIX',
+        `iter-${args.iter} 有 ${blockerCount} 個模組缺少函式 flow 清單`,
+        `用 Gem Architect 補充 STUB 的函式 flow 清單 + AC 骨架後再執行 expand`,
+        {
+          projectRoot: logProjectRoot,
+          iteration: args.iter,
+          phase: 'gate',
+          step: 'expand',
+          details: `BLOCKER 詳情:\n${details}\n\n修復方式:\n在藍圖的 STUB 區塊加入「函式 Flow 清單」表格，格式:\n| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |\n每個公開 API 函式一行，flow 3-7 步。`,
+        }
+      );
+    } else {
+      console.log(`\n@BLOCKER | STUB 缺少函式 flow 清單`);
+      console.log(details);
+    }
+    process.exit(1);
+  }
+
+  if (expandedCount === 0) {
     const logProjectRoot = args.target || null;
     if (logProjectRoot) {
       logOutput.anchorError('TACTICAL_FIX',
@@ -515,7 +455,7 @@ Blueprint Expand v1.0 - Stub 展開器
           iteration: args.iter,
           phase: 'gate',
           step: 'expand',
-          details: `展開結果:\n${changes.map(c => `${c.module}: ${c.status} — ${c.reason || ''}`).join('\n')}\n\n可能原因:\n1. 目標 iter 沒有 [STUB] 模組\n2. 所有模組已展開為 [CURRENT] 或 [DONE]\n3. iter 編號錯誤\n4. 迭代規劃表中沒有 iter-${args.iter} 的條目`,
+          details: `展開結果:\n${changes.map(c => `${c.module}: ${c.status} — ${c.reason || ''}`).join('\n')}`,
         }
       );
     } else {
@@ -533,6 +473,21 @@ Blueprint Expand v1.0 - Stub 展開器
   } else {
     fs.writeFileSync(outPath, content, 'utf8');
     console.log(`\n✅ 藍圖已更新: ${path.relative(process.cwd(), outPath)}`);
+
+    // 複製活藍圖快照到 iter-N/poc/requirement_draft_iter-N.md
+    // 讓 detectRoute / findDraft 能正確識別 iter-N 為 Blueprint 路線
+    if (args.target) {
+      const snapPocDir = path.join(args.target, '.gems', 'iterations', `iter-${args.iter}`, 'poc');
+      const snapDraftPath = path.join(snapPocDir, `requirement_draft_iter-${args.iter}.md`);
+      if (!fs.existsSync(snapDraftPath)) {
+        fs.mkdirSync(snapPocDir, { recursive: true });
+        fs.copyFileSync(outPath, snapDraftPath);
+        console.log(`✅ iter-${args.iter} 快照: ${path.relative(process.cwd(), snapDraftPath)}`);
+        console.log(`   ⚠️  請在快照中補充 iter-${args.iter} 的契約細節後再跑 gate`);
+      } else {
+        console.log(`   ℹ️  iter-${args.iter} 快照已存在，跳過複製`);
+      }
+    }
   }
 
   // log 存檔
@@ -540,8 +495,7 @@ Blueprint Expand v1.0 - Stub 展開器
   if (logProjectRoot) {
     const details = changes.map(c => {
       if (c.status === 'EXPANDED') {
-        const src = c.sources;
-        return `✅ ${c.module} → ${c.actionCount} 個動作 (infra:${src.infra}, api:${src.api}, fillback:${src.fillback})`;
+        return `✅ ${c.module} → ${c.actionCount} 個動作, ${c.acCount || 0} 個 AC`;
       }
       return `⏭️ ${c.module} — ${c.reason}`;
     }).join('\n');
@@ -564,10 +518,10 @@ Blueprint Expand v1.0 - Stub 展開器
 module.exports = {
   expandBlueprint,
   loadPreviousFillback,
-  inferActionsFromAPI,
-  inferActionsFromFillback,
-  generateInfraActions,
-  generateExpandedActionTable,
+  parseStubFlowTable,
+  parseStubACs,
+  findStubBlock,
+  generateExpandedSection,
 };
 
 if (require.main === module) {

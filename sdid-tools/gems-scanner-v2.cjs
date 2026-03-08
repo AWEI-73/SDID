@@ -292,6 +292,34 @@ function parseFile(ts, filePath, projectRoot) {
   }
 
   visit(sourceFile);
+
+  // Wave 3.2: Emit unclaimed file-level GEMS tags.
+  // Handles module-concept tags (e.g., CoreTypes, NODE_PARAM_CONFIG)
+  // where no single TS declaration shares the tag name.
+  for (const [name, commentText] of floatingGems) {
+    if (seen.has(`${relFile}::${name}`)) continue;
+    const parsed = parseComment(commentText);
+    if (parsed.format && parsed.priority) {
+      functions.push({
+        name,
+        file: relFile,
+        startLine: 1,
+        endLine: 1,
+        commentText,
+        priority: parsed.priority,
+        flow: parsed.flow,
+        deps: parsed.deps,
+        depsRisk: parsed.depsRisk,
+        test: parsed.test,
+        testFile: parsed.testFile,
+        description: parsed.description,
+        lineRange: null,
+        gemsFormat: parsed.format,
+        _rawGemsId: parsed.gemsId,
+      });
+    }
+  }
+
   return { functions, untagged };
 }
 

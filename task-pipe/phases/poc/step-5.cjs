@@ -197,15 +197,18 @@ ${issuesContent}
         // 成功時重置計數
         errorHandler.resetAttempts();
 
+        // 直接跑 plan-generator（機械轉換，跳過 PLAN 5步驟）
+        const nextCmd = `node task-pipe/tools/spec-to-plan.cjs --target=${target} --iteration=${iteration}`;
+
         anchorPass('POC', 'Step 5',
-            `需求規格驗證通過 (評分: ${qualityResult.score})`,
-            `node task-pipe/runner.cjs --phase=PLAN --step=1`,
+            `需求規格驗證通過 (評分: ${qualityResult.score}) — 5.5 函式規格表已就緒，直接轉換為 implementation_plan`,
+            nextCmd,
             {
                 projectRoot: target,
                 iteration: parseInt(iteration.replace('iter-', '')),
                 phase: 'poc',
                 step: 'step-5',
-                info: { 'File': specFile }
+                info: { 'File': specFile, 'Next': '機械轉換 spec → plan，跳過 PLAN 步驟' }
             });
 
         return { verdict: 'PASS', qualityScore: qualityResult.score };
@@ -820,6 +823,49 @@ function validateSpec(content, levelConfig) {
                 errors.push(`包含禁用模式: ${pattern} (Level 限制)`);
             }
         }
+    }
+
+    // [5.5 函式規格表] 必須存在且無佔位符
+    errors.push(...validate55Table(content));
+
+    return errors;
+}
+
+/**
+ * 驗證 5.5 函式規格表是否填寫完整
+ * - 必須有 ## 5.5 區塊
+ * - 至少有一行實際函式（非佔位符、非表頭）
+ * - 不得有 [函式名稱]、[Type]、[來源 → 處理 → 目標] 等佔位符殘留
+ */
+function validate55Table(content) {
+    const errors = [];
+    if (!/##\s+5\.5\s+函式規格表/i.test(content)) {
+        errors.push('缺 5.5 函式規格表 (plan-generator 需要此區塊直接轉換，無需 PLAN 步驟)');
+        return errors;
+    }
+
+    // 找到 5.5 區塊
+    const section = content.match(/##\s+5\.5\s+函式規格表[\s\S]*?(?=\n##\s+[^#]|$)/)?.[0] || '';
+
+    // 檢查佔位符殘留
+    if (/\[函式名稱\]|\[Type\]|\[來源.*?目標\]|\[說明\]/i.test(section)) {
+        errors.push('5.5 函式規格表有未填寫的佔位符 ([函式名稱]/[Type] 等)，請填入實際函式資訊');
+        return errors;
+    }
+
+    // 計算實際函式行數（排除表頭、分隔線、空行、說明行）
+    const dataRows = section.split('\n').filter(line => {
+        if (!line.trim().startsWith('|')) return false;
+        if (/^\|\s*[-:]+\s*\|/.test(line)) return false; // 分隔線
+        if (/Story.*函式名稱.*Type/i.test(line)) return false; // 表頭
+        const cells = line.split('|').map(c => c.trim()).filter(Boolean);
+        if (cells.length < 3) return false;
+        // 第一欄必須是 N.N 格式的 story 編號
+        return /^\d+\.\d+$/.test(cells[0]);
+    });
+
+    if (dataRows.length === 0) {
+        errors.push('5.5 函式規格表沒有實際函式行，請填入至少一個函式');
     }
 
     return errors;

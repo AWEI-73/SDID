@@ -1,10 +1,10 @@
 # 📋 EcoTrack 碳盤查系統 - 活藍圖 (Living Blueprint)
 
-**迭代**: iter-1  
-**日期**: 2026-02-08  
-**草稿狀態**: [x] DONE  
-**規模**: M  
-**方法論**: SDID v2.0
+**迭代**: iter-1
+**日期**: 2026-02-08
+**草稿狀態**: [x] DONE
+**規模**: M
+**方法論**: SDID v2.1
 
 ---
 
@@ -12,7 +12,7 @@
 
 > EcoTrack 提供一個直覺化的數據填報與自動生成報告系統，降低中小企業 ESG 碳盤查合規門檻。
 > 目標客群為製造業供應鏈中的中小企業及需要建立永續報告書的上市公司。
-> 技術架構：React/Vue.js 前端、Node.js (Express) 後端、PostgreSQL 資料庫。
+> 技術架構：React 前端、Node.js (Express) 後端、PostgreSQL 資料庫。
 
 ---
 
@@ -69,8 +69,12 @@
 ### 3. 共用模組 (Shared)
 
 - [x] 基礎建設 (types, config, constants)
+- [x] API 介面契約 (IDataEntryService, IDashboardService interface)
+- [x] 前端主入口殼 (AppRouter / Layout — npm run dev 可見首頁框架)
 - [x] 儲存層封裝 (PostgreSQL CRUD)
 - [ ] 通用 UI 元件 (表單、表格、通知)
+
+**樣式策略**: CSS Modules (.module.css)
 
 ### 4. 獨立模組 (Modules)
 
@@ -111,23 +115,15 @@ src/
 ├── config/            → 全域配置 (環境變數、常數)
 ├── lib/               → 第三方庫封裝 (DB Client)
 ├── shared/            → 跨模組共用
-│   ├── components/    → 原子元件 (表單、表格)
-│   ├── hooks/         → 通用 Hooks
-│   ├── store/         → 全域狀態 (UserSession)
-│   ├── utils/         → 純函數工具
-│   └── types/         → 共用型別 (Organization, EmissionRecord, EmissionFactor)
+│   ├── types/         → 共用型別 (Organization, EmissionRecord, EmissionFactor)
+│   ├── storage/       → 儲存層 (dbClient)
+│   └── contracts/     → API 介面契約 (IDataEntryService, IDashboardService)
 ├── modules/           → 核心業務
 │   ├── data-entry/    → 數據填報 (引導式表單、CO2e 計算)
-│   │   ├── index.ts
-│   │   ├── api/
-│   │   ├── services/
-│   │   ├── hooks/
-│   │   ├── components/
-│   │   └── pages/
 │   ├── dashboard/     → 視覺化看板 (碳排分佈、趨勢圖)
 │   └── report-gen/    → 報告生成 (PDF 碳盤查清冊)
 ├── routes/            → 路由定義
-│   └── router.ts
+│   └── AppRouter.tsx
 └── index.ts           → 應用入口
 ```
 
@@ -135,81 +131,162 @@ src/
 
 ## 📅 迭代規劃表 (Iteration Planning)
 
-<!--
-  交付類型: FULL (前後端一體) | BACKEND | FRONTEND | INFRA (純基礎設施)
-  狀態: [CURRENT] 當前迭代 | [STUB] 待展開 | [DONE] 已完成
-  deps=[] 的模組可並行開發 (Multi-Agent Ready)
--->
-
 | Iter | 範圍 | 目標 | 模組 | 交付 | 依賴 | 狀態 |
 |------|------|------|------|------|------|------|
-| 1 | Foundation | 型別 + 配置 + 儲存層 + 排放係數庫 | shared | INFRA | 無 | [CURRENT] |
-| 2 | Core MVP | 引導式數據填報 + CO2e 計算 | data-entry | FULL | shared | [STUB] |
-| 3 | Visualization | 碳排看板 + 趨勢圖 | dashboard | FRONTEND | shared, data-entry | [STUB] |
-| 4 | Report | PDF 報告生成 | report-gen | FULL | shared, data-entry, dashboard | [STUB] |
+| 1 | Foundation | 型別 + API 介面契約 + 前端殼 + 儲存層 | shared | INFRA | 無 | [CURRENT] |
+| 2 | Core MVP | 引導式數據填報 + CO2e 計算 (後端→前端) | data-entry | FULL | shared | [STUB] |
+| 3 | Visualization | 碳排看板 + 趨勢圖 (後端→前端) | dashboard | FULL | shared, data-entry | [STUB] |
+| 4 | Report | PDF 報告生成 + 下載 UI | report-gen | FULL | shared, data-entry, dashboard | [STUB] |
 
 ---
 
 ## 📋 模組動作清單 (Module Actions)
 
-<!--
-  v2 格式：動作清單攜帶 GEMS 標籤資訊，可直接轉換為 implementation_plan
-
-  欄位說明：
-  - 業務語意: 用中文描述這個動作做什麼
-  - 類型: CONST/LIB/API/SVC/HOOK/UI/ROUTE/SCRIPT
-  - 技術名稱: 函式名或類型名 (對應 GEMS 標籤的函式名)
-  - P: 優先級 P0-P3
-  - 流向: STEP1→STEP2→STEP3 (對應 GEMS-FLOW，3-7 步)
-  - 依賴: [Type.Name] 格式 (對應 GEMS-DEPS)
-  - 狀態: ○○ (未開始) | ✓✓ (完成)
--->
-
 ### Iter 1: shared [CURRENT]
 
-| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC | 狀態 |
-|---------|------|---------|---|------|------|-----|------|
-| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | AC-1.0 | ○○ |
-| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT | 無 | - | ○○ |
-| 資料庫連線 | LIB | dbClient | P0 | CONNECT→POOL→HEALTH_CHECK→EXPORT | [Internal.ENV_CONFIG] | AC-1.1 | ○○ |
-| 排放係數 CRUD | SVC | factorService | P1 | VALIDATE→PERSIST→CACHE→RETURN | [Internal.CoreTypes, Internal.dbClient] | AC-1.2 | ○○ |
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 操作 | 狀態 | 演化 | AC |
+|---------|------|---------|---|------|------|------|------|------|----|
+| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | NEW | ○○ | BASE | AC-0.0 |
+| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT | 無 | NEW | ○○ | BASE | - |
+| API 介面契約 | CONST | IServiceContracts | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.1 |
+| 資料庫連線 | LIB | dbClient | P0 | CONNECT→POOL→HEALTH_CHECK→EXPORT | [Internal.ENV_CONFIG] | NEW | ○○ | BASE | AC-0.2 |
+| 排放係數 CRUD | SVC | factorService | P1 | VALIDATE→PERSIST→CACHE→RETURN | [Internal.CoreTypes, Internal.dbClient] | NEW | ○○ | BASE | AC-0.3 |
+| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.4 |
 
 ### Iter 2: data-entry [STUB]
 
 > 引導式數據填報 + CO2e 自動計算，依賴 shared
-> 預估: 5 個動作 (2×P0, 2×P1, 1×P2)
-> 公開 API: createRecord, getRecords, calcEmission
+> Story 拆法: Story-0 後端計算層 (SVC/API), Story-1 填報 UI (UI/ROUTE)
+
+**函式 Flow 清單** (expand 時直接搬運):
+
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
+|---------|------|---------|---|------|------|----|
+| CO2e 排放量計算 | SVC | calcEmission | P0 | VALIDATE_INPUT→LOOKUP_FACTOR→MULTIPLY→ROUND→RETURN | [shared/types, factorService] | AC-1.0 |
+| 新增排放紀錄 | SVC | createRecord | P0 | VALIDATE→CALC_CO2E→PERSIST→RETURN | [Internal.calcEmission, dbClient] | AC-1.1 |
+| 查詢排放紀錄 | SVC | getRecords | P1 | VALIDATE_PARAMS→QUERY→TRANSFORM→RETURN | [Internal.CoreTypes, dbClient] | AC-1.2 |
+| 填報表單元件 | UI | DataEntryForm | P1 | LOAD_FACTORS→RENDER_FORM→VALIDATE_INPUT→SUBMIT | [Internal.createRecord, factorService] | AC-1.3 |
+| 填報頁路由 | ROUTE | DataEntryPage | P1 | CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT→RENDER_CONTENT | [Internal.DataEntryForm] | AC-1.4 |
+
+**驗收條件骨架**:
+
+**AC-1.0** — CO2e 計算正確性
+- Given: factorId='elec-tw-2024'，對應係數值 0.494 kgCO2e/kWh
+- When: calcEmission(1000, 'elec-tw-2024')
+- Then: 回傳 494（四捨五入到整數），單位 kgCO2e
+
+**AC-1.1** — 新增排放紀錄
+- Given: dbClient 已連線，calcEmission 可用
+- When: createRecord({ orgId, scope: 'SCOPE2', category: '電力', amount: 1000, unit: 'kWh', factorId: 'elec-tw-2024', period: '2024-01' })
+- Then: 資料庫新增一筆紀錄，co2e 欄位自動填入 494
+
+**AC-1.2** — 查詢排放紀錄
+- Given: 資料庫有 org-001 在 2024-01 的 3 筆紀錄
+- When: getRecords('org-001', '2024-01')
+- Then: 回傳長度 3 的陣列，每筆含 co2e 欄位
+
+**AC-1.3** — 填報表單提交
+- Given: 使用者在填報頁，係數清單已載入
+- When: 選擇類別「電力」，輸入 1000 kWh，點擊提交
+- Then: 呼叫 createRecord，成功後顯示「新增成功」提示，表單清空
+
+**AC-1.4** — 填報頁路由
+- Given: 已登入使用者
+- When: 瀏覽 /data-entry
+- Then: 顯示填報表單，係數下拉選單有資料
 
 ### Iter 3: dashboard [STUB]
 
 > 碳排分佈圖 + 年度趨勢圖，依賴 shared + data-entry
-> 預估: 3 個動作 (1×P0, 1×P1, 1×P2)
-> 公開 API: getScopeSummary, getTrendData
+> Story 拆法: Story-0 統計計算層 (SVC), Story-1 圖表 UI (UI/ROUTE)
+
+**函式 Flow 清單** (expand 時直接搬運):
+
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
+|---------|------|---------|---|------|------|----|
+| 範疇分佈統計 | SVC | getScopeSummary | P0 | QUERY_RECORDS→GROUP_BY_SCOPE→SUM_CO2E→RETURN | [getRecords, CoreTypes] | AC-2.0 |
+| 月度趨勢計算 | SVC | getTrendData | P1 | QUERY_RANGE→AGGREGATE_BY_MONTH→SORT→RETURN | [getRecords] | AC-2.1 |
+| 碳排看板元件 | UI | DashboardView | P1 | FETCH_SUMMARY→FETCH_TREND→RENDER_CHARTS→BIND_FILTER | [getScopeSummary, getTrendData] | AC-2.2 |
+| 看板頁路由 | ROUTE | DashboardPage | P1 | CHECK_AUTH→LOAD_ORG→RENDER_LAYOUT→RENDER_CONTENT | [Internal.DashboardView] | AC-2.3 |
+
+**驗收條件骨架**:
+
+**AC-2.0** — 範疇分佈統計
+- Given: org-001 在 2024 年有 SCOPE1: 200 kgCO2e, SCOPE2: 800 kgCO2e
+- When: getScopeSummary('org-001', 2024)
+- Then: 回傳 { SCOPE1: 200, SCOPE2: 800, SCOPE3: 0, total: 1000 }
+
+**AC-2.1** — 月度趨勢
+- Given: org-001 在 2024-01 到 2024-03 各有排放紀錄
+- When: getTrendData('org-001', 3)
+- Then: 回傳長度 3 的陣列，按月份升序排列，每筆含 month + totalCo2e
+
+**AC-2.2** — 看板元件渲染
+- Given: getScopeSummary 回傳有效資料
+- When: 渲染 <DashboardView orgId="org-001" year={2024} />
+- Then: 顯示圓餅圖（3 個範疇）+ 折線圖（月度趨勢）
+
+**AC-2.3** — 看板頁路由
+- Given: 已登入使用者
+- When: 瀏覽 /dashboard
+- Then: 顯示看板，圖表有資料，無 console error
 
 ### Iter 4: report-gen [STUB]
 
 > PDF 報告生成模組，依賴 shared + data-entry + dashboard
-> 預估: 2-3 個動作
-> 公開 API: generateReport
+> Story 拆法: Story-0 報告生成服務 (SVC), Story-1 報告下載 UI (UI/ROUTE)
+
+**函式 Flow 清單** (expand 時直接搬運):
+
+| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
+|---------|------|---------|---|------|------|----|
+| 生成 PDF 報告 | SVC | generateReport | P0 | FETCH_DATA→AGGREGATE→RENDER_TEMPLATE→EXPORT_PDF→RETURN | [getScopeSummary, getRecords] | AC-3.0 |
+| 報告下載按鈕 | UI | ReportDownloadBtn | P1 | TRIGGER_GENERATE→SHOW_LOADING→DOWNLOAD_FILE→RESET | [Internal.generateReport] | AC-3.1 |
+| 報告頁路由 | ROUTE | ReportPage | P1 | CHECK_AUTH→LOAD_ORG→RENDER_LAYOUT→RENDER_CONTENT | [Internal.ReportDownloadBtn] | AC-3.2 |
+
+**驗收條件骨架**:
+
+**AC-3.0** — 生成 PDF 報告
+- Given: org-001 在 2024 年有完整排放紀錄
+- When: generateReport('org-001', 2024)
+- Then: 回傳 Buffer，MIME type 為 application/pdf，檔案大小 > 0
+
+**AC-3.1** — 報告下載按鈕
+- Given: 使用者在報告頁
+- When: 點擊「下載報告」按鈕
+- Then: 觸發 generateReport，顯示 loading，完成後自動下載 PDF
 
 ---
 
 ## ✅ 驗收條件
 
-### AC-1.0: CoreTypes 型別定義
+### Iter 1: shared
+
+**AC-0.0** — CoreTypes 型別定義
 - Given: 專案初始化完成
-- When: import CoreTypes
-- Then: Organization, EmissionRecord, EmissionFactor 型別可用，TypeScript 編譯通過
+- When: import { Organization, EmissionRecord, EmissionFactor } from 'shared/types'
+- Then: TypeScript 編譯通過，Organization 含 id/name/industry/reportYear，EmissionRecord 含 co2e 欄位
 
-### AC-1.1: dbClient 資料庫連線
-- Given: ENV_CONFIG 已載入
-- When: 呼叫 dbClient.query()
-- Then: 成功連線 PostgreSQL 並回傳結果，連線池正常運作
+**AC-0.1** — API 介面契約
+- Given: IServiceContracts 已定義
+- When: 實作類別 implements IDataEntryService
+- Then: TypeScript 強制要求實作所有方法簽名，缺少任何方法時編譯報錯
 
-### AC-1.2: factorService 排放係數 CRUD
-- Given: dbClient 已連線，CoreTypes 已定義
-- When: 呼叫 factorService.create/read/update/delete
-- Then: 排放係數資料正確寫入/讀取/更新/刪除，快取機制生效
+**AC-0.2** — 資料庫連線
+- Given: ENV_CONFIG 已載入，PostgreSQL 服務運行中
+- When: 呼叫 dbClient.query('SELECT 1')
+- Then: 回傳結果不為 null，連線池 pool.totalCount > 0
+
+**AC-0.3** — 排放係數 CRUD
+- Given: dbClient 已連線，emission_factors 表存在
+- When: factorService.create({ name: '台電電力', category: '電力', value: 0.494, unit: 'kgCO2e/kWh', source: '環保署', year: 2024 })
+- Then: 資料庫新增一筆紀錄，回傳含 id 的完整物件
+- And: factorService.findById(id) 回傳相同資料
+
+**AC-0.4** — 前端主入口殼
+- Given: npm run dev 啟動
+- When: 瀏覽器開啟 localhost
+- Then: 首頁框架可見（Header + 導覽列 + 主內容區），無 console error
 
 ---
 

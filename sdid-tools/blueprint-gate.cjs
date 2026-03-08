@@ -60,6 +60,7 @@ const {
   checkStubMinimum, checkPlanActionConsistency, checkLevelLimits,
   checkEvolutionLayers, checkDepsConsistency, checkIterModuleLoad,
   checkIterActionBudget, checkVerticalSliceCompleteness, checkACIntegrity,
+  checkModifyFunctionExists,
 } = require('./lib/gate-checkers.cjs');
 
 const { calcBlueprintScore, printExistingFunctionsSnapshot } = require('./lib/gate-score.cjs');
@@ -204,7 +205,8 @@ Blueprint Gate v1.1 - 活藍圖品質門控
     ...checkIterModuleLoad(draft),
     ...checkIterActionBudget(draft),
     ...checkVerticalSliceCompleteness(draft, args.iter),
-    ...checkACIntegrity(draft, args.iter),
+    ...checkACIntegrity(draft, args.iter, rawContent),
+    ...checkModifyFunctionExists(draft, args.iter, args.target),
   ];
 
   // 生成報告
@@ -240,6 +242,7 @@ module.exports = {
   checkIterActionBudget,
   checkVerticalSliceCompleteness,
   checkACIntegrity,
+  checkModifyFunctionExists,
   calcBlueprintScore,
   getFixGuidance,
 };

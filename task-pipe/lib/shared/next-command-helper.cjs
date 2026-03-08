@@ -29,15 +29,16 @@ const FALLBACK_PLAN_ORDER = ['1', '2', '2.5', '2.6', '3'];
  * 取得下一步指令
  * @param {string} phase - 當前階段 (BUILD, POC, PLAN)
  * @param {string} step - 當前步驟
- * @param {object} options - { story, level, target }
+ * @param {object} options - { story, level, target, iteration }
  * @returns {string} 下一步指令
  */
 function getNextCmd(phase, step, options = {}) {
-    const { story, level = 'M', target } = options;
+    const { story, level = 'M', target, iteration } = options;
 
     if (registryLoader) {
         try {
-            return registryLoader.getNextCommand(phase, step, story, level);
+            const cmd = registryLoader.getNextCommand(phase, step, story, level);
+            if (cmd) return appendTargetIteration(cmd, target, iteration);
         } catch (e) {
             // Fallback
         }
@@ -58,16 +59,22 @@ function getNextCmd(phase, step, options = {}) {
     const currentIndex = order.indexOf(step);
     if (currentIndex === -1 || currentIndex >= order.length - 1) {
         // 最後一步
+        let cmd;
         if (phase === 'BUILD') {
-            return `node task-pipe/runner.cjs --phase=SCAN`;
+            cmd = `node task-pipe/runner.cjs --phase=SCAN`;
         } else if (phase === 'POC') {
-            return `node task-pipe/runner.cjs --phase=PLAN --step=1`;
+            // Task-Pipe 路線：POC Step 5 pass 後直接機械轉換，跳過 PLAN 步驟
+            const t = target ? ` --target=${target}` : '';
+            const it = iteration ? ` --iteration=${iteration}` : '';
+            return `node task-pipe/tools/spec-to-plan.cjs${t}${it}`;
         } else if (phase === 'PLAN') {
-            return story
+            cmd = story
                 ? `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story}`
                 : `node task-pipe/runner.cjs --phase=BUILD --step=1`;
+        } else {
+            return null;
         }
-        return null;
+        return appendTargetIteration(cmd, target, iteration);
     }
 
     const nextStep = order[currentIndex + 1];
@@ -78,27 +85,23 @@ function getNextCmd(phase, step, options = {}) {
         cmd += ` --story=${story}`;
     }
 
-    // 添加 target 參數
-    if (target && phase === 'POC') {
-        cmd += ` --target=${target}`;
-    }
-
-    return cmd;
+    return appendTargetIteration(cmd, target, iteration);
 }
 
 /**
  * 取得重試指令
  * @param {string} phase - 當前階段
  * @param {string} step - 當前步驟
- * @param {object} options - { story, target }
+ * @param {object} options - { story, target, iteration }
  * @returns {string} 重試指令
  */
 function getRetryCmd(phase, step, options = {}) {
-    const { story, target } = options;
+    const { story, target, iteration } = options;
 
     if (registryLoader) {
         try {
-            return registryLoader.getRetryCommand(phase, step, story);
+            const cmd = registryLoader.getRetryCommand(phase, step, story);
+            if (cmd) return appendTargetIteration(cmd, target, iteration);
         } catch (e) {
             // Fallback
         }
@@ -110,10 +113,19 @@ function getRetryCmd(phase, step, options = {}) {
         cmd += ` --story=${story}`;
     }
 
-    if (target) {
-        cmd += ` --target=${target}`;
-    }
+    return appendTargetIteration(cmd, target, iteration);
+}
 
+/**
+ * 附加 --target 和 --iteration 到指令（如果有提供）
+ * @param {string} cmd - 基礎指令
+ * @param {string} target - 目標路徑
+ * @param {string} iteration - 迭代名稱 (e.g. iter-1)
+ * @returns {string}
+ */
+function appendTargetIteration(cmd, target, iteration) {
+    if (target) cmd += ` --target=${target}`;
+    if (iteration && iteration !== 'iter-1') cmd += ` --iteration=${iteration}`;
     return cmd;
 }
 

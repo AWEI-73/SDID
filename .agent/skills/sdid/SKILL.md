@@ -1,6 +1,6 @@
 ---
 name: sdid
-description: SDID 統一開發框架 — 從需求設計到程式碼交付的完整流程。觸發詞：「SDID」「藍圖」「blueprint」「新專案」「開發」「build」「繼續」「POC」「Task-Pipe」「快速建」「練習」「小專案」「create project」「new project」「繼續開發」「跑 build」「自動開發」「一鍵開發」「sdid 小修」「quick fix」「改一下」「fix」「小改」「micro fix」「重跑」「rerun」「跑 Phase」。
+description: SDID 是結構化全端開發框架，涵蓋 Blueprint 5輪需求設計、Task-Pipe POC-PLAN漸進式開發、BUILD Phase 1-8 自動化建置。以下情境必須觸發：(1) 出現「SDID」「sdid-loop」「.gems/」「GEMS 標籤」「GEMS-FLOW」「GEMS-DEPS」「implementation_plan」「iter-N」「cynefin」等框架專有詞彙；(2) 建新專案且需結構化流程（Blueprint/Task-Pipe）；(3) 繼續 SDID 專案開發（BUILD 斷點、Phase 重跑、Story 續跑）；(4) 說「小修/micro fix/quick fix」且有明確模組脈絡；(5) 驗證第三方 API 或特化演算法的 POC；(6) 說「快速建/練習專案/小專案」要直接開發。不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作、一般 Docker/CI/CD 操作。
 ---
 
 # SDID — 路由器
@@ -50,15 +50,25 @@ Enhanced Draft 格式（模組動作表、迭代規劃表）→ Blueprint 路線
 
 ---
 
-## CYNEFIN-CHECK（進 PLAN 前強制執行）
+## CYNEFIN-CHECK + CONTRACT（進 PLAN 前強制執行）
 
 > ⚠️ **不詢問使用者、不等待確認、直接執行。**
 > 完整規則在 [cynefin-check.md](references/cynefin-check.md)，此處只提示時機。
 
 ```
-Blueprint:  Enhanced Draft 完成 → CYNEFIN-CHECK → @PASS → draft-to-plan → BUILD
+Blueprint:  Enhanced Draft 完成 → CYNEFIN-CHECK → @PASS → CONTRACT → @PASS → draft-to-plan → BUILD
 Task-Pipe:  POC Step 5 完成    → CYNEFIN-CHECK → @PASS → PLAN Step 1 → BUILD
 ```
+
+**Blueprint 路線三節點說明（缺一不可）：**
+
+| 節點 | 工具 | 目的 | log 產物 |
+|------|------|------|---------|
+| CYNEFIN-CHECK | cynefin-log-writer.cjs | 語意域分析，展開隱含複雜度 | `cynefin-check-pass-*.log` |
+| CONTRACT | blueprint-contract-writer.cjs | 從 draft 推導型別邊界，收斂 draft 的模糊 type | `contract-pass-*.log` + `contract_iter-N.ts` |
+| PLAN | draft-to-plan.cjs | 機械轉換 draft → implementation_plan，骨架注入 contract 型別 | `gate-plan-pass-*.log` |
+
+> contract.ts 是 draft 的收斂層，也是骨架生成的 source of truth。draft 的 type 欄位只是路由提示，contract 的 @GEMS-API/@GEMS-CONTRACT 才是最終型別定義。
 
 ### 通用規則
 1. 每完成一步，報告：「目前在 [模式] [步驟 N]，下一步是 [X]」

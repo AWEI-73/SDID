@@ -46,21 +46,21 @@ const FRAUD_PATTERNS = [
 
 // v3.1: 無效 assertion 偵測模式 - 用於偵測假的 Integration/E2E 測試
 const WEAK_ASSERTION_PATTERNS = [
-  { pattern: /expect\([^)]+\)\.toBeDefined\(\)/g, name: 'toBeDefined() 不驗證實際行為' },
-  { pattern: /expect\([^)]+\)\.not\.toBeUndefined\(\)/g, name: 'not.toBeUndefined() 不驗證實際行為' },
-  { pattern: /expect\([^)]+\)\.toBeTruthy\(\)\s*;?\s*\}/g, name: '只有 toBeTruthy() 的弱驗證' },
+  { pattern: /expect\(.+?\)\.toBeDefined\(\)/g, name: 'toBeDefined() 不驗證實際行為' },
+  { pattern: /expect\(.+?\)\.not\.toBeUndefined\(\)/g, name: 'not.toBeUndefined() 不驗證實際行為' },
+  { pattern: /expect\(.+?\)\.toBeTruthy\(\)\s*;?\s*\}/g, name: '只有 toBeTruthy() 的弱驗證' },
 ];
 
 // v3.1: 真實 Integration 測試必須包含的有效 assertion
 const VALID_INTEGRATION_ASSERTIONS = [
-  /expect\([^)]+\)\.toHaveBeenCalledWith\(/,     // 驗證被呼叫的參數
-  /expect\([^)]+\)\.toBe\([^)]+\)/,              // 精確比對
-  /expect\([^)]+\)\.toEqual\([^)]+\)/,           // 深度比對
-  /expect\([^)]+\)\.toContain\(/,                // 包含檢查
-  /expect\([^)]+\)\.toHaveLength\(/,             // 長度檢查
-  /expect\([^)]+\)\.toMatchObject\(/,            // 物件匹配
-  /expect\([^)]+\)\.toHaveBeenCalled\(\)/,       // 至少驗證有呼叫
-  /expect\([^)]+\)\.toThrow\(/,                  // 錯誤處理
+  /expect\(.+?\)\.toHaveBeenCalledWith\(/,     // 驗證被呼叫的參數
+  /expect\(.+\)\.toBe\(.+\)/,                  // 精確比對（支援巢狀括號）
+  /expect\(.+\)\.toEqual\(.+\)/,               // 深度比對
+  /expect\(.+?\)\.toContain\(/,                // 包含檢查
+  /expect\(.+?\)\.toHaveLength\(/,             // 長度檢查
+  /expect\(.+?\)\.toMatchObject\(/,            // 物件匹配
+  /expect\(.+?\)\.toHaveBeenCalled\(\)/,       // 至少驗證有呼叫
+  /expect\(.+?\)\.toThrow\(/,                  // 錯誤處理
 ];
 
 /**
@@ -430,26 +430,131 @@ function generateValidationReport(scanResult, complianceIssues, missingTests) {
  * @param {string} projectRoot - 專案根目錄
  * @returns {Object} { issues: [], stats: {} }
  */
+/**
+ * 偵測函式是否為「不可執行」的宣告型別（interface / type alias / 純常數物件）
+ * 這類函式沒有執行行為，E2E/Integration 測試要求不合理，應降級提示
+ * @param {Object} fn - 函式資訊
+ * @returns {boolean}
+ */
+function isNonExecutable(fn, projectRoot) {
+  if (!fn.file) return false;
+  let content;
+  try {
+    let absPath;
+    if (path.isAbsolute(fn.file)) {
+      absPath = fn.file;
+    } else if (projectRoot && fs.existsSync(path.join(projectRoot, fn.file))) {
+      absPath = path.join(projectRoot, fn.file);
+    } else {
+      absPath = path.resolve(fn.file); // fallback: 相對於 cwd
+    }
+    if (!fs.existsSync(absPath)) return false;
+    content = fs.readFileSync(absPath, 'utf8');
+  } catch { return false; }
+
+  const name = fn.name;
+  // 偵測 1：直接名稱匹配 — export interface Name / export type Name = / export const Name = { (純物件常數)
+  const namedPatterns = [
+    new RegExp(`export\\s+interface\\s+${name}\\b`),
+    new RegExp(`export\\s+type\\s+${name}\\s*=`),
+    new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\{`),   // 純物件常數
+    new RegExp(`export\\s+const\\s+${name}\\s*:\\s*\\w+\\s*=\\s*\\[`), // 純陣列常數
+  ];
+  if (namedPatterns.some(p => p.test(content))) return true;
+
+  // 偵測 2：整個檔案都是 interface/type/enum 宣告，沒有任何可執行函式
+  // 移除註解後，檢查是否有 function / class / arrow function 宣告
+  const strippedContent = content
+    .replace(/\/\*[\s\S]*?\*\//g, '')   // 移除多行註解
+    .replace(/\/\/[^\n]*/g, '');         // 移除單行註解
+
+  const hasExecutable = (
+    /(?:^|\s)(?:export\s+)?(?:async\s+)?function\s+\w+/.test(strippedContent) ||
+    /(?:^|\s)(?:export\s+)?const\s+\w+\s*=\s*(?:async\s*)?\(/.test(strippedContent) ||
+    /(?:^|\s)(?:export\s+)?class\s+\w+/.test(strippedContent)
+  );
+
+  if (!hasExecutable) {
+    // 確認確實有 interface/type/enum 宣告（避免誤判空檔案）
+    const hasDeclarations = (
+      /export\s+interface\s+\w+/.test(strippedContent) ||
+      /export\s+type\s+\w+\s*=/.test(strippedContent) ||
+      /export\s+enum\s+\w+/.test(strippedContent)
+    );
+    if (hasDeclarations) return true;
+  }
+
+  return false;
+}
+
 function validateTestTypes(functions, srcPath, projectRoot) {
   const result = {
     issues: [],
     stats: {
       p0Total: 0, p0WithE2E: 0, p0WithIntegration: 0,
       p1Total: 0, p1WithIntegration: 0,
-      fakeIntegrationCount: 0
+      fakeIntegrationCount: 0,
+      downgradeCount: 0
     }
   };
 
   // 找出所有 E2E 和 Integration 測試檔案
   const testTypeFiles = findTestTypeFiles(srcPath, projectRoot);
 
+  // v3.2: 新測試策略標籤 early return
+  // 新格式: GEMS-TEST: ac-runner | poc-html | skip | jest-unit | jest-integ
+  const NEW_STRATEGY_MAP = {
+    'ac-runner': { requiresJest: false },
+    'poc-html':  { requiresJest: false },
+    'skip':      { requiresJest: false },
+    'jest-unit': { requiresJest: true, minTypes: ['unit'] },
+    'jest-integ':{ requiresJest: true, minTypes: ['unit', 'integration'] },
+  };
+
   for (const fn of functions) {
     const fnName = fn.name;
     const priority = fn.priority;
 
+    // 識別新策略標籤，跳過舊的 Priority-based 驗證邏輯
+    const testStr = (fn.test || '').trim();
+    const strategyMatch = testStr.match(/^(ac-runner|poc-html|skip|jest-unit|jest-integ)\b/);
+    if (strategyMatch) {
+      const strategy = NEW_STRATEGY_MAP[strategyMatch[1]];
+      if (strategy && !strategy.requiresJest) {
+        // ac-runner / poc-html / skip 不需要 Jest 測試，直接跳過
+        continue;
+      }
+      // jest-unit / jest-integ 走簡化驗證（只檢查 testFile 存在，不要求 E2E）
+      if (strategy && strategy.requiresJest) {
+        if (!fn.testFile || fn.testFile === '-') {
+          result.issues.push({
+            fn: fnName,
+            priority,
+            issue: `策略 ${strategyMatch[1]} 需要 GEMS-TEST-FILE`,
+            severity: 'WARNING',
+            suggestion: `請在 GEMS 標籤加上 GEMS-TEST-FILE: ${fnName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')}.test.ts`
+          });
+        }
+        continue; // 不走舊的 E2E/Integration 強制檢查
+      }
+    }
+
     // P0 檢查：必須有 E2E
     if (priority === 'P0') {
       result.stats.p0Total++;
+
+      // 非可執行宣告（interface/type/常數）→ 降級提示，不 BLOCKER
+      if (isNonExecutable(fn, projectRoot)) {
+        result.stats.downgradeCount++;
+        result.issues.push({
+          fn: fnName,
+          priority: 'P0',
+          issue: `${fnName} 是 interface/type/常數宣告，無執行行為，E2E/Integration 測試要求不適用`,
+          severity: 'DOWNGRADE_SUGGESTION',
+          suggestion: `建議將 ${fnName} 的 priority 從 P0 降為 P2（宣告型別不需要 E2E 測試）。在 GEMS 標籤改為: GEMS: ${fnName} | P2 | ...`
+        });
+        continue; // 跳過後續 E2E/Integration 檢查
+      }
 
       // 檢查 E2E - v3.1: 同時驗證是否為假 E2E
       let hasValidE2E = false;
@@ -517,6 +622,19 @@ function validateTestTypes(functions, srcPath, projectRoot) {
     // P1 檢查：必須有 Integration - v3.1: 假 Integration 改為 CRITICAL
     if (priority === 'P1') {
       result.stats.p1Total++;
+
+      // 非可執行宣告 → 降級提示
+      if (isNonExecutable(fn, projectRoot)) {
+        result.stats.downgradeCount++;
+        result.issues.push({
+          fn: fnName,
+          priority: 'P1',
+          issue: `${fnName} 是 interface/type/常數宣告，無執行行為，Integration 測試要求不適用`,
+          severity: 'DOWNGRADE_SUGGESTION',
+          suggestion: `建議將 ${fnName} 的 priority 從 P1 降為 P2（宣告型別不需要 Integration 測試）。在 GEMS 標籤改為: GEMS: ${fnName} | P2 | ...`
+        });
+        continue;
+      }
 
       const hasIntegration = checkHasIntegration(fn, testTypeFiles.integration);
       if (hasIntegration.found) {
@@ -588,7 +706,11 @@ function isFakeIntegrationTest(content, isE2E = false) {
   const reasons = [];
 
   // 檢查 1: jest.mock() 存在（Integration 測試禁止）
-  const mockMatches = content.match(/jest\.mock\s*\(/g) || [];
+  // 先移除單行和多行註解，避免把 "// no jest.mock()" 這類說明文字誤判為實際呼叫
+  const strippedForMock = content
+    .replace(/\/\*[\s\S]*?\*\//g, '')   // 移除多行註解
+    .replace(/\/\/[^\n]*/g, '');         // 移除單行註解
+  const mockMatches = strippedForMock.match(/jest\.mock\s*\(/g) || [];
   const mockCount = mockMatches.length;
 
   if (mockCount > 0) {

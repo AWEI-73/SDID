@@ -501,11 +501,7 @@ mkdir -p src/modules src/shared src/config`,
       console.log(`@NEXT_COMMAND`);
       console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
       console.log('');
-      console.log('@FORBIDDEN');
-      console.log('  🚫 禁止自行決定檔案路徑，必須使用 Plan 定義的路徑');
-      console.log('  🚫 禁止在錯誤路徑上補標籤來繞過檢查');
-      console.log('  ✅ 移動檔案到 Plan 定義的正確路徑');
-      console.log('  ✅ 如果檔案不存在，在正確路徑建立');
+      console.log('@FORBIDDEN 🚫 禁止自行決定路徑 | 🚫 禁止補標籤繞過檢查 | ✅ 移到 Plan 定義的正確路徑');
       console.log('═══════════════════════════════════════════════════════════');
 
       return {
@@ -649,14 +645,7 @@ mkdir -p src/modules src/shared src/config`,
     console.log(`@NEXT_COMMAND`);
     console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
     console.log('');
-    console.log('@FORBIDDEN');
-    console.log('  🚫 禁止自行發明 FLOW 步驟名稱，必須使用 Plan 定義的 FLOW');
-    console.log('  🚫 禁止省略 [STEP] 錨點，每個 FLOW 步驟都要有對應的 [STEP]');
-    console.log('  🚫 禁止把 [STEP] 錨點堆在一起，每個 [STEP] 必須放在對應程式碼旁');
-    console.log('  🚫 禁止把所有 [STEP] 寫在函式頂部然後程式碼全部擠在後面');
-    console.log('  ✅ 直接複製 Plan 的 GEMS-FLOW 和 [STEP] 錨點到程式碼');
-    console.log('  ✅ 每個 // [STEP] XXX 放在該步驟實際程式碼的正上方');
-    console.log('  ✅ [STEP] 和它對應的程式碼之間不能有其他 [STEP]');
+    console.log('@FORBIDDEN 🚫 禁止自行發明 FLOW 名稱 | 🚫 禁止省略/堆疊 [STEP] 錨點 | ✅ 直接複製 Plan 的 FLOW，每個 [STEP] 放在對應程式碼正上方');
     console.log('═══════════════════════════════════════════════════════════');
 
     return {
@@ -745,9 +734,7 @@ mkdir -p src/modules src/shared src/config`,
       console.log(`@NEXT_COMMAND`);
       console.log(`  ${getRetryCmd('BUILD', '2', { story, target: relativeTarget, iteration })}`);
       console.log('');
-      console.log('@FORBIDDEN');
-      console.log('  🚫 契約函式的 Priority 由 draft-to-plan 機械生成，不能修改');
-      console.log('  ✅ 如需調整 Priority，回到藍圖修改後重跑 draft-to-plan');
+      console.log('@FORBIDDEN 🚫 Priority 由 draft-to-plan 機械生成不能修改 | ✅ 需調整請回藍圖重跑 draft-to-plan');
       console.log('═══════════════════════════════════════════════════════════');
 
       return { verdict: 'BLOCKER', reason: 'scaffold_tampered', scaffoldIssues };
@@ -958,6 +945,31 @@ mkdir -p src/modules src/shared src/config`,
       manifest,
       stats: scanResult.stats
     };
+  }
+
+  // ============================================
+  // AC↔函式雙向綁定 — Plan 裡的 P0/P1 AC 必須被某個函式的 acIds 引用
+  // WARN（不 BLOCKER），因為 AC 可能在測試檔案裡
+  // ============================================
+  if (passed) {
+    try {
+      const { extractPlanACs } = require('../../lib/plan/plan-spec-extractor.cjs');
+      const planACs = typeof extractPlanACs === 'function' ? extractPlanACs(planPath) : [];
+      if (planACs.length > 0) {
+        const implementedACs = new Set();
+        for (const fn of scanResult.functions) {
+          for (const ac of (fn.acIds || [])) implementedACs.add(ac);
+        }
+        const unimplementedACs = planACs.filter(ac => !implementedACs.has(ac));
+        if (unimplementedACs.length > 0) {
+          console.log(`\n  ⚠ AC 綁定 WARNING: ${unimplementedACs.length} 個 Plan AC 未被任何函式標籤引用（可能在測試裡）:`);
+          unimplementedACs.slice(0, 5).forEach(ac => console.log(`    - ${ac}`));
+          if (unimplementedACs.length > 5) console.log(`    ...還有 ${unimplementedACs.length - 5} 個`);
+        } else {
+          console.log(`[INFO] AC 綁定: ✓ ${planACs.length} 個 AC 全部有函式引用`);
+        }
+      }
+    } catch (e) { /* extractPlanACs 不存在時靜默跳過 */ }
   }
 
   // ============================================

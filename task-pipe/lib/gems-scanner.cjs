@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 /**
+ * @deprecated 請使用 sdid-tools/gems-scanner-v2.cjs 或 task-pipe/lib/scan/gems-scanner-v2-proxy.cjs
+ * 此檔案僅保留向後相容，不再維護。
+ * 
  * GEMS Scanner v5.2 (Full Coverage + UI/POC Edition)
  * 
  * 功能：

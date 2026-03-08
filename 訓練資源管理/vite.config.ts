@@ -1,25 +1,10 @@
-/// <reference types="vitest" />
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import * as path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    react({
-      babel: {
-        plugins: [['babel-plugin-react-compiler']],
-      },
-    }),
-  ],
-  resolve: {
-    alias: {
-      src: path.resolve(__dirname, './src')
-    }
-  },
-  test: {
-    globals: true,
-    environment: 'happy-dom',
-    exclude: ['node_modules', '.gems/**']
-  }
-})
+    plugins: [react()],
+    server: {
+        port: 5173,
+        open: true,
+    },
+});

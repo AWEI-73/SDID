@@ -88,7 +88,8 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
     let scanResult;
     let scannerVersion;
 
-    // ── 統一掃描入口 ──
+    // SHRINK 已移為可選工具，SCAN 直接讀源碼中的 GEMS 標籤（支援完整多行格式與 shrink 格式）
+    // 若需在 SCAN 前壓縮標籤，請手動執行: node task-pipe/tools/shrink-tags.cjs --target=<project>
     const raw = unified.scan(srcDir, target);
     scannerVersion = raw.scannerVersion === 'ast-v2' ? '8.0' : '6.0';
 
@@ -147,6 +148,7 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
     // 產出 functions.json (v7.0 含行號)
     const functionsJson = {
       version: scannerVersion,
+      generatedBy: 'scan',
       generatedAt: new Date().toISOString(),
       totalCount: scanResult.functions?.length || scanResult.stats?.tagged || 0,
       byRisk: {
@@ -242,24 +244,18 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
       produced.push('function-index.json');
     }
 
-    // shrink-tags: SCAN 完成後壓縮 GEMS 標籤
-    let shrinkNote = '';
-    try {
-      const { shrinkTags } = require('../../tools/shrink-tags.cjs');
-      const shrinkResult = shrinkTags(target);
-      shrinkNote = shrinkResult.filesChanged > 0
-        ? `shrink-tags: ${shrinkResult.filesChanged} 個檔案, ${shrinkResult.tagsShrunken} 個標籤`
-        : 'shrink-tags: 無需壓縮';
-    } catch (e) {
-      shrinkNote = `shrink-tags: 跳過 (${e.message.split('\n')[0]})`;
-    }
-    console.log(`[SCAN] ${shrinkNote}`);
-
     // SCAN 完成 → 標記 iteration 為 completed，讓 loop 下次正確偵測到新 iter
     try {
       const stateManager = require('../../lib/shared/state-manager-v3.cjs');
       stateManager.completeIteration(absTarget, iteration);
     } catch (e) { /* state-manager 不可用時靜默跳過 */ }
+
+    // M12: 存 iter 函式快照 — SCAN 完成後將 functions.json 複製到 iter 目錄
+    try {
+      const snapshotPath = path.join(iterPath, 'functions-snapshot.json');
+      fs.writeFileSync(snapshotPath, JSON.stringify(functionsJson, null, 2));
+      console.log(`[SCAN] functions-snapshot.json → ${path.relative(process.cwd(), snapshotPath)}`);
+    } catch (e) { /* 快照失敗不影響主流程 */ }
 
     anchorPass('SCAN', 'Enhanced Scan v7.0',
       `SCAN 完成 | Funcs: ${scanResult.functions.length} | 平均 ${scanResult.stats.avgFunctionLines || '?'} 行/函式`,
@@ -271,7 +267,7 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
           'P0': scanResult.stats.p0,
           'P1': scanResult.stats.p1,
           '行號索引': scannerVersion === '7.0' ? '✓' : '-',
-          'Shrink': shrinkNote
+          'Shrink': '無'
         }
       }
     );

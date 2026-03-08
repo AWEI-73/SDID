@@ -392,6 +392,7 @@ BUILD 時 AI 根據這些註解自行推導 Schema 和 API。
  * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
  * GEMS-TEST-FILE: xxx.test.ts
  */
+// AC-X.Y                    ← 驗收條件 ID（在標籤後、[STEP] 前，P0/P1 必填）
 // [STEP] Step1 (P0/P1 強制，P2/P3 可選)
 // [STEP] Step2
 // [STEP] Step3

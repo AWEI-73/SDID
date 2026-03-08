@@ -488,6 +488,23 @@ function detectProjectState(projectPath, detectedLevel = 'M') {
         }
         
         if (hasDraft) {
+            // Blueprint Flow: 如果 logs 有 gate-expand-pass，表示這是 expand 後產出的快照
+            // 優先走 GATE，不走 POC
+            if (fs.existsSync(logsPath)) {
+                const hasExpandPass = fs.readdirSync(logsPath).some(f => f.startsWith('gate-expand-pass-'));
+                if (hasExpandPass) {
+                    const hasGateCheckPass = fs.readdirSync(logsPath).some(f => f.startsWith('gate-check-pass-'));
+                    if (!hasGateCheckPass) {
+                        return { phase: 'GATE', step: null, iteration: latestIter, reason: 'Blueprint expand 完成（快照已建立），需要 Gate 驗證' };
+                    }
+                    const hasCynefinPass = fs.readdirSync(logsPath).some(f => f.startsWith('cynefin-check-pass-'));
+                    if (!hasCynefinPass) {
+                        return { phase: 'CYNEFIN_CHECK', step: null, iteration: latestIter, reason: 'Blueprint expand 後需要 Cynefin 分析' };
+                    }
+                    return { phase: 'PLAN', step: null, iteration: latestIter, reason: 'Blueprint expand 後 Gate 通過，進入 PLAN' };
+                }
+            }
+
             // 讀取 draft 內容判斷是否已 PASS
             const draftFile = pocFiles.find(f => f.startsWith('requirement_draft_'));
             const draftContent = fs.readFileSync(path.join(pocPath, draftFile), 'utf8');
@@ -505,6 +522,25 @@ function detectProjectState(projectPath, detectedLevel = 'M') {
         }
     }
     
+    // Blueprint Flow: 如果 logs 有 gate-expand-pass，表示 expand 完成，下一步是 GATE
+    // （expand 建立了 iter-N/logs/ 但沒有 poc/plan/build，所以走到這裡）
+    if (fs.existsSync(logsPath)) {
+        const hasExpandPass = fs.readdirSync(logsPath).some(f => f.startsWith('gate-expand-pass-'));
+        if (hasExpandPass) {
+            const hasGateCheckPass = fs.readdirSync(logsPath).some(f => f.startsWith('gate-check-pass-'));
+            if (!hasGateCheckPass) {
+                return { phase: 'GATE', step: null, iteration: latestIter, reason: 'Blueprint expand 完成，需要重新 Gate' };
+            }
+            // gate-check-pass 也有了，繼續正常 Blueprint 流程
+            // 讓 state-machine 的 log-based inference 接手（但這裡是 filesystem fallback，直接給 CYNEFIN_CHECK）
+            const hasCynefinPass = fs.readdirSync(logsPath).some(f => f.startsWith('cynefin-check-pass-'));
+            if (!hasCynefinPass) {
+                return { phase: 'CYNEFIN_CHECK', step: null, iteration: latestIter, reason: 'Blueprint expand 後需要 Cynefin 分析' };
+            }
+            return { phase: 'PLAN', step: null, iteration: latestIter, reason: 'Blueprint expand 後 Gate 通過，進入 PLAN' };
+        }
+    }
+
     return { phase: 'POC', step: '1', iteration: latestIter, reason: '預設從 POC 開始' };
 }
 
@@ -913,20 +949,90 @@ function main() {
     // 檢查是否完成
     if (state.phase === 'COMPLETE') {
         log(`\n✅ ${state.iteration} 所有階段已完成！`, 'green');
-        
-        // 自我迭代：從 suggestions 產生下一個 iteration 的 requirement_draft
-        const nextIter = generateNextIteration(projectPath, state.iteration);
-        
-        if (nextIter) {
-            log(`\n🔄 自動產生 ${nextIter.iteration} 需求草稿`, 'blue');
-            log(`   來源: ${nextIter.suggestionsCount} 個 suggestions`, 'cyan');
-            log(`   草稿: ${nextIter.draftPath}`, 'cyan');
-            log(`\n@NEXT_ACTION`, 'yellow');
-            log(`請檢閱 ${nextIter.draftPath}，確認需求後再次執行此腳本。`, 'yellow');
-            log(`或直接執行: node loop.cjs --project=${projectPath}`, 'yellow');
+
+        // 偵測路線：Blueprint vs Task-Pipe
+        let stateMachine = null;
+        try { stateMachine = require(path.join(TASK_PIPE_ROOT, '..', 'sdid-core', 'state-machine.cjs')); } catch {}
+
+        // detectRoute 現在會往前掃所有 iter，能正確識別 Blueprint 路線
+        const iterNum = parseInt(state.iteration.replace('iter-', ''), 10);
+        const route = stateMachine ? stateMachine.detectRoute(projectPath, state.iteration) : 'Unknown';
+
+        // 找活藍圖路徑（往前找有 draft 的 iter）
+        let draftPath = null;
+        for (let i = iterNum; i >= 1; i--) {
+            const found = stateMachine ? stateMachine.findDraft(projectPath, i) : null;
+            if (found) { draftPath = found; break; }
+        }
+
+        if (route === 'Blueprint') {
+            // Blueprint Flow: COMPLETE 後應走 blueprint-expand（進入下一個 iter）
+
+            // 從 iterationPlan 找下一個 [STUB] 的 iter 編號
+            let nextIterNum = iterNum + 1; // fallback
+            if (draftPath) {
+                try {
+                    const draftParser = require(path.join(TASK_PIPE_ROOT, '..', 'sdid-tools', 'lib', 'draft-parser-standalone.cjs'));
+                    const draft = draftParser.load(draftPath);
+                    if (draft.iterationPlan && draft.iterationPlan.length > 0) {
+                        // 找第一個尚未完成的 iter（STUB 或 CURRENT，不是 DONE）
+                        const nextEntry = draft.iterationPlan.find(e =>
+                            e.iter > iterNum &&
+                            e.status !== '[DONE]' && e.status !== 'DONE'
+                        );
+                        if (nextEntry) {
+                            nextIterNum = nextEntry.iter;
+                            log(`  📋 從 iterationPlan 偵測到下一個 iter: iter-${nextIterNum} (${nextEntry.status || 'STUB'})`, 'cyan');
+                        } else {
+                            // 沒有更多未完成的 iter → 真正完成
+                            log('\n' + COMPLETE_SIGNAL, 'green');
+                            log('🎉 Blueprint Flow 全部 iter 已完成！', 'green');
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    log(`  ⚠ 無法解析 iterationPlan，使用 iter-${nextIterNum} 作為下一個 iter`, 'yellow');
+                }
+            }
+
+            // 檢查下一個 iter 的 logs 是否已有 gate-expand-pass（expand 已跑過）
+            const nextLogsDir = path.join(projectPath, '.gems', 'iterations', `iter-${nextIterNum}`, 'logs');
+            const expandAlreadyDone = fs.existsSync(nextLogsDir) &&
+                fs.readdirSync(nextLogsDir).some(f => f.startsWith('gate-expand-pass-'));
+
+            if (expandAlreadyDone) {
+                log(`\n🔄 iter-${nextIterNum} expand 已完成，直接進入 GATE`, 'blue');
+                log(`\n@NEXT_ACTION`, 'yellow');
+                if (draftPath) {
+                    log(`node sdid-tools/blueprint-gate.cjs --draft="${draftPath}" --target="${projectPath}" --iter=${nextIterNum}`, 'yellow');
+                } else {
+                    log(`node sdid-tools/blueprint-gate.cjs --draft=<draft_path> --target="${projectPath}" --iter=${nextIterNum}`, 'yellow');
+                }
+            } else {
+                log(`\n📐 Blueprint Flow: 執行 blueprint-expand 進入 iter-${nextIterNum}`, 'blue');
+                log(`\n@NEXT_ACTION`, 'yellow');
+                if (draftPath) {
+                    log(`node sdid-tools/blueprint-expand.cjs --draft="${draftPath}" --iter=${nextIterNum} --target="${projectPath}"`, 'yellow');
+                } else {
+                    log(`node sdid-tools/blueprint-expand.cjs --draft=<draft_path> --iter=${nextIterNum} --target="${projectPath}"`, 'yellow');
+                    log(`  ⚠ 找不到 draft 路徑，請手動指定`, 'yellow');
+                }
+            }
         } else {
-            log('\n' + COMPLETE_SIGNAL, 'green');
-            log('無更多迭代建議，專案開發完成！', 'green');
+            // Task-Pipe Flow: 自我迭代，從 suggestions 產生下一個 iteration 的 requirement_draft
+            const nextIter = generateNextIteration(projectPath, state.iteration);
+
+            if (nextIter) {
+                log(`\n🔄 自動產生 ${nextIter.iteration} 需求草稿`, 'blue');
+                log(`   來源: ${nextIter.suggestionsCount} 個 suggestions`, 'cyan');
+                log(`   草稿: ${nextIter.draftPath}`, 'cyan');
+                log(`\n@NEXT_ACTION`, 'yellow');
+                log(`請檢閱 ${nextIter.draftPath}，確認需求後再次執行此腳本。`, 'yellow');
+                log(`或直接執行: node loop.cjs --project=${projectPath}`, 'yellow');
+            } else {
+                log('\n' + COMPLETE_SIGNAL, 'green');
+                log('無更多迭代建議，專案開發完成！', 'green');
+            }
         }
         return;
     }
@@ -949,6 +1055,31 @@ function main() {
         log(`FILE: ${inputPath}`, 'yellow');
         log(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectPath} --iter=${state.iteration.replace('iter-', '')}`, 'yellow');
         log(`\n@REMINDER: 分析完成後必須執行 cynefin-log-writer.cjs 存 log，@PASS 才能進 PLAN`, 'yellow');
+        return;
+    }
+
+    // Blueprint GATE: 輸出 blueprint-gate.cjs 指令（不走 runner）
+    if (state.phase === 'GATE') {
+        const iterNum = parseInt(state.iteration.replace('iter-', ''), 10);
+        let stateMachine = null;
+        try { stateMachine = require(path.join(TASK_PIPE_ROOT, '..', 'sdid-core', 'state-machine.cjs')); } catch {}
+
+        // Blueprint 活藍圖在最早有 draft 的 iter（通常是 iter-1 或 iter-2）
+        // 往前找，直到找到 draft
+        let draftPath = null;
+        for (let i = iterNum; i >= 1; i--) {
+            const found = stateMachine ? stateMachine.findDraft(projectPath, i) : null;
+            if (found) { draftPath = found; break; }
+        }
+
+        log(`\n📐 Blueprint GATE: iter-${iterNum} 需要 Gate 驗證`, 'cyan');
+        log(`\n@NEXT_ACTION`, 'yellow');
+        if (draftPath) {
+            log(`node sdid-tools/blueprint-gate.cjs --draft="${draftPath}" --target="${projectPath}" --iter=${iterNum}`, 'yellow');
+        } else {
+            log(`node sdid-tools/blueprint-gate.cjs --draft=<draft_path> --target="${projectPath}" --iter=${iterNum}`, 'yellow');
+            log(`  ⚠ 找不到 draft 路徑，請手動指定`, 'yellow');
+        }
         return;
     }
 

@@ -248,7 +248,37 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 2. 設定 POC Level: S(≤3 Stories) / M(≤6) / L(≤10)
 3. 確認當前迭代號（掃描 `.gems/iterations/` 取最大 iter-N，遞增為 iter-(N+1)；無則 iter-1）
 4. 存到 `{project}/.gems/iterations/iter-{X}/poc/requirement_draft_iter-{X}.md`
-5. 提示使用者：「Draft 已完成（iter-{X}），接下來執行 BUILD 嗎？」
+5. 提示使用者：「Draft 已完成（iter-{X}），接下來執行 sdid-loop 進入三節點流程」
+
+## Draft 完成後的三節點流程（Blueprint 路線強制）
+
+> ⚠️ Draft 存檔後不是直接 BUILD，必須依序通過三個節點。
+
+```
+Enhanced Draft
+  ↓
+[1] CYNEFIN-CHECK — 語意域分析，展開隱含複雜度
+    node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=N
+    產物: cynefin-check-pass-*.log
+  ↓
+[2] CONTRACT — 從 draft 推導型別邊界，寫 contract_iter-N.ts
+    node sdid-tools/blueprint-contract-writer.cjs --contract=<path> --target=<project> --iter=N
+    產物: contract-pass-*.log + contract_iter-N.ts
+  ↓
+[3] PLAN — 機械轉換 draft → implementation_plan，骨架注入 contract 型別
+    node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+    產物: implementation_plan_Story-N.Y.md + .ts 骨架
+  ↓
+BUILD Phase 1-8
+```
+
+**為什麼需要 CONTRACT 節點：**
+- draft 的 type 欄位（CONST/SVC/API）是人工填的，容易填錯（如把 `ITrainingService` 填成 CONST）
+- contract.ts 是 Gem 對話後明確設計的型別邊界，有完整 interface body
+- draft-to-plan 生成骨架時，contract 的 `@GEMS-API` 優先於 draft 的 type，確保 interface 不會消失
+- **contract 是 draft 的收斂層，也是骨架生成的 source of truth**
+
+> 實際執行透過 `sdid-loop` MCP tool 自動偵測並依序執行，不需要手動呼叫各工具。
 
 ---
 

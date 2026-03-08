@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "query": "好我需要開一個新的專案叫 InvoiceSystem，主要是幫公司做發票管理，目前還不確定要做哪些功能，你幫我從頭開始",
+    "should_trigger": true,
+    "reason": "新專案 + 需求模糊 → DESIGN-BLUEPRINT 路線"
+  },
+  {
+    "id": 2,
+    "query": "繼續跑 ExamForge 的開發，上次跑到 Phase 5 Story-2 好像有問題",
+    "should_trigger": true,
+    "reason": "有專案 + BUILD 斷點續跑 → BUILD-AUTO / RERUN-PHASE"
+  },
+  {
+    "id": 3,
+    "query": "sdid 小修一下 src/modules/auth/services/authService.ts 裡面的 validateToken 函式，它現在回傳型別不對",
+    "should_trigger": true,
+    "reason": "明確 micro fix 情境，有 sdid 關鍵字"
+  },
+  {
+    "id": 4,
+    "query": "跑一下 sdid-loop，project 是 C:/Users/user/Desktop/SDID/TaskFlow",
+    "should_trigger": true,
+    "reason": "直接呼叫 sdid-loop MCP tool"
+  },
+  {
+    "id": 5,
+    "query": "我想做一個 POC 來驗證 OpenAI Whisper API 的串接，看看能不能把音訊轉成逐字稿再後處理",
+    "should_trigger": true,
+    "reason": "第三方 API 串接驗證 → POC-FIX 路線"
+  },
+  {
+    "id": 6,
+    "query": "跑 Phase 3 重跑，TaskFlow 專案 iter-2 Story-1 之前測試沒過",
+    "should_trigger": true,
+    "reason": "RERUN-PHASE 觸發詞 + 有 iter/story 脈絡"
+  },
+  {
+    "id": 7,
+    "query": "我的 .gems/iterations/iter-3 底下的 plan 跑完 Phase 4 但 GEMS 標籤沒填好，幫我看看哪裡有問題",
+    "should_trigger": true,
+    "reason": ".gems/ 路徑 + GEMS 標籤 = SDID 框架脈絡，應觸發"
+  },
+  {
+    "id": 8,
+    "query": "快速建一個練習用的 todo app，用 React + TypeScript，不需要後端",
+    "should_trigger": true,
+    "reason": "QUICKSTART 路線，「快速建」「練習」明確觸發詞"
+  },
+  {
+    "id": 9,
+    "query": "繼續 TaskFlow 的藍圖，iter-2 現在是 [CURRENT] 狀態，要展開 AC",
+    "should_trigger": true,
+    "reason": "BLUEPRINT-CONTINUE，[CURRENT] 狀態標記是 SDID 專有詞彙"
+  },
+  {
+    "id": 10,
+    "query": "需求已經很清楚了，直接幫我建 InvoiceSystem 專案，功能是：1. 上傳發票圖片 2. OCR 擷取金額 3. 分類管理",
+    "should_trigger": true,
+    "reason": "需求明確 + 新專案 → DESIGN-TASKPIPE 路線"
+  },
+  {
+    "id": 11,
+    "query": "幫我把這個 JavaScript 函式改成 async/await 的寫法，目前用的是 Promise chain",
+    "should_trigger": false,
+    "reason": "一般程式碼重構，沒有 SDID 框架脈絡，不需要 sdid-loop"
+  },
+  {
+    "id": 12,
+    "query": "fix the bug in my React component where the state isn't updating correctly after the API call",
+    "should_trigger": false,
+    "reason": "通用 bug fix，雖然有 fix 但完全沒有 SDID 框架信號"
+  },
+  {
+    "id": 13,
+    "query": "幫我 build 這個 Docker image 然後推到 registry，Dockerfile 在根目錄",
+    "should_trigger": false,
+    "reason": "build 指的是 Docker build，不是 SDID BUILD phase"
+  },
+  {
+    "id": 14,
+    "query": "我想開一個新的 side project，但只是玩玩，你幫我想一下技術架構就好，不用真的生程式碼",
+    "should_trigger": false,
+    "reason": "雖然有「新專案」語意，但明確說只要討論架構，不走開發流程"
+  },
+  {
+    "id": 15,
+    "query": "explain how Blueprint pattern works in software architecture",
+    "should_trigger": false,
+    "reason": "blueprint 在這是設計模式問答，不是 SDID 藍圖設計流程"
+  },
+  {
+    "id": 16,
+    "query": "幫我做 code review，看一下這個 PR 的 TypeScript 寫法有沒有問題",
+    "should_trigger": false,
+    "reason": "code review 請求，沒有 SDID 框架脈絡"
+  },
+  {
+    "id": 17,
+    "query": "我要 refactor 整個認證模組，把 JWT 換成 session-based，大概涉及 10 個檔案",
+    "should_trigger": false,
+    "reason": "雖然是多檔案重構，但沒有明確的 SDID 框架信號（沒有 .gems、sdid-loop、GEMS 標籤等）"
+  },
+  {
+    "id": 18,
+    "query": "繼續上次的對話，你幫我寫的那個 Python 爬蟲還有問題，selenium 的等待時間不夠",
+    "should_trigger": false,
+    "reason": "雖然有「繼續」，但脈絡是 Python 爬蟲，完全不是 SDID 框架"
+  },
+  {
+    "id": 19,
+    "query": "我的 implementation_plan_Story-2.1.md 已經寫好了，幫我 review 一下格式對不對",
+    "should_trigger": true,
+    "reason": "implementation_plan 是 SDID 專有產物命名格式，強烈 SDID 信號"
+  },
+  {
+    "id": 20,
+    "query": "幫我把 src/modules/exam/services/ 這幾個檔案做一個 quick fix，GEMS-FLOW 標籤忘了填",
+    "should_trigger": true,
+    "reason": "GEMS-FLOW 標籤是 SDID 專有詞彙，micro fix 情境"
+  }
+]

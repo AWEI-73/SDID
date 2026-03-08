@@ -1,0 +1,10 @@
+{
+    "mcpServers": {
+        "sdid": {
+            "command": "node",
+            "args": [
+                "C:/Users/user/Desktop/SDID/sdid-tools/mcp-server/index.mjs"
+            ]
+        }
+    }
+}

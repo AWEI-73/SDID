@@ -343,6 +343,15 @@ function runPhase(phase, step, options, config) {
           });
         } catch (e) { }
       }
+      // 寫 pass log，讓 state-machine 的 log-based inference 能正確推進
+      try {
+        const logsDir = path.join(options.target, '.gems', 'iterations', options.iteration, 'logs');
+        if (fs.existsSync(logsDir)) {
+          const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const storyPart = options.story ? `-${options.story}` : '';
+          fs.writeFileSync(path.join(logsDir, `build-phase-${step}${storyPart}-pass-${ts}.log`), '@PASS (SKIP)\n', 'utf8');
+        }
+      } catch (e) { }
       advanceState(options.target, options.iteration, phase, step, options.story);
 
       process.exit(0);
@@ -370,6 +379,15 @@ function runPhase(phase, step, options, config) {
           });
         } catch (e) { }
       }
+      // 寫 pass log，讓 state-machine 的 log-based inference 能正確推進
+      try {
+        const logsDir = path.join(options.target, '.gems', 'iterations', options.iteration, 'logs');
+        if (fs.existsSync(logsDir)) {
+          const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const storyPart = options.story ? `-${options.story}` : '';
+          fs.writeFileSync(path.join(logsDir, `build-phase-${step}${storyPart}-pass-${ts}.log`), '@PASS (SKIP)\n', 'utf8');
+        }
+      } catch (e) { }
       advanceState(options.target, options.iteration, phase, step, options.story);
 
       process.exit(0);
@@ -501,9 +519,16 @@ function runPhase(phase, step, options, config) {
       const next = advanceState(options.target, options.iteration, phase, step, options.story);
       if (next) {
         log('');
-        log(`→ Next: ${next.phase} step ${next.step}`, 'cyan');
-        const storyArg = options.story ? ` --story=${options.story}` : '';
-        log(`  node task-pipe/runner.cjs --phase=${next.phase} --step=${next.step}${storyArg}`, 'dim');
+        if (next.phase === 'SPEC_TO_PLAN') {
+          // Task-Pipe 路線：直接機械轉換，跳過 PLAN 步驟
+          const cmd = `node task-pipe/tools/spec-to-plan.cjs --target=${options.target} --iteration=${options.iteration}`;
+          log(`→ Next: spec-to-plan (機械轉換，跳過 PLAN)`, 'cyan');
+          log(`  ${cmd}`, 'dim');
+        } else {
+          log(`→ Next: ${next.phase} step ${next.step}`, 'cyan');
+          const storyArg = options.story ? ` --story=${options.story}` : '';
+          log(`  node task-pipe/runner.cjs --phase=${next.phase} --step=${next.step}${storyArg}`, 'dim');
+        }
 
         // --auto 模式：直接 spawn 下一個 phase，不需 AI 介入
         if (options.auto) {
@@ -779,6 +804,10 @@ function main() {
     if (state.phase === 'COMPLETE' || state.phase === null) {
       log('✓ All phases complete', 'green');
       log(`  → node task-pipe/runner.cjs --phase=SCAN --target=${options.target}`, 'dim');
+    } else if (state.phase === 'SPEC_TO_PLAN') {
+      log(`→ Next: spec-to-plan (機械轉換，跳過 PLAN)`, 'cyan');
+      log('');
+      log(`  node task-pipe/tools/spec-to-plan.cjs --target=${options.target} --iteration=${iteration}`, 'green');
     } else {
       log(`→ Next: ${state.phase} step ${state.step}`, 'cyan');
       if (state.reason) {

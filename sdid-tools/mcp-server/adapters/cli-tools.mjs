@@ -17,7 +17,7 @@ const require = createRequire(import.meta.url);
 export const specGen = {
   schema: {
     title: 'SDID Spec Generator',
-    description: '字典生成 — 讀 Enhanced Draft 或 requirement_spec，產出 .gems/specs/*.json + _index.json。自動偵測 Blueprint/Task-Pipe 格式。',
+    description: '🔧 手動補充工具 — 字典生成。讀 Enhanced Draft 或 requirement_spec，產出 .gems/specs/*.json + _index.json。⚠️ 不在 sdid-loop 主流程內，請勿在 GATE→PLAN 之間自行插入此工具。',
     inputSchema: {
       project: z.string().describe('專案根目錄路徑'),
       input: z.string().describe('輸入的 Draft/Spec markdown 檔案路徑'),
@@ -39,7 +39,7 @@ export const specGen = {
 export const specGate = {
   schema: {
     title: 'SDID Spec Gate',
-    description: '字典品質驗證 — 執行 5 項檢查（schema/index 格式/一致性/manages 路徑/lineRange）。回傳 PASS 或 FAIL + 錯誤明細。',
+    description: '🔧 手動補充工具 — 字典品質驗證。執行 5 項檢查（schema/index 格式/一致性/manages 路徑/lineRange）。⚠️ 不在 sdid-loop 主流程內，請勿在 GATE→PLAN 之間自行插入此工具。',
     inputSchema: {
       project: z.string().describe('專案根目錄路徑'),
       fixIndex: z.boolean().optional().describe('自動補齊 _index.json 遺漏的 P0/P1 條目'),
@@ -60,7 +60,7 @@ export const specGate = {
 export const blueprintGate = {
   schema: {
     title: 'SDID Blueprint Gate',
-    description: '藍圖品質驗證 — 檢查 Enhanced Draft 的機械規則（AC 完整性、佔位符、依賴、迭代預算等）。',
+    description: '⚠️ 此工具由 sdid-loop 自動呼叫，請勿直接使用。藍圖品質驗證 — 檢查 Enhanced Draft 的機械規則（AC 完整性、佔位符、依賴、迭代預算等）。主流程請使用 sdid-loop。',
     inputSchema: {
       draft: z.string().describe('Enhanced Draft 檔案路徑'),
       iter: z.number().optional().describe('目標迭代（預設自動偵測）'),
@@ -81,7 +81,7 @@ export const blueprintGate = {
 export const microFixGate = {
   schema: {
     title: 'SDID Micro-Fix Gate',
-    description: '小修驗收 — 檢查改動檔案的 GEMS 標籤覆蓋率和 export 完整性。適用於 MICRO-FIX 和 POC-FIX 路線。@PASS 時自動寫 log 到 logs/gate-microfix-pass-*.log。',
+    description: '⚠️ 此工具由 sdid-loop 自動呼叫，請勿直接使用。小修驗收 — 檢查改動檔案的 GEMS 標籤覆蓋率和 export 完整性。主流程請使用 sdid-loop。',
     inputSchema: {
       target: z.string().describe('專案根目錄路徑'),
       changed: z.string().optional().describe('逗號分隔的改動檔案清單（省略則自動掃 src/）'),
@@ -104,7 +104,7 @@ export const microFixGate = {
 export const pocToScaffold = {
   schema: {
     title: 'SDID POC-to-Scaffold',
-    description: 'POC-FIX 骨架遷移 — 讀 poc-consolidation-log.md 映射表，產出帶 GEMS 標籤的 .ts/.tsx 骨架檔。已存在的檔案自動跳過。',
+    description: '⚠️ 此工具由 sdid-loop 自動呼叫，請勿直接使用。POC-FIX 骨架遷移 — 讀 poc-consolidation-log.md 映射表，產出帶 GEMS 標籤的 .ts/.tsx 骨架檔。主流程請使用 sdid-loop。',
     inputSchema: {
       log: z.string().describe('poc-consolidation-log.md 路徑'),
       target: z.string().describe('專案根目錄路徑'),

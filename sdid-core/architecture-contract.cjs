@@ -52,11 +52,16 @@ const layers = {
  * @param {string} type - GEMS 類型（CONST/LIB/API/SVC/HOOK/UI/ROUTE）
  * @param {string} moduleName - 模組名稱
  * @param {string} kebab - kebab-case 的技術名稱
+ * @param {string} [layer] - 模組層級（feature | adapter | shared，預設 feature）
  * @returns {string} 相對於專案根目錄的檔案路徑
  */
-function inferFilePath(type, moduleName, kebab) {
-  const isShared = moduleName === 'shared';
-  const base = isShared ? 'src/shared' : `src/modules/${moduleName}`;
+function inferFilePath(type, moduleName, kebab, layer = 'feature') {
+  const isShared = moduleName === 'shared' || layer === 'shared';
+  const isAdapter = layer === 'adapter';
+
+  const base = isShared ? 'src/shared'
+    : isAdapter ? `src/lib/${moduleName}`
+    : `src/modules/${moduleName}`;
 
   switch (type) {
     case 'CONST':

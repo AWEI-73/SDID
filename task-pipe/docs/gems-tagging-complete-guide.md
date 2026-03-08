@@ -1,8 +1,8 @@
 # GEMS 標籤完整指南 (Complete GEMS Tagging Guide)
 
-> **版本**: v3.0  
-> **日期**: 2026-01-24  
-> **變更**: 新增風險等級判定矩陣、測試分層精確定義、假整合測試偵測
+> **版本**: v4.0  
+> **日期**: 2026-03-09  
+> **變更**: 測試策略改為 GEMS-FLOW + GEMS-DEPS 機械推導（ac-runner/jest-unit/jest-integ/poc-html/skip），移除 Priority-based 測試要求
 
 ## 1. 核心理念
 GEMS 標籤系統用於標記代碼的 **優先級**、**狀態**、**依賴關係** 和 **測試覆蓋率**。它不僅協助開發者維護，更是 AI 助手 (如各類 IDE Copilot) 理解專案結構的關鍵索引。
@@ -51,26 +51,22 @@ GEMS 標籤在不同開發階段有不同的用途：
 
 ---
 
-## 2.1 風險等級判定矩陣 (v3.0 新增)
+## 2.1 風險等級判定矩陣 (v3.0)
 
-> 🎯 **核心觀念**：風險等級決定測試策略，不是「貼標籤」而是「承諾」。
+> 🎯 **核心觀念**：Priority 決定函式重要性，測試策略由 GEMS-FLOW + GEMS-DEPS 機械推導，不靠 Priority。
 
-| 等級 | 定義 | 判定準則 | 測試要求 | 範例 |
-|------|------|----------|----------|------|
-| **P0** | 核心/金流/不可失效 | 符合以下任一：❶ 涉及金錢計算 ❷ 資料刪除操作 ❸ 身分驗證 ❹ 無法 rollback | **U + I(真實) + E2E** | `processPayment`, `deleteUser`, `authenticate` |
-| **P1** | 重要/CRUD主流程 | 符合以下任一：❶ 資料建立/更新 ❷ 業務核心展示 ❸ 跨模組呼叫 | **U + I(真實)** | `createOrder`, `updateProfile`, `syncModules` |
-| **P2** | 輔助/低依賴 | 符合以下任一：❶ 純展示（只讀） ❷ 格式化工具 ❸ 模組內部輔助 | **U (建議)** | `formatDate`, `renderList`, `calculateAge` |
-| **P3** | 簡單/無依賴 | 符合：❶ 純函數 ❷ 無任何外部依賴 ❸ 邏輯 <10 行 | **-** | `log`, `toUpperCase`, `isEmpty` |
+| 等級 | 定義 | 判定準則 | 範例 |
+|------|------|----------|------|
+| **P0** | 核心/金流/不可失效 | 符合以下任一：❶ 涉及金錢計算 ❷ 資料刪除操作 ❸ 身分驗證 ❹ 無法 rollback | `processPayment`, `deleteUser`, `authenticate` |
+| **P1** | 重要/CRUD主流程 | 符合以下任一：❶ 資料建立/更新 ❷ 業務核心展示 ❸ 跨模組呼叫 | `createOrder`, `updateProfile`, `syncModules` |
+| **P2** | 輔助/低依賴 | 符合以下任一：❶ 純展示（只讀） ❷ 格式化工具 ❸ 模組內部輔助 | `formatDate`, `renderList`, `calculateAge` |
+| **P3** | 簡單/無依賴 | 符合：❶ 純函數 ❷ 無任何外部依賴 ❸ 邏輯 <10 行 | `log`, `toUpperCase`, `isEmpty` |
 
 ### 指導原則（軟性警告）
 
-> 📌 這些是**軟性指導**，會發出警告但不會阻擋 BUILD。目的是提醒開發者思考風險。
-
 - **P0 建議**：每個 Story 控制在 2-5 個
 - **P1 建議**：每個 Story 控制在 5-10 個
-- **超過時**：PLAN Step 2.5 會發出 `[WARN]`，建議拆分 Story 或降級
 - **核心指標**：P0 + P1 不應超過總函式的 50%
-- **溫馨提示**：如果每個函式都是 P0/P1，表示您沒有認真思考風險
 
 -----
 
@@ -395,7 +391,7 @@ GEMS-SIDE-EFFECT: API Call (useEffect), Window Resize Listener
  * GEMS-FLOW: CheckLoading→RenderHeader→RenderList→RenderPagination
  * GEMS-DEPS: [Internal.useAttendanceData (Hook)], [Shared.DataTable (元件)], [Shared.formatDate (工具)]
  * GEMS-STATE: local: { pageIndex }, server: { students }
- * GEMS-TEST: ✓ Unit (Render) | ✓ Integration (Mock API) | - E2E
+ * GEMS-TEST: jest-unit
  * GEMS-TEST-FILE: StudentAttendanceList.test.tsx
  */
 export const StudentAttendanceList = ({ classId }: Props) => {
@@ -426,8 +422,8 @@ export const StudentAttendanceList = ({ classId }: Props) => {
  * GEMS-DEPS: [Internal.fetchMenuApi (API)], [Internal.nutrientService (邏輯)], [Module.DailyMenu (跨模組)]
  * GEMS-DEPS-RISK: MEDIUM (依賴了 daily-menu 模組)
  * GEMS-SIDE-EFFECT: API Call (useEffect)
- * GEMS-TEST: ✓ Unit (Hook) | ✓ Integration
- * GEMS-TEST-FILE: useMenuCalculation.test.ts
+ * GEMS-TEST: jest-integ
+ * GEMS-TEST-FILE: useMenuCalculation.integration.test.ts
  */
 export const useMenuCalculation = (menuId: string) => {
   // [STEP] FetchMenu
@@ -454,7 +450,7 @@ export const useMenuCalculation = (menuId: string) => {
  * GEMS-FLOW: ValidateInput→QueryDatabase→MapToDomain→Return
  * GEMS-DEPS: [Database.tbl_roster_students (查詢學員)], [Database.tbl_meal_log (查詢記錄)], [Lib.supabaseClient (連線)], [Internal.toMealDataDomain (轉換)]
  * GEMS-DEPS-RISK: LOW
- * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
+ * GEMS-TEST: jest-unit
  * GEMS-TEST-FILE: previewService.test.ts
  */
 export async function loadClassMealData(classId: number, weekId: string) {
@@ -480,7 +476,7 @@ export async function loadClassMealData(classId: number, weekId: string) {
  * GEMS: validateMealStatistics | P2 | ✓✓ | (stats)→ValidationResult | Story-14.5 | 驗證餐費統計資料
  * GEMS-FLOW: CheckRequired→ValidateRanges→Return
  * GEMS-DEPS: []
- * GEMS-TEST: ✓ Unit | - Integration | - E2E
+ * GEMS-TEST: jest-unit
  * GEMS-TEST-FILE: billingService.test.ts
  * 
  * 注意：雖然使用了 MealStatistics 型別，但純型別不列入 DEPS
@@ -497,7 +493,7 @@ export function validateMealStatistics(stats: MealStatistics): ValidationResult 
  * GEMS-DEPS: [Module.ClassManagement (同步班級)], [Module.Pricing (計算)], [Lib.supabaseClient (連線)]
  * GEMS-DEPS-RISK: HIGH (依賴多個外部模組)
  * GEMS-DEPS-OPTIMIZATION: 建議建立 SyncOrchestrator 在 shared 層統一管理
- * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
+ * GEMS-TEST: jest-integ
  */
 export async function syncAllModulesData(weekId: string) {
   // [STEP] SyncClasses
@@ -515,62 +511,85 @@ export async function syncAllModulesData(weekId: string) {
 
 -----
 
-## 5. 自動擴展規則 (決策樹) [v2.1 更新]
+## 5. 測試策略決策樹 (v4.0 — 機械推導)
 
-| 優先級 | 何時使用 | 必要標籤 | [STEP] 錨點 | 測試要求 |
-| :--- | :--- | :--- | :--- | :--- |
-| **P0 (核心)** | 涉及金流、核心業務、複雜演算法 | 完整 GEMS + FLOW + DEPS + RISK | ✅ 強制 | **Unit + Integration(真實) + E2E** |
-| **P1 (重要)** | 主要 UI 頁面、資料寫入操作 | 完整 GEMS + FLOW + DEPS | ✅ 強制 | **Unit + Integration(真實)** |
-| **P2 (輔助)** | 顯示層邏輯、簡單查詢 | 基礎 GEMS + FLOW (建議) | ⭕ 可選 | Unit (建議) |
-| **P3 (簡單)** | Log、簡單轉換、純 UI 展示 | 基礎 GEMS | ⭕ 可選 | - |
+> **核心原則**：測試策略在 `draft-to-plan` 階段由 GEMS-FLOW + GEMS-DEPS 機械推導，寫入骨架。Phase 3 只執行策略，沒有自由裁量空間。
 
-### 5.1 測試分層精確定義 (v3.0 新增)
+### 5.1 GEMS-TEST 新格式
 
-#### Unit Test (U)
-- **目的**：驗證單一函式邏輯
-- **Mock 範圍**：所有外部依賴
-- **檔案命名**：`*.test.ts`
-
-#### Integration Test (I) - 真實整合
-- **目的**：驗證跨模組依賴正確連結
-- **Mock 範圍**：僅 Mock 外部服務（API、DB 連線）
-- **必須 Import**：真實的依賴模組 (非 Mock)
-- **檔案命名**：`*.integration.test.ts`
-- **Mock 比例**：< 50%
-
-##### ❓ 假整合測試 Anti-Pattern
 ```typescript
-// ❌ 錯：全部 Mock，這是 Unit Test 偐裝成 Integration
-jest.mock('../DataStore');
-jest.mock('../EventBus');
-jest.mock('../ModuleRegistry');
-
-test('integration', () => { ... });
+GEMS-TEST: ac-runner          // 純計算 + 有 AC 驗收條件（最強）
+GEMS-TEST: jest-unit          // 純計算，無 AC
+GEMS-TEST: jest-integ         // 跨邊界格式轉換
+GEMS-TEST: poc-html           // 外部資源（GAS/fetch/DOM）
+GEMS-TEST: skip               // 無測試需求
 ```
 
-##### ✅ 真整合測試
+`GEMS-TEST-FILE` 只有 `jest-unit` / `jest-integ` 需要填，其他策略填 `-`。
+
+### 5.2 推導規則（優先順序由高到低）
+
+| 條件 | 訊號來源 | 策略 |
+|------|---------|------|
+| C: 外部資源（優先） | GEMS-FLOW 含 `GAS/SHEET/SPREADSHEET/FETCH/DOM` 或 DEPS 含外部資源 | `poc-html` |
+| A: 非顯然計算 | GEMS-FLOW 含 `CALC/COMPUTE/PARSE/FORMAT/CONVERT/ROC/DATE/FILTER/SORT` | `ac-runner`（有AC）或 `jest-unit` |
+| B: 跨邊界格式 | 有 deps 且 `GEMS-DEPS-RISK: MEDIUM` 或 `HIGH` | `jest-integ` |
+| 無 A/B/C | — | `skip` |
+
+### 5.3 各策略說明
+
+#### ac-runner（最強驗收）
+- 適用：GEMS-FLOW 含計算步驟 + 函式有 AC 驗收條件
+- 機制：`ac-runner.cjs` 讀取 contract.ts 的 AC 測試案例，純計算驗收
+- 優點：spec 由人鎖定，AI 不能改，是最可靠的驗收機制
+
+#### jest-unit
+- 適用：GEMS-FLOW 含計算步驟，但沒有 AC
+- 機制：標準 Jest 單元測試，mock 所有外部依賴
+- 檔案命名：`*.test.ts`
+
+#### jest-integ
+- 適用：函式有跨邊界 deps 且 DEPS-RISK MEDIUM+
+- 機制：真實 import 依賴模組，只 mock 外部 API/DB
+- 禁止：`jest.mock()` 核心邏輯
+- 必須：有效 assertion（`toBe`, `toEqual`, `toHaveBeenCalledWith` 等）
+- 檔案命名：`*.integration.test.ts`
+
+#### poc-html
+- 適用：函式依賴 GAS/Spreadsheet/fetch/DOM 等外部資源
+- 機制：在 POC HTML 中手動驗證，不寫 Jest
+- 原因：這類函式的「測試」本質上是環境整合，Jest mock 沒有意義
+
+#### skip
+- 適用：純型別宣告、簡單 UI 渲染、無 A/B/C 條件
+- 機制：不寫測試，Phase 4 不要求測試檔案存在
+
+### 5.4 決策樹範例
+
 ```typescript
-// ✅ 對：真正 import 依賴，只 Mock 外部 API
-import { DataStore } from '../DataStore';  // 真實
-import { EventBus } from '../EventBus';    // 真實
-jest.mock('../api/httpClient');             // 僅 Mock HTTP
+// 範例 1: GAS 呼叫 → poc-html
+// GEMS-FLOW: READ_SHEET→PARSE→RETURN
+// GEMS-DEPS: [GAS.SpreadsheetApp]
+// GEMS-TEST: poc-html
 
-test('integration: DataStore + EventBus', () => {
-    EventBus.emit('data:saved', { id: '1' });
-    expect(DataStore.getById('1')).toBeTruthy();
-});
+// 範例 2: 純計算 + AC → ac-runner
+// GEMS-FLOW: PARSE→CALC→RETURN
+// GEMS-DEPS: 無
+// AC-1.0
+// GEMS-TEST: ac-runner
+
+// 範例 3: 跨模組 + MEDIUM risk → jest-integ
+// GEMS-FLOW: LOAD→TRANSFORM→SAVE
+// GEMS-DEPS: [Module.Dashboard], [Module.GasApi]
+// GEMS-DEPS-RISK: MEDIUM
+// GEMS-TEST: jest-integ
+// GEMS-TEST-FILE: load-training-data.integration.test.ts
+
+// 範例 4: 純型別 → skip
+// GEMS-FLOW: DEFINE
+// GEMS-DEPS: 無
+// GEMS-TEST: skip
 ```
-
-#### E2E Test
-- **目的**：驗證完整使用者流程
-- **Mock 範圍**：無 (或僅 Mock 第三方付款)
-- **必須包含**：Route navigation + DOM 互動
-- **檔案命名**：`*.e2e.test.ts` 或 `cypress/e2e/*.cy.ts`
-
-**v2.1 變更**：
-- P0/P1 必須有 `[STEP]` 錨點與 `GEMS-FLOW` 對應
-- P2/P3 通常是單元無依賴，可選擇性使用錨點
-- 移除 `GEMS-ALGO`，邏輯細節移至 Requirement Spec
 
 -----
 
@@ -646,7 +665,8 @@ test('integration: DataStore + EventBus', () => {
       " * GEMS-FLOW: ${4:CheckLoading→RenderContent}",
       " * GEMS-DEPS: [Internal.${5:hook} (${6:說明})], [Shared.${7:component} (${8:說明})]",
       " * GEMS-STATE: local: {${9}}, server: {${10}}",
-      " * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E",
+      " * GEMS-TEST: jest-unit",
+      " * GEMS-TEST-FILE: ${1:ComponentName}.test.tsx",
       " */",
       "export const ${1:ComponentName} = ({ ${11:props} }: Props) => {",
       "  // [STEP] ${4:CheckLoading}",
@@ -661,8 +681,10 @@ test('integration: DataStore + EventBus', () => {
       " * GEMS: ${1:useHookName} | P0 | ✓✓ | (${2:args})→{${3:output}} | ${4:Story-X.X} | ${5:描述}",
       " * GEMS-FLOW: ${6:Step1→Step2→Step3}",
       " * GEMS-DEPS: [Internal.${7:apiFunc} (${8:說明})]",
+      " * GEMS-DEPS-RISK: MEDIUM",
       " * GEMS-SIDE-EFFECT: ${9:API Call}",
-      " * GEMS-TEST: ✓ Unit | ✓ Integration",
+      " * GEMS-TEST: jest-integ",
+      " * GEMS-TEST-FILE: ${1:useHookName}.integration.test.ts",
       " */",
       "export const ${1:useHookName} = (${2:args}) => {",
       "  // [STEP] ${6:Step1}",
@@ -678,7 +700,7 @@ test('integration: DataStore + EventBus', () => {
       " * GEMS-FLOW: ${6:ValidateInput→QueryDatabase→MapToDomain→Return}",
       " * GEMS-DEPS: [Database.${7:tbl_name} (${8:說明})], [Lib.supabaseClient (連線)]",
       " * GEMS-DEPS-RISK: ${9:LOW}",
-      " * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E",
+      " * GEMS-TEST: jest-unit",
       " * GEMS-TEST-FILE: ${10:fileName}.test.ts",
       " */",
       "export async function ${1:functionName}(${2:args}): Promise<${3:Result}> {",
@@ -694,10 +716,9 @@ test('integration: DataStore + EventBus', () => {
       " * GEMS: ${1:functionName} | P2 | ✓✓ | (${2:args})→${3:Result} | ${4:Story-X.X} | ${5:描述}",
       " * GEMS-FLOW: ${6:Validate→Transform→Return}",
       " * GEMS-DEPS: []",
-      " * GEMS-TEST: ✓ Unit | - Integration | - E2E",
+      " * GEMS-TEST: skip",
       " */",
       "export function ${1:functionName}(${2:args}): ${3:Result} {",
-      "  // P2 可選：不強制 [STEP] 錨點",
       "  $0",
       "}"
     ]

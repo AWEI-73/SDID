@@ -126,8 +126,10 @@ function findACLines(lines, gemsEndLine, funcLine) {
     }
     // 遇到 [STEP] 就停止
     if (trimmed.startsWith('// [STEP]')) break;
+    // 空行跳過，繼續往下找
+    if (!trimmed) continue;
     // 遇到非空非 AC 非 STEP 的行也停止（避免誤抓）
-    if (trimmed && !trimmed.startsWith('//')) break;
+    if (!trimmed.startsWith('//')) break;
   }
   return acIds;
 }

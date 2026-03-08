@@ -10,7 +10,7 @@ import { resolvePath, runRunner } from '../lib/utils.mjs';
 export const build = {
   schema: {
     title: 'SDID BUILD Runner',
-    description: '執行 BUILD Phase（1-8）或自動偵測下一步。回傳該 phase 的指令和驗證結果。加 --auto 可自動串接到下一個 phase 直到 BLOCKER。',
+    description: '⚠️ 此工具由 sdid-loop 自動呼叫，請勿直接使用。執行 BUILD Phase（1-8）或自動偵測下一步。主流程請使用 sdid-loop。',
     inputSchema: {
       target: z.string().describe('專案根目錄路徑'),
       phase: z.enum(['BUILD', 'POC', 'PLAN']).optional().describe('階段（BUILD/POC/PLAN），省略則自動偵測'),
@@ -41,7 +41,7 @@ export const build = {
 export const scan = {
   schema: {
     title: 'SDID SCAN Runner',
-    description: '執行 SCAN Phase — 產出 .gems/docs/ 全景報告（function-index、覆蓋率、未標籤清單）。',
+    description: '⚠️ 此工具由 sdid-loop 自動呼叫，請勿直接使用。執行 SCAN Phase — 產出 .gems/docs/ 全景報告。主流程請使用 sdid-loop。',
     inputSchema: {
       target: z.string().describe('專案根目錄路徑'),
       iteration: z.string().optional().describe('迭代（如 iter-11），省略則自動偵測'),

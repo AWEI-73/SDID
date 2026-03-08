@@ -115,7 +115,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   } catch (e) { /* ignore */ }
   const isBackendProject = techStackProfile?.projectType === 'backend' || techStackProfile?.projectType === 'unknown';
 
-  let criticalIssues, warningIssues;
+  let criticalIssues, warningIssues, downgradeIssues;
   if (isBackendProject) {
     // 後端專案: E2E CRITICAL → WARNING (保留 Integration CRITICAL)
     criticalIssues = testTypeResult.issues.filter(i =>
@@ -131,6 +131,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     criticalIssues = testTypeResult.issues.filter(i => i.severity === 'CRITICAL');
     warningIssues = testTypeResult.issues.filter(i => i.severity === 'WARNING');
   }
+  downgradeIssues = testTypeResult.issues.filter(i => i.severity === 'DOWNGRADE_SUGGESTION');
 
   const passed = missingTests.length === 0 && p0Pass && p1Pass &&
     riskIssues.length === 0 && criticalIssues.length === 0;
@@ -151,10 +152,21 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     const typeWarningNote = warningIssues.length > 0
       ? `\n[WARN] ${warningIssues.length} 個假整合測試 (過度 Mock)`
       : '';
+    const downgradeNote = downgradeIssues.length > 0
+      ? `\n[DOWNGRADE] ${downgradeIssues.length} 個宣告型別建議降級 priority`
+      : '';
+
+    if (downgradeIssues.length > 0) {
+      console.log('');
+      console.log('[PRIORITY_DOWNGRADE_SUGGESTION]');
+      for (const d of downgradeIssues) {
+        console.log(`  ⬇ ${d.fn} (${d.priority}): ${d.suggestion}`);
+      }
+    }
 
     emitPass({
       scope: 'BUILD Phase 4',
-      summary: `P0: ${p0Tested.length}/${p0Fns.length} (E2E: ${testTypeResult.stats.p0WithE2E}) | P1: ${p1Tested.length}/${p1Fns.length} (Integration: ${testTypeResult.stats.p1WithIntegration})${warningNote}${typeWarningNote}`,
+      summary: `P0: ${p0Tested.length}/${p0Fns.length} (E2E: ${testTypeResult.stats.p0WithE2E}) | P1: ${p1Tested.length}/${p1Fns.length} (Integration: ${testTypeResult.stats.p1WithIntegration})${warningNote}${typeWarningNote}${downgradeNote}`,
       nextCmd: getNextCmd('BUILD', '4', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
@@ -170,6 +182,17 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   // v4.2: 使用 emitTaskBlock 精確輸出，告訴 AI 每個測試檔案的完整資訊
   if (criticalIssues.length > 0) {
     const { emitTaskBlock } = require('../../lib/shared/log-output.cjs');
+
+    // 先輸出降級建議（如果有）
+    if (downgradeIssues.length > 0) {
+      console.log('');
+      console.log('[PRIORITY_DOWNGRADE_SUGGESTION]');
+      console.log(`  以下函式是 interface/type/常數宣告，無執行行為，建議降級 priority 而非強行寫測試:`);
+      for (const d of downgradeIssues) {
+        console.log(`  ⬇ ${d.fn} (${d.priority}): ${d.suggestion}`);
+      }
+      console.log('');
+    }
 
     const tasks = criticalIssues.slice(0, 8).map(issue => {
       const fn = scanResult.functions.find(f => f.name === issue.fn);

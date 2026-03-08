@@ -679,10 +679,27 @@ node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
  * GEMS-FLOW: Step1→Step2→Step3
  * GEMS-DEPS: [Type.Name (說明)], [Type.Name (說明)]
  * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH
- * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
- * GEMS-TEST-FILE: xxx.test.ts
+ * GEMS-TEST: ac-runner          ← 純計算 + 有 AC（最強驗收）
+ * GEMS-TEST: jest-unit          ← 純計算，無 AC
+ * GEMS-TEST: jest-integ         ← 跨邊界格式轉換（DEPS-RISK MEDIUM+）
+ * GEMS-TEST: poc-html           ← 外部資源（GAS/fetch/DOM）
+ * GEMS-TEST: skip               ← 無 A/B/C 條件，不需要 Jest
+ * GEMS-TEST-FILE: xxx.test.ts   ← 只有 jest-unit / jest-integ 需要填
  */
+// AC-X.Y                    ← 驗收條件 ID（在標籤後、[STEP] 前，P0/P1 必填）
+// [STEP] Step1
 ```
+
+**測試策略推導規則（機械推導，不靠 AI 主觀）**：
+
+| 條件 | 訊號來源 | 策略 |
+|------|---------|------|
+| A: 非顯然計算 | GEMS-FLOW 含 CALC/PARSE/CONVERT/FORMAT/ROC/DATE | `ac-runner`（有AC）或 `jest-unit` |
+| B: 跨邊界格式 | DEPS-RISK MEDIUM+ 且有 deps | `jest-integ` |
+| C: 外部資源 | GEMS-FLOW 含 GAS/SHEET/FETCH/DOM | `poc-html` |
+| 無 A/B/C | — | `skip` |
+
+條件 C 優先於 A/B。`draft-to-plan.cjs` 在 Gate 階段自動推導並寫入骨架，Phase 3 只執行策略，無自由裁量。
 
 ---
 

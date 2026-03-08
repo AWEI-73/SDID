@@ -402,24 +402,8 @@
             "step": "5"
         },
         {
-            "phase": "PLAN",
-            "step": "1"
-        },
-        {
-            "phase": "PLAN",
-            "step": "2"
-        },
-        {
-            "phase": "PLAN",
-            "step": "3"
-        },
-        {
-            "phase": "PLAN",
-            "step": "4"
-        },
-        {
-            "phase": "PLAN",
-            "step": "5"
+            "phase": "SPEC_TO_PLAN",
+            "step": "run"
         },
         {
             "phase": "BUILD",

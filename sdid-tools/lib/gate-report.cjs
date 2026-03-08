@@ -208,6 +208,7 @@ function getFixGuidance(code) {
     'SIG-003': '公開 API 參數應標註型別，例如: (classId: string, date: string) 而非 (classId, date)',
     'SIZE-001': '模組動作數超過 8 個，建議拆分為子模組，例如將 shared 拆為 shared/types + shared/storage',
     'ACC-001': 'P0/P1 動作必須有 AC 欄位。在動作清單的 AC 欄填入編號（如 AC-1.0），並在「## ✅ 驗收條件」區塊定義 Given/When/Then',
+    'ACC-002': 'AC 編號填了但驗收條件區塊沒有對應定義。在「## ✅ 驗收條件」區塊加入 **AC-X.Y**: Given ... When ... Then ...',
     'BUDGET-001': 'Story 動作數超過上限 10。請拆成多個 Story（不是多個 iter），每個 Story 建議 4-6 個動作',
     'BUDGET-002': 'Story 動作數超過建議值 6，注意開發品質，必要時拆為 Story-X.0 + Story-X.1',
     'STUB-001': 'Stub iter 應加入描述，格式: > 模組說明，依賴 shared + xxx',

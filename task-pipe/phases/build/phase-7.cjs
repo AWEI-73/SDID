@@ -344,7 +344,9 @@ function findUnregisteredPages(target, srcPath, pages) {
     path.join(srcPath, 'router', 'index.tsx'),
     path.join(srcPath, 'router', 'index.ts'),
     path.join(srcPath, 'main.tsx'),
-    path.join(srcPath, 'index.tsx')
+    path.join(srcPath, 'index.tsx'),
+    path.join(srcPath, 'shared', 'pages', 'app-router.tsx'),
+    path.join(srcPath, 'shared', 'pages', 'app-router.jsx')
   ];
 
   // 收集所有路由配置內容
@@ -368,9 +370,14 @@ function findUnregisteredPages(target, srcPath, pages) {
     // 從 "moduleName/PageName.tsx" 提取 "PageName"
     const pageName = page.replace(/\.(tsx|jsx)$/, '').split('/').pop();
 
+    // Convert kebab-case to PascalCase for component name matching (e.g. dashboard-page -> DashboardPage)
+    const pascalPageName = pageName
+      .replace(/-./g, x => x[1].toUpperCase())
+      .replace(/^./, x => x.toUpperCase());
+
     // v4.0: 更嚴格的檢查 - 必須同時有 import 和 Route 定義
-    const importCheck = isPageImported(pageName, routeContent);
-    const routeCheck = isPageInRoute(pageName, routeContent);
+    const importCheck = isPageImported(pageName, pascalPageName, routeContent);
+    const routeCheck = isPageInRoute(pascalPageName, routeContent);
 
     if (!importCheck && !routeCheck) {
       unregistered.push(`${page} (未 import 且未註冊路由)`);
@@ -387,12 +394,13 @@ function findUnregisteredPages(target, srcPath, pages) {
 /**
  * v4.0: 檢查 Page 是否被 import
  */
-function isPageImported(pageName, routeContent) {
+function isPageImported(pageName, pascalPageName, routeContent) {
   const importPatterns = [
-    new RegExp(`import\\s+.*${pageName}.*from`, 'i'),           // import PageName from
-    new RegExp(`import\\s*\\{[^}]*${pageName}[^}]*\\}`, 'i'),   // import { PageName } from
-    new RegExp(`React\\.lazy.*${pageName}`, 'i'),               // React.lazy(() => import('...PageName'))
-    new RegExp(`lazy\\s*\\(.*${pageName}`, 'i'),                // lazy(() => import('...PageName'))
+    new RegExp(`import\\s+.*${pageName}.*from`, 'i'),           // import ... from '...pageName'
+    new RegExp(`import\\s+.*${pascalPageName}.*from`, 'i'),     // import PascalName from
+    new RegExp(`import\\s*\\{[^}]*${pascalPageName}[^}]*\\}`, 'i'),   // import { PascalName } from
+    new RegExp(`React\\.lazy.*${pageName}`, 'i'),               // React.lazy(() => import('...pageName'))
+    new RegExp(`lazy\\s*\\(.*${pageName}`, 'i'),                // lazy(() => import('...pageName'))
   ];
   return importPatterns.some(p => p.test(routeContent));
 }
@@ -417,16 +425,20 @@ function findNewPages(srcPath) {
   const modulesDir = path.join(srcPath, 'modules');
   const sharedPagesDir = path.join(srcPath, 'shared', 'pages');
 
-  // 檢查 pages 目錄
+  // 檢查 pages 目錄 — 路徑已在 pages/ 下，不需要檔名含 "page"
   if (fs.existsSync(pagesDir)) {
     const files = fs.readdirSync(pagesDir);
-    files.filter(f => /Page\.(tsx|jsx)$/.test(f)).forEach(f => pages.push(f));
+    files.filter(f => /\.(tsx|jsx)$/.test(f)).forEach(f => pages.push(f));
   }
 
   // v5.3: 檢查 shared/pages 目錄 (AI 常把 AppRouter/AppRoot 放這裡)
+  // 排除 Router/Root 本身 — 它們是路由器，不需要被外部路由掛載
   if (fs.existsSync(sharedPagesDir)) {
     const files = fs.readdirSync(sharedPagesDir);
-    files.filter(f => /\.(tsx|jsx)$/.test(f)).forEach(f => pages.push(`shared/pages/${f}`));
+    files
+      .filter(f => /\.(tsx|jsx)$/.test(f))
+      .filter(f => !/router|root/i.test(f))
+      .forEach(f => pages.push(`shared/pages/${f}`));
   }
 
   // 檢查 modules/*/pages 目錄
@@ -437,7 +449,8 @@ function findNewPages(srcPath) {
         const modPagesDir = path.join(modulesDir, mod.name, 'pages');
         if (fs.existsSync(modPagesDir)) {
           const files = fs.readdirSync(modPagesDir);
-          files.filter(f => /Page\.(tsx|jsx)$/.test(f)).forEach(f => pages.push(`${mod.name}/${f}`));
+          // 路徑已在 pages/ 下，不需要檔名含 "page"
+          files.filter(f => /\.(tsx|jsx)$/.test(f)).forEach(f => pages.push(`${mod.name}/${f}`));
         }
       }
     }

@@ -129,24 +129,52 @@ function parseEntities(content) {
   const entities = {};
   const section = extractSection(content, /#{2,4}\s*2\.\s*實體定義/);
   if (!section) return entities;
+
+  // 格式 A: #### EntityName 分塊格式（標準格式）
   const blocks = section.split(/####\s+/).slice(1);
-  for (const block of blocks) {
-    const nameMatch = block.match(/^([^\n]+)/);
-    if (!nameMatch) continue;
-    const name = nameMatch[1].trim();
-    const lines = block.split('\n').filter(l => l.includes('|'));
-    if (lines.length < 3) continue;
-    const headers = lines[0].split('|').map(h => h.trim()).filter(Boolean);
-    const fields = [];
-    for (let i = 2; i < lines.length; i++) {
-      const cells = lines[i].split('|').map(c => c.trim()).filter(Boolean);
-      if (cells.length < 2) continue;
-      const field = {};
-      headers.forEach((h, idx) => { field[h.toLowerCase()] = cells[idx] || ''; });
-      fields.push(field);
+  if (blocks.length > 0) {
+    for (const block of blocks) {
+      const nameMatch = block.match(/^([^\n]+)/);
+      if (!nameMatch) continue;
+      const name = nameMatch[1].trim();
+      const lines = block.split('\n').filter(l => l.includes('|'));
+      if (lines.length < 3) continue;
+      const headers = lines[0].split('|').map(h => h.trim()).filter(Boolean);
+      const fields = [];
+      for (let i = 2; i < lines.length; i++) {
+        const cells = lines[i].split('|').map(c => c.trim()).filter(Boolean);
+        if (cells.length < 2) continue;
+        const field = {};
+        headers.forEach((h, idx) => { field[h.toLowerCase()] = cells[idx] || ''; });
+        fields.push(field);
+      }
+      entities[name] = fields;
     }
-    entities[name] = fields;
+    if (Object.keys(entities).length > 0) return entities;
   }
+
+  // 格式 B: 扁平表格格式（第一欄是實體名稱，每行一個欄位）
+  // | 實體名稱 | 欄位 | 型別 | 約束 | 說明 |
+  const tableLines = section.split('\n').filter(l => l.includes('|'));
+  if (tableLines.length >= 3) {
+    const headers = tableLines[0].split('|').map(h => h.trim()).filter(Boolean);
+    // 第一欄是實體名稱欄位（如「實體名稱」「Entity」等）
+    const firstHeader = (headers[0] || '').toLowerCase();
+    const isEntityTable = /實體|entity/i.test(firstHeader);
+    if (isEntityTable) {
+      for (let i = 2; i < tableLines.length; i++) {
+        const cells = tableLines[i].split('|').map(c => c.trim()).filter(Boolean);
+        if (cells.length < 2) continue;
+        const entityName = cells[0];
+        if (!entityName || /^[-:]+$/.test(entityName)) continue;
+        if (!entities[entityName]) entities[entityName] = [];
+        const field = {};
+        headers.slice(1).forEach((h, idx) => { field[h.toLowerCase()] = cells[idx + 1] || ''; });
+        entities[entityName].push(field);
+      }
+    }
+  }
+
   return entities;
 }
 
@@ -219,6 +247,25 @@ function parseIterationPlan(content) {
 }
 
 // === 模組動作清單 (v2: 含 deps + 狀態) ===
+
+/**
+ * 從 block 內容提取第一個表格的行（截斷多表格）
+ * 遇到第二個 separator 行就停止，避免第二個表格的 header 被誤讀為資料行
+ */
+function extractFirstTableLines(blockContent) {
+  const allLines = blockContent.split('\n').filter(l => l.includes('|') && l.trim().startsWith('|'));
+  if (allLines.length < 3) return allLines;
+  const isSep = (l) => l.split('|').map(c => c.trim()).filter(Boolean).every(c => /^:?-+:?$/.test(c));
+  const firstSepIdx = allLines.findIndex(l => isSep(l));
+  if (firstSepIdx < 0) return allLines;
+  const nextSepIdx = allLines.findIndex((l, i) => i > firstSepIdx && isSep(l));
+  if (nextSepIdx > firstSepIdx) {
+    // nextSepIdx - 1 是第二個表格的 header 行，也要排除
+    return allLines.slice(0, nextSepIdx - 1);
+  }
+  return allLines;
+}
+
 function parseModuleActions(content) {
   const actions = {};
   const section = extractSection(content, /## 📋 模組動作清單/);
@@ -246,7 +293,7 @@ function parseModuleActions(content) {
 
       // v2.4: 解析 Stub 裡的函式 Flow 清單表格（STUB-003 需要）
       const cleanStubBlock = block.replace(/<!--[\s\S]*?-->/g, '');
-      const stubLines = cleanStubBlock.split('\n').filter(l => l.includes('|') && l.trim().startsWith('|'));
+      const stubLines = extractFirstTableLines(cleanStubBlock);
       const stubItems = [];
       if (stubLines.length >= 3) {
         const stubHeaders = stubLines[0].split('|').map(h => h.trim()).filter(Boolean);
@@ -270,13 +317,16 @@ function parseModuleActions(content) {
         }
       }
 
-      actions[moduleName] = {
-        iter, module: moduleName, fillLevel: 'stub', status: blockStatus || 'STUB',
-        stubDescription: stubDesc ? stubDesc[1].trim() : '',
-        estimate: estimateMatch ? estimateMatch[1].trim() : '',
-        stubAPI: apiMatch ? apiMatch[1].split(',').map(s => s.trim()) : [],
-        items: stubItems,
-      };
+      // Bug fix: don't overwrite CURRENT/FULL/PARTIAL with STUB
+      if (!actions[moduleName] || !['CURRENT', 'FULL', 'PARTIAL'].includes(actions[moduleName].status)) {
+        actions[moduleName] = {
+          iter, module: moduleName, fillLevel: 'stub', status: blockStatus || 'STUB',
+          stubDescription: stubDesc ? stubDesc[1].trim() : '',
+          estimate: estimateMatch ? estimateMatch[1].trim() : '',
+          stubAPI: apiMatch ? apiMatch[1].split(',').map(s => s.trim()) : [],
+          items: stubItems,
+        };
+      }
       continue;
     }
 
@@ -284,21 +334,27 @@ function parseModuleActions(content) {
     const isDone = blockStatus === 'DONE';
     if (isDone) {
       const summaryMatch = block.match(/>\s*(.+)/);
-      actions[moduleName] = {
-        iter, module: moduleName, fillLevel: 'done', status: 'DONE',
-        summary: summaryMatch ? summaryMatch[1].trim() : '',
-        items: [],
-      };
+      // Bug fix: don't overwrite CURRENT/FULL/PARTIAL with DONE
+      if (!actions[moduleName] || !['CURRENT', 'FULL', 'PARTIAL'].includes(actions[moduleName].status)) {
+        actions[moduleName] = {
+          iter, module: moduleName, fillLevel: 'done', status: 'DONE',
+          summary: summaryMatch ? summaryMatch[1].trim() : '',
+          items: [],
+        };
+      }
       continue;
     }
 
     // Full/Partial 解析
     const isPartial = block.includes('(Partial)');
-    // 移除 HTML 註解後再解析表格
+    // 移除 HTML 註解後再解析表格，只取第一個表格
     const cleanBlock = block.replace(/<!--[\s\S]*?-->/g, '');
-    const lines = cleanBlock.split('\n').filter(l => l.includes('|') && l.trim().startsWith('|'));
+    const lines = extractFirstTableLines(cleanBlock);
     if (lines.length < 3) {
-      actions[moduleName] = { iter, module: moduleName, fillLevel: 'stub', status: blockStatus, items: [] };
+      // Bug fix: don't overwrite CURRENT/FULL/PARTIAL with empty stub
+      if (!actions[moduleName] || !['CURRENT', 'FULL', 'PARTIAL'].includes(actions[moduleName].status)) {
+        actions[moduleName] = { iter, module: moduleName, fillLevel: 'stub', status: blockStatus, items: [] };
+      }
       continue;
     }
 

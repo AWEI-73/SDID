@@ -26,6 +26,18 @@ function run(options) {
   // 確保目錄存在
   if (!fs.existsSync(pocPath)) {
     fs.mkdirSync(pocPath, { recursive: true });
+    // Bug fix: carry forward functions.json so blueprint-verify finds real function data
+    const docsPath = path.join(target, '.gems/docs/functions.json');
+    const pocFunctionsPath = path.join(pocPath, 'functions.json');
+    if (fs.existsSync(docsPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(docsPath, 'utf8'));
+        const fns = raw.functions || raw;
+        if (Array.isArray(fns) && fns.length > 0) {
+          fs.copyFileSync(docsPath, pocFunctionsPath);
+        }
+      } catch { /* skip if unreadable */ }
+    }
   }
 
   // ============================================
@@ -487,7 +499,7 @@ Level: ${stats.level || 'M'} | 模組: ${stats.totalModules} | 動作: ${stats.t
         step: 'step-1',
         info: {
           'Source': `iteration_suggestions from ${prevSuggestions.prevIteration}`,
-          'Files': prevSuggestions.files.join(', '),
+          'Files': (prevSuggestions.files || []).join(', '),
           'Mode': blueprintState.mode,
           'Current Module': blueprintState.module || 'N/A'
         }

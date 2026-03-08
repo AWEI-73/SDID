@@ -444,31 +444,47 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
     process.exit(1);
   }
 
+  // Wave 3.2: Also re-scan when functions.json exists but has 0 functions.
+  // Handles stale SCAN output written before GEMS tags were added to source files.
+  if (fs.existsSync(functionsPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(functionsPath, 'utf8'));
+      const fns = raw.functions || raw;
+      if (Array.isArray(fns) && fns.length === 0) {
+        console.log('   ℹ️  functions.json 存在但函式數為 0，強制重新掃描...');
+        fs.unlinkSync(functionsPath);
+      }
+    } catch { /* leave file in place if unreadable */ }
+  }
+
   if (!fs.existsSync(functionsPath)) {
     // Wave 3.1: Auto-scan if functions.json missing (Blueprint Flow doesn't require SCAN)
-    const scannerV2Path = path.resolve(__dirname, 'gems-scanner-v2.cjs');
-    if (args.target && fs.existsSync(scannerV2Path)) {
+    // 使用 gems-scanner-unified（支援 shrink 格式 + AST 降級鏈）
+    const unifiedPath = path.resolve(__dirname, '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
+    if (args.target && fs.existsSync(unifiedPath)) {
       try {
-        const { scanV2 } = require(scannerV2Path);
+        const unified = require(unifiedPath);
         const srcDir = path.join(args.target, 'src');
         if (fs.existsSync(srcDir)) {
           console.log('   ℹ️  functions.json 不存在，自動掃描源碼...');
-          const scanResult = scanV2(srcDir, args.target);
+          const scanResult = unified.scan(srcDir, args.target);
           const docsDir = path.dirname(functionsPath);
           if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true });
           const output = {
-            functions: scanResult.functions.map(f => ({
+            functions: (scanResult.functions || []).map(f => ({
               name: f.name, file: f.file, startLine: f.startLine, endLine: f.endLine,
-              priority: f.priority, flow: f.flow, deps: f.deps, depsRisk: f.depsRisk,
+              risk: f.priority || f.risk, priority: f.priority || f.risk,
+              flow: f.flow, deps: f.deps, depsRisk: f.depsRisk,
               test: f.test, testFile: f.testFile, description: f.description,
-              gemsId: f.gemsId || null, storyId: null,
+              gemsId: f.gemsId || null, storyId: f.storyId || null,
+              acIds: f.acIds || [],
             })),
             stats: scanResult.stats,
             generatedBy: 'blueprint-verify auto-scan',
             generatedAt: new Date().toISOString(),
           };
           fs.writeFileSync(functionsPath, JSON.stringify(output, null, 2), 'utf8');
-          console.log(`   ✅ 自動產出: ${functionsPath} (${scanResult.functions.length} 函式)`);
+          console.log(`   ✅ 自動產出: ${functionsPath} (${output.functions.length} 函式)`);
         }
       } catch (e) {
         console.log(`   ⚠️ 自動掃描失敗: ${e.message}`);
@@ -498,6 +514,25 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
   }
 
   const codeFunctions = loadFunctions(functionsPath);
+
+  // Wave 3.3: Refresh stale acIds from source code.
+  // functions.json may have been generated before BUILD added // AC-X.Y comments.
+  // enrichWithACIds is lightweight (reads only affected files) and safe to re-run.
+  if (args.target) {
+    const unifiedPath = path.resolve(__dirname, '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
+    if (fs.existsSync(unifiedPath)) {
+      try {
+        const unified = require(unifiedPath);
+        if (unified.enrichWithACIds) {
+          // Clear empty acIds arrays so enrichment can repopulate them
+          for (const fn of codeFunctions) {
+            if (fn.acIds && fn.acIds.length === 0) delete fn.acIds;
+          }
+          unified.enrichWithACIds(codeFunctions, path.join(args.target, 'src'));
+        }
+      } catch { /* enrichment is optional, skip on error */ }
+    }
+  }
 
   // 提取藍圖動作
   let blueprintActions = extractBlueprintActions(draft, args.iter);

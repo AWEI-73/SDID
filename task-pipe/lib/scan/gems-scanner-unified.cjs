@@ -88,7 +88,7 @@ function scan(srcDir, projectRoot, options = {}) {
 
   // Shrink 格式後處理：掃描 shrink 格式標籤（/** GEMS: name | P | FLOW */）
   // v2 scanner 和 regex scanner 都不認識 shrink 格式，需要額外掃描
-  const shrinkFns = parseShrinkFormat(srcDir);
+  const shrinkFns = parseShrinkFormat(srcDir, projectRoot);
   if (shrinkFns.length > 0) {
     // 合併：shrink 函式如果已在 result.functions 中就跳過（以 name 去重）
     const existingNames = new Set(result.functions.map(f => f.name));
@@ -226,9 +226,10 @@ function inferProjectRoot(srcDir) {
  * @param {string} srcDir
  * @returns {Array} 函式陣列
  */
-function parseShrinkFormat(srcDir) {
+function parseShrinkFormat(srcDir, projectRoot) {
   const results = [];
   if (!fs.existsSync(srcDir)) return results;
+  const root = projectRoot || inferProjectRoot(srcDir);
 
   function walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -236,7 +237,7 @@ function parseShrinkFormat(srcDir) {
       if (entry.isDirectory() && entry.name !== 'node_modules' && !entry.name.startsWith('.')) {
         walk(full);
       } else if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
-        parseFileShrink(full, results);
+        parseFileShrink(full, results, root);
       }
     }
   }
@@ -244,20 +245,21 @@ function parseShrinkFormat(srcDir) {
   return results;
 }
 
-function parseFileShrink(filePath, results) {
+function parseFileShrink(filePath, results, projectRoot) {
   let content;
   try { content = fs.readFileSync(filePath, 'utf8'); } catch { return; }
   const lines = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
-    // 匹配 shrink 格式：/** GEMS: name | P0 | FLOW */
-    const m = trimmed.match(/^\/\*\*\s*GEMS:\s*(\w+)\s*\|\s*(P[0-3])(?:\s*\|\s*([^*]+))?\s*\*\//);
+    // 匹配 shrink 格式：/** GEMS: name | P0 | FLOW */  或  /** GEMS: name | P0 | FLOW | Story-X.Y */
+    const m = trimmed.match(/^\/\*\*\s*GEMS:\s*(\w+)\s*\|\s*(P[0-3])(?:\s*\|\s*([^|*][^*]*))?(?:\s*\|\s*(Story-[\d.]+))?\s*\*\//);
     if (!m) continue;
 
     const name = m[1];
     const priority = m[2];
     const flow = m[3] ? m[3].trim() : null;
+    const storyId = m[4] ? m[4].trim() : null;
 
     // 收集後續的 AC 行和 STEP 行
     const acIds = [];
@@ -272,12 +274,14 @@ function parseFileShrink(filePath, results) {
       else break;
     }
 
+    const relFile = projectRoot ? path.relative(projectRoot, filePath) : filePath;
     results.push({
       name,
-      file: filePath,
+      file: relFile,
       startLine: i + 1,
       priority,
       flow,
+      storyId: storyId || null,
       acIds: acIds.length > 0 ? acIds : undefined,
       status: '✓✓',
       description: '',
@@ -316,6 +320,8 @@ const generateFunctionIndexV2 = scannerV2 ? scannerV2.generateFunctionIndexV2 : 
 module.exports = {
   // 統一入口
   scan,
+  // Wave 3.3: exposed so blueprint-verify can refresh stale acIds in-place
+  enrichWithACIds,
 
   // v2 API（可能為 null）
   scanV2,

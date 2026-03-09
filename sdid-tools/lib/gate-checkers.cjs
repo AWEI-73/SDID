@@ -1025,6 +1025,96 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
  * 分級: 90+ EXCELLENT / 75-89 GOOD / 60-74 FAIR / 0-59 WEAK
  */
 
+/**
+ * 22. AC 品質檢查 (M14) — P0/P1 的 AC 是否只有 happy path
+ *
+ * ACC-003 (WARN): P0/P1 的 AC 描述中沒有 edge/failure 關鍵字
+ *
+ * 偵測邏輯：
+ *   - 從 rawContent 的「驗收條件」區塊，找到每個 AC 的 Given/When/Then 文字
+ *   - 掃描是否含有 edge/failure 語意關鍵字
+ *   - 沒有 → WARN（不 BLOCKER，不卡流程）
+ *
+ * 邊界/失敗關鍵字（中英文）:
+ *   null, empty, invalid, 0, 負, 空, 邊界, edge, boundary,
+ *   error, fail, throw, exception, 錯誤, 失敗, 不存在, 缺少, 無效
+ */
+function checkACQuality(draft, targetIter, rawContent) {
+  const issues = [];
+  if (!rawContent) return issues;
+
+  // 收集 P0/P1 動作的 AC 編號
+  const p01AcIds = new Set();
+  for (const [, mod] of Object.entries(draft.moduleActions)) {
+    if (mod.iter !== targetIter) continue;
+    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
+    for (const item of (mod.items || [])) {
+      const p = (item.priority || '').toUpperCase();
+      if (p !== 'P0' && p !== 'P1') continue;
+      const ac = (item.ac || item['AC'] || '').trim();
+      if (!ac || ac === '-' || ac === '無') continue;
+      const acIds = ac.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^AC-\d+\.\d+$/i.test(s));
+      for (const id of acIds) p01AcIds.add(id);
+    }
+  }
+
+  if (p01AcIds.size === 0) return issues;
+
+  // 從 rawContent 提取每個 AC 的完整描述文字
+  // 支援格式: **AC-1.0** — ...\n- Given: ...\n- When: ...\n- Then: ...
+  const EDGE_FAILURE_KEYWORDS = [
+    // 英文
+    /\bnull\b/i, /\bempty\b/i, /\binvalid\b/i, /\bedge\b/i, /\bboundary\b/i,
+    /\berror\b/i, /\bfail/i, /\bthrow\b/i, /\bexception\b/i, /\bmissing\b/i,
+    /\bnegative\b/i, /\bzero\b/i, /\bundefined\b/i,
+    // 中文
+    /空陣列|空值|空字串/, /無效/, /錯誤/, /失敗/, /不存在/, /缺少/, /負數/, /邊界/, /例外/,
+    // v2.3 新格式子項標題
+    /^[-\s]*Edge:/im, /^[-\s]*Failure:/im,
+  ];
+
+  // 切割 rawContent 成 AC 區塊
+  const lines = rawContent.split('\n');
+  let currentAcId = null;
+  let currentAcLines = [];
+  const acBodies = {}; // { 'AC-1.0': '...full text...' }
+
+  for (const line of lines) {
+    const acMatch = line.match(/\*{0,2}(AC-\d+\.\d+)\*{0,2}/i);
+    if (acMatch) {
+      if (currentAcId) acBodies[currentAcId] = currentAcLines.join('\n');
+      currentAcId = `AC-${acMatch[1].match(/\d+\.\d+/)[0]}`;
+      currentAcLines = [line];
+    } else if (currentAcId) {
+      // 遇到下一個 AC 標題或空行後的新標題就停
+      if (/^\*{2}AC-\d+/.test(line) || /^#{2,4}\s/.test(line)) {
+        acBodies[currentAcId] = currentAcLines.join('\n');
+        currentAcId = null;
+        currentAcLines = [];
+      } else {
+        currentAcLines.push(line);
+      }
+    }
+  }
+  if (currentAcId) acBodies[currentAcId] = currentAcLines.join('\n');
+
+  // 檢查每個 P0/P1 AC 有沒有 edge/failure 關鍵字
+  for (const acId of p01AcIds) {
+    const body = acBodies[acId];
+    if (!body) continue; // 找不到 body，ACC-002 已處理
+    const hasEdgeOrFailure = EDGE_FAILURE_KEYWORDS.some(re => re.test(body));
+    if (!hasEdgeOrFailure) {
+      issues.push({
+        level: 'WARN',
+        code: 'ACC-003',
+        msg: `${acId} (P0/P1) 只有 happy path，建議補充 edge/failure case。例如: 空陣列輸入、null 參數、無效格式、邊界值（0 或負數）等`
+      });
+    }
+  }
+
+  return issues;
+}
+
 module.exports = {
   checkFormatCompleteness,
   checkPlaceholders,
@@ -1046,5 +1136,6 @@ module.exports = {
   checkIterActionBudget,
   checkVerticalSliceCompleteness,
   checkACIntegrity,
+  checkACQuality,
   checkModifyFunctionExists,
 };

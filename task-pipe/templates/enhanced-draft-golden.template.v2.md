@@ -4,7 +4,7 @@
 **日期**: {YYYY-MM-DD}
 **藍圖狀態**: [~] ACTIVE
 **規模**: {S/M/L}
-**方法論**: SDID v2.1
+**方法論**: SDID v2.3
 
 <!--
   活藍圖 (Living Blueprint) 說明：
@@ -212,6 +212,8 @@ src/
   - 業務語意: 用中文描述這個動作做什麼
   - 類型: CONST/LIB/API/SVC/HOOK/UI/ROUTE/SCRIPT
   - 技術名稱: 函式名或類型名 (對應 GEMS 標籤的函式名)
+  - Signature: (param: Type) → ReturnType，agent 生成骨架時直接照抄
+    CONST/UI/ROUTE 填 N/A
   - P: 優先級 P0-P3
   - 流向: STEP1→STEP2→STEP3 (對應 GEMS-FLOW，3-7 步)
   - 前端類型 (UI/HOOK/ROUTE) 的流向必須描述業務行為，不是 React 機制
@@ -250,12 +252,12 @@ src/
 
 ### Iter 1: shared [CURRENT]
 
-| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 操作 | 狀態 | 演化 | AC |
-|---------|------|---------|---|------|------|------|------|------|----|
-| 核心型別定義 | CONST | CoreTypes | P0 | DEFINE→FREEZE→EXPORT | 無 | NEW | ○○ | BASE | AC-0.0 |
-| 環境變數管理 | CONST | ENV_CONFIG | P2 | LOAD→VALIDATE→EXPORT | 無 | NEW | ○○ | BASE | - |
-| API 介面契約 | CONST | IServiceContracts | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.1 |
-| 前端主入口殼 | ROUTE | AppRouter | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.2 |
+| 業務語意 | 類型 | 技術名稱 | Signature | P | 流向 | 依賴 | 操作 | 狀態 | 演化 | AC |
+|---------|------|---------|-----------|---|------|------|------|------|------|----|
+| 核心型別定義 | CONST | CoreTypes | N/A | P0 | DEFINE→FREEZE→EXPORT | 無 | NEW | ○○ | BASE | AC-0.0 |
+| 環境變數管理 | CONST | ENV_CONFIG | N/A | P2 | LOAD→VALIDATE→EXPORT | 無 | NEW | ○○ | BASE | - |
+| API 介面契約 | CONST | IServiceContracts | N/A | P1 | DEFINE→VALIDATE→EXPORT | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.1 |
+| 前端主入口殼 | ROUTE | AppRouter | N/A | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | NEW | ○○ | BASE | AC-0.2 |
 
 ### Iter 2: {moduleA} [STUB]
 
@@ -264,12 +266,12 @@ src/
 
 **函式 Flow 清單** (expand 時直接搬運):
 
-| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
-|---------|------|---------|---|------|------|----|
-| {functionA 業務描述} | SVC | {functionA} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types] | AC-1.0 |
-| {functionB 業務描述} | SVC | {functionB} | P1 | {STEP1→STEP2→RETURN} | [Internal.{functionA}] | AC-1.1 |
-| {UI 元件描述} | UI | {ModuleView} | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionA}] | AC-1.2 |
-| {路由描述} | ROUTE | {ModulePage} | P1 | CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT | [Internal.{ModuleView}] | AC-1.3 |
+| 業務語意 | 類型 | 技術名稱 | Signature | P | 流向 | 依賴 | AC |
+|---------|------|---------|-----------|---|------|------|----|
+| {functionA 業務描述} | SVC | {functionA} | ({param}: {Type}) → {ReturnType} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types] | AC-1.0 |
+| {functionB 業務描述} | SVC | {functionB} | ({param}: {Type}) → {ReturnType} | P1 | {STEP1→STEP2→RETURN} | [Internal.{functionA}] | AC-1.1 |
+| {UI 元件描述} | UI | {ModuleView} | N/A | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionA}] | AC-1.2 |
+| {路由描述} | ROUTE | {ModulePage} | N/A | P1 | CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT | [Internal.{ModuleView}] | AC-1.3 |
 
 **驗收條件骨架**:
 
@@ -291,10 +293,10 @@ src/
 
 **函式 Flow 清單** (expand 時直接搬運):
 
-| 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | AC |
-|---------|------|---------|---|------|------|----|
-| {functionC 業務描述} | SVC | {functionC} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types, {moduleA}.{functionA}] | AC-2.0 |
-| {UI 元件描述} | UI | {ModuleBView} | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionC}] | AC-2.1 |
+| 業務語意 | 類型 | 技術名稱 | Signature | P | 流向 | 依賴 | AC |
+|---------|------|---------|-----------|---|------|------|----|
+| {functionC 業務描述} | SVC | {functionC} | ({param}: {Type}) → {ReturnType} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types, {moduleA}.{functionA}] | AC-2.0 |
+| {UI 元件描述} | UI | {ModuleBView} | N/A | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionC}] | AC-2.1 |
 
 **驗收條件骨架**:
 
@@ -309,7 +311,7 @@ src/
 ## ✅ 驗收條件 (Acceptance Criteria)
 
 <!--
-  v2.2 新增：每個 P0/P1 動作必須有對應的 AC 條目。
+  v2.3 新增：每個 P0/P1 動作必須有對應的 AC 條目。
   格式: AC-{iterNum}.{index}，從 0 開始。
   Given/When/Then 對應 BDD 風格，draft-to-plan 轉換時直接帶入 implementation_plan。
 
@@ -317,50 +319,104 @@ src/
   - P0/P1 動作必須有 AC（Gate 規則 ACC-001）
   - P2/P3 動作可選填（填了更好）
   - 每個 AC 只描述一個可驗證的行為
-  - Given: 前置條件（系統狀態）
-  - When: 觸發動作（呼叫什麼）
-  - Then: 預期結果（可斷言的輸出）
+
+  AC block 格式（v2.3）:
+  ┌─────────────────────────────────────────────────────────┐
+  │ DOMAIN — Cynefin 域                                     │
+  │   Clear      = 因果明確，照 Happy Path 做               │
+  │   Complicated = 有邊界條件，agent 必須看 Edge           │
+  │   Complex    = 有不確定性，agent 不可腦補               │
+  │                                                         │
+  │ ERROR_RETURNS — 可能拋出的 error type（統一命名）       │
+  │   純 CONST/ROUTE 填 N/A                                 │
+  │                                                         │
+  │ Happy Path — 正常流程                                   │
+  │ Edge       — 合法但特殊輸入（空陣列、零值、最大值）     │
+  │ Failure    — 非法輸入或外部依賴失敗 → 拋錯或錯誤狀態   │
+  └─────────────────────────────────────────────────────────┘
+
+  Then 格式規則（效益導向）:
+  ✅ 有效: 回傳 {具體值}，使用者因此能夠 {下一步行為}
+  ✅ 有效: throw {ErrorType}('{訊息}')
+  ❌ 無效: 系統處理完成
+  ❌ 無效: 路由接線完成
 -->
 
 ### Iter 1: shared
 
 **AC-0.0** — CoreTypes 型別定義
-- Given: 專案已初始化，包含 TypeScript 設定
-- When: 執行 `tsc --noEmit` 編譯
-- Then: 編譯成功，無 TypeScript 錯誤
-- And: 所有核心型別 (EntityA, EntityB, Status enum) 可正常 import
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: 專案已初始化，包含 TypeScript 設定
+  - When: 執行 `tsc --noEmit` 編譯
+  - Then: 編譯成功，無 TypeScript 錯誤，所有核心型別可正常 import
+- Edge:
+  - When: 只 import 部分型別
+  - Then: 其餘型別不受影響，tree-shaking 正常
 
 **AC-0.1** — API 介面契約
-- Given: IServiceContracts 已定義
-- When: 實作類別 `implements IXxxService`
-- Then: TypeScript 強制要求實作所有方法簽名
-- And: 缺少任何方法時編譯報錯
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: IServiceContracts 已定義
+  - When: 實作類別 `implements IXxxService`
+  - Then: TypeScript 強制要求實作所有方法簽名
+- Failure:
+  - When: 缺少任何方法
+  - Then: TypeScript 編譯報錯，不可 build
 
 **AC-0.2** — 前端主入口殼
-- Given: `npm run dev` 啟動
-- When: 瀏覽器開啟 localhost
-- Then: 首頁框架可見（Header + 主內容區 + 導覽）
-- And: 無 console error
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: `npm run dev` 啟動
+  - When: 瀏覽器開啟 localhost
+  - Then: 首頁框架可見（Header + 主內容區 + 導覽），無 console error
+- Failure:
+  - Given: 子元件拋出 runtime error
+  - When: 任意頁面渲染失敗
+  - Then: ErrorBoundary 捕捉，顯示 fallback UI，不白屏
 
 ### Iter 2: {moduleA}
 
 **AC-1.0** — {functionA} 核心業務邏輯
-- Given: {前置狀態，例如: DataStore 中無資料 / 使用者已登入}
-- When: 呼叫 `{functionA}({ {必要參數}: '{測試值}', {另一參數}: '{測試值}' })`
-- Then: 回傳值包含 `id`（非空字串）且 `{關鍵欄位}` 為 `'{預期值}'`
-- And: 呼叫 `{查詢函式}('{過濾條件}')` 返回 1 筆資料
+DOMAIN: {Clear | Complicated | Complex} | ERROR_RETURNS: {ErrorTypeA} | {ErrorTypeB}
+- Happy Path:
+  - Given: {前置狀態，例如: DataStore 中無資料 / 使用者已登入}
+  - When: 呼叫 `{functionA}({ {必要參數}: '{測試值}' })`
+  - Then: 回傳值包含 `id`（非空字串）且 `{關鍵欄位}` 為 `'{預期值}'`
+- Edge:
+  - Given: {邊界情境，如空陣列輸入、零值}
+  - When: 呼叫 `{functionA}({邊界值})`
+  - Then: {預期行為，不拋錯，回傳合理預設值}
+- Failure:
+  - Given: {非法輸入，如 null 或負數}
+  - When: 呼叫 `{functionA}(null)`
+  - Then: throw {ErrorTypeA}('{錯誤訊息}')
 
 **AC-1.1** — {functionB} 狀態變更
-- Given: 已存在一筆 `{狀態欄位}='{初始狀態}'` 的資料（id = testId）
-- When: 呼叫 `{functionB}(testId)`
-- Then: `{狀態欄位}` 變為 `'{預期狀態}'`
-- And: 其他欄位不受影響
+DOMAIN: {Clear | Complicated} | ERROR_RETURNS: {ErrorTypeA}
+- Happy Path:
+  - Given: 已存在一筆 `{狀態欄位}='{初始狀態}'` 的資料（id = testId）
+  - When: 呼叫 `{functionB}(testId)`
+  - Then: `{狀態欄位}` 變為 `'{預期狀態}'`，其他欄位不受影響
+- Failure:
+  - Given: testId 不存在
+  - When: 呼叫 `{functionB}('non-existent-id')`
+  - Then: throw {ErrorTypeA}('找不到資料')
 
 **AC-1.2** — {ModuleView} 渲染與互動
-- Given: DataStore 中有 2 筆 `{過濾條件}` 的資料
-- When: 渲染 `<{ModuleView} {prop}="{值}" />`
-- Then: 畫面顯示 2 筆資料卡片
-- And: 點擊操作按鈕後呼叫對應的 service 函式
+DOMAIN: Complicated | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: DataStore 中有 2 筆 `{過濾條件}` 的資料
+  - When: 渲染 `<{ModuleView} {prop}="{值}" />`
+  - Then: 畫面顯示 2 筆資料卡片，使用者可立即進行操作
+- Edge:
+  - Given: 資料為空陣列
+  - When: 渲染元件
+  - Then: 顯示空狀態提示，不崩潰
+- Failure:
+  - Given: 資料載入失敗
+  - When: 渲染元件
+  - Then: 顯示錯誤提示文字，提供重試按鈕
 
 ---
 

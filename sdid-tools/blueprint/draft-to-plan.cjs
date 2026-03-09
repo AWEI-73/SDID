@@ -16,9 +16,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const parser = require('../lib/draft-parser-standalone.cjss');
-const logOutput = require('../../task-pipe/lib/shared/log-output.cjscjs');
-const { validatePlan, formatResult } = require('../../task-pipe/lib/plan/plan-validator.cjscjs');
+const parser = require('../lib/draft-parser-standalone.cjs');
+const logOutput = require('../../task-pipe/lib/shared/log-output.cjs');
+const { validatePlan, formatResult } = require('../../task-pipe/lib/plan/plan-validator.cjs');
 
 // ============================================
 // 參數解析
@@ -148,7 +148,7 @@ function inferFilePath(techName, type, moduleName, layer) {
     .toLowerCase();
 
   // 使用 Architecture Contract 統一路徑規則，確保與 phase-1 一致
-  const contract = require('../../sdid-core/architecture-contract.cjscjs');
+  const contract = require('../../sdid-core/architecture-contract.cjs');
   return contract.inferFilePath(type, moduleName, kebab, layer);
 }
 

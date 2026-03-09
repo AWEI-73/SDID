@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 /**
  * Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
  * 

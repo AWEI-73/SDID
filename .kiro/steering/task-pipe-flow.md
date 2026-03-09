@@ -381,6 +381,22 @@ interface EntityName {
 
 BUILD 時 AI 根據這些註解自行推導 Schema 和 API。
 
+## 🔒 @CONTRACT-LOCK：契約封版標頭
+
+Gate 通過後，在 `contract_iter-N.ts` **最頂端**寫入封版標頭（Layer 2 保護）：
+
+```typescript
+// @CONTRACT-LOCK: 2025-01-15 | Gate: iter-1
+// @SPEC-CHANGES: (none)
+//
+// ─── 以下契約已通過 Gate，修改需加 [SPEC-FIX] 標記 ──────────────────────────
+```
+
+**規則**：
+- Gate 通過後立即加頭，代表「此版本契約已定案」
+- 若後續需修改 `@GEMS-AC-EXPECT`：在 AC 區塊上方加 `// [SPEC-FIX] YYYY-MM-DD: <原因>`
+- `@SPEC-CHANGES` 欄位記錄本次 Gate 相比前版的規格異動（無則填 `(none)`）
+
 ## 🏷️ GEMS 標籤 (v2.1)
 
 ```typescript
@@ -389,8 +405,6 @@ BUILD 時 AI 根據這些註解自行推導 Schema 和 API。
  * GEMS-FLOW: Step1→Step2→Step3
  * GEMS-DEPS: [Type.Name (說明)], [Type.Name (說明)]
  * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH
- * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
- * GEMS-TEST-FILE: xxx.test.ts
  */
 // AC-X.Y                    ← 驗收條件 ID（在標籤後、[STEP] 前，P0/P1 必填）
 // [STEP] Step1 (P0/P1 強制，P2/P3 可選)
@@ -402,6 +416,7 @@ BUILD 時 AI 根據這些註解自行推導 Schema 和 API。
 - ✅ 移除 `GEMS-ALGO`（由 Requirement Spec 的 Scenario Table 承載）
 - ✅ P0/P1 必須有 `[STEP]` 錨點與 `GEMS-FLOW` 對應
 - ✅ DEPS 採折衷格式：`[Type.Name (說明)]` 或 `[Type.Name]`
+- ✅ 移除 `GEMS-TEST` / `GEMS-TEST-FILE`（驗收由 `@GEMS-AC` + ac-runner 承載）
 
 ## 🚨 錯誤處理 (v2.4 策略漂移)
 

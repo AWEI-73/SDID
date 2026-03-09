@@ -40,7 +40,7 @@ Clear
 
 決策模式：感知 → 分類 → 回應（Sense → Categorize → Respond）
 
-約束類型：固定約束（Fixed Constraints）／ 最佳實務（Best Practice）
+約束類型：固定約束（Fixed Constraints）∕ 最佳實務（Best Practice）
 
 SDID 對應：Gate 驗標籤格式與覆蓋率、編碼驗證（UTF-8）、CI/CD 自動化測試、Quality Gate
 
@@ -56,7 +56,7 @@ Complicated
 
 決策模式：感知 → 分析 → 回應（Sense → Analyze → Respond）
 
-約束類型：治理約束（Governing Constraints）／ 良好實務（Good Practice）
+約束類型：治理約束（Governing Constraints）∕ 良好實務（Good Practice）
 
 SDID 對應：Spec 設計、GEMS 標籤協議、藍圖拆解、FLOW 標籤設計、架構審查、藍圖→執行計畫轉換
 
@@ -72,7 +72,7 @@ Complex
 
 決策模式：探測 → 感知 → 回應（Probe → Sense → Respond）
 
-約束類型：使能約束（Enabling Constraints）／ 湧現實務（Emergent Practice）
+約束類型：使能約束（Enabling Constraints）∕ 湧現實務（Emergent Practice）
 
 SDID 對應：POC 概念驗證、Safe-to-fail 迭代、Mock 機制、複雜業務需求拆解、Gemini Gem 五輪對話
 
@@ -94,7 +94,7 @@ Chaotic
 
 決策模式：行動 → 感知 → 回應（Act → Sense → Respond）
 
-約束類型：缺乏有效約束，需快速建立強制約束 ／ 創新規範（Novel Practice）
+約束類型：缺乏有效約束，需快速建立強制約束 ∕ 創新規範（Novel Practice）
 
 SDID 對應：BLOCKER 機制、策略漂移第三層 PLAN_ROLLBACK、War room 人工介入止血
 
@@ -302,8 +302,6 @@ functions.json 掃描
  * GEMS-FLOW: Validate → Process → Store → Return
  * GEMS-DEPS: [Internal.CoreTypes (型別定義)]
  * GEMS-DEPS-RISK: LOW
- * GEMS-TEST: ? Unit | ? Integration | - E2E
- * GEMS-TEST-FILE: function-name.test.ts
  */
 域聲明可選值：Clear、Complicated、Complex、Chaotic。Confused 只在 POC 階段出現，不會帶到 function 層級（因為 Confused 代表問題還沒被釐清，不應該進入實作）。
 

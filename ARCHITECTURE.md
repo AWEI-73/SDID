@@ -362,8 +362,6 @@ node sdid-monitor/server.cjs   # http://localhost:3737
  * GEMS-FLOW: Step1→Step2→Step3
  * GEMS-DEPS: [Type.Name (說明)]
  * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH
- * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
- * GEMS-TEST-FILE: xxx.test.ts
  */
 // AC-X.Y                    ← 驗收條件 ID（在標籤後、[STEP] 前）
 // [STEP] Step1              ← P0/P1 強制，P2/P3 可選

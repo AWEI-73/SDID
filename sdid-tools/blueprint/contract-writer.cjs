@@ -470,7 +470,7 @@ Gate 規則:
   let draftActions = null;
   if (args.draft && fs.existsSync(args.draft)) {
     try {
-      const draftParser = require('./lib/draft-parser-standalone.cjs');
+      const draftParser = require('../lib/draft-parser-standalone.cjs');
       const draft = draftParser.load(args.draft);
       const modules = draftParser.getModulesByIter(draft, args.iter);
       draftActions = modules.flatMap(m => m.actions || []);

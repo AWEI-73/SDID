@@ -16,9 +16,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const parser = require('./lib/draft-parser-standalone.cjs');
-const logOutput = require('../task-pipe/lib/shared/log-output.cjs');
-const { validatePlan, formatResult } = require('../task-pipe/lib/plan/plan-validator.cjs');
+const parser = require('../lib/draft-parser-standalone.cjss');
+const logOutput = require('../../task-pipe/lib/shared/log-output.cjscjs');
+const { validatePlan, formatResult } = require('../../task-pipe/lib/plan/plan-validator.cjscjs');
 
 // ============================================
 // 參數解析
@@ -148,7 +148,7 @@ function inferFilePath(techName, type, moduleName, layer) {
     .toLowerCase();
 
   // 使用 Architecture Contract 統一路徑規則，確保與 phase-1 一致
-  const contract = require('../sdid-core/architecture-contract.cjs');
+  const contract = require('../../sdid-core/architecture-contract.cjscjs');
   return contract.inferFilePath(type, moduleName, kebab, layer);
 }
 
@@ -324,7 +324,7 @@ function generateScaffold(targetDir, iterNum, storyIndex, moduleName, actions, o
   // 讀取 contract（如果存在），用於注入型別
   let contractData = null;
   try {
-    const { loadContract } = require('../sdid-tools/blueprint-contract-writer.cjs');
+    const { loadContract } = require('./contract-writer.cjs');
     contractData = loadContract(targetDir, iterNum);
   } catch { /* contract 不存在或解析失敗，繼續用 stub */ }
 

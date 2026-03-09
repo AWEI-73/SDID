@@ -29,7 +29,7 @@ export const specGen = {
     const args = [`--project=${resolvePath(project)}`, `--input=${resolvePath(input)}`];
     if (iter) args.push(`--iter=${iter}`);
     if (dryRun) args.push('--dry-run');
-    const result = await runCli('spec-gen.cjs', args);
+    const result = await runCli('spec/gen.cjs', args);
     return { content: [{ type: 'text', text: result.output }] };
   },
 };
@@ -50,7 +50,7 @@ export const specGate = {
     const args = [`--project=${resolvePath(project)}`];
     if (fixIndex) args.push('--fix-index');
     if (dryRun) args.push('--dry-run');
-    const result = await runCli('spec-gate.cjs', args);
+    const result = await runCli('spec/gate.cjs', args);
     return { content: [{ type: 'text', text: result.output }] };
   },
 };
@@ -71,7 +71,7 @@ export const blueprintGate = {
     const args = [`--draft=${resolvePath(draft)}`];
     if (iter) args.push(`--iter=${iter}`);
     if (target) args.push(`--target=${resolvePath(target)}`);
-    const result = await runCli('blueprint-gate.cjs', args);
+    const result = await runCli('blueprint/gate.cjs', args);
     return { content: [{ type: 'text', text: result.output }] };
   },
 };
@@ -92,7 +92,7 @@ export const microFixGate = {
     const args = [`--target=${resolvePath(target)}`];
     if (changed) args.push(`--changed=${changed}`);
     if (iter) args.push(`--iter=${iter}`);
-    const result = await runCli('micro-fix-gate.cjs', args);
+    const result = await runCli('poc-fix/micro-fix-gate.cjs', args);
     return { content: [{ type: 'text', text: result.output }] };
   },
 };

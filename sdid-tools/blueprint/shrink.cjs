@@ -17,8 +17,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const parser = require('./lib/draft-parser-standalone.cjs');
-const logOutput = require('../task-pipe/lib/shared/log-output.cjs');
+const parser = require('../lib/draft-parser-standalone.cjss');
+const logOutput = require('../../task-pipe/lib/shared/log-output.cjscjs');
 
 // ============================================
 // 參數解析

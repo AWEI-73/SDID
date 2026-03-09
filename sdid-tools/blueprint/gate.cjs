@@ -24,7 +24,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const parser = require('./lib/draft-parser-standalone.cjs');
+const parser = require('../lib/draft-parser-standalone.cjs');
 
 // ============================================
 // 參數解析
@@ -62,10 +62,10 @@ const {
   checkIterActionBudget, checkVerticalSliceCompleteness, checkACIntegrity,
   checkACQuality,
   checkModifyFunctionExists,
-} = require('./lib/gate-checkers.cjs');
+} = require('../lib/gate-checkers.cjs');
 
-const { calcBlueprintScore, printExistingFunctionsSnapshot } = require('./lib/gate-score.cjs');
-const { generateReport, inferProjectRoot, getFixGuidance } = require('./lib/gate-report.cjs');
+const { calcBlueprintScore, printExistingFunctionsSnapshot } = require('../lib/gate-score.cjs');
+const { generateReport, inferProjectRoot, getFixGuidance } = require('../lib/gate-report.cjs');
 
 // ============================================
 // 主程式

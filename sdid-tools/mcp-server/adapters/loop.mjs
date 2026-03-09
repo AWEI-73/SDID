@@ -281,7 +281,7 @@ export async function handler({ project, iter, story, forceStart, route }) {
     case 'GATE': {
       if (!state.draftPath) { lines.push('@BLOCKER: 找不到 draft 檔案'); return { content: [{ type: 'text', text: lines.join('\n') }] }; }
       lines.push(`🚀 執行: blueprint-gate.cjs`);
-      result = await runCli('blueprint-gate.cjs', [`--draft=${state.draftPath}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
+      result = await runCli('blueprint/gate.cjs', [`--draft=${state.draftPath}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
       break;
     }
     case 'PLAN': {
@@ -294,7 +294,7 @@ export async function handler({ project, iter, story, forceStart, route }) {
         lines.push(`🚀 執行: draft-to-plan.cjs`);
         const dtpArgs = [`--iter=${iterNum}`, `--target=${projectRoot}`];
         if (state.draftPath) dtpArgs.unshift(`--draft=${state.draftPath}`);
-        result = await runCli('draft-to-plan.cjs', dtpArgs);
+        result = await runCli('blueprint/draft-to-plan.cjs', dtpArgs);
       }
       break;
     }
@@ -324,13 +324,13 @@ export async function handler({ project, iter, story, forceStart, route }) {
       }
       if (!state.draftPath) { lines.push('@BLOCKER: 找不到 draft 檔案'); return { content: [{ type: 'text', text: lines.join('\n') }] }; }
       lines.push(`🚀 執行: blueprint-verify.cjs`);
-      result = await runCli('blueprint-verify.cjs', [`--draft=${state.draftPath}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
+      result = await runCli('blueprint/verify.cjs', [`--draft=${state.draftPath}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
       break;
     }
     case 'VERIFY': {
       if (!state.draftPath) { lines.push('@BLOCKER: 找不到 draft 檔案'); return { content: [{ type: 'text', text: lines.join('\n') }] }; }
       lines.push(`🚀 執行: blueprint-verify.cjs`);
-      result = await runCli('blueprint-verify.cjs', [`--draft=${state.draftPath}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
+      result = await runCli('blueprint/verify.cjs', [`--draft=${state.draftPath}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
       break;
     }
     case 'POC': {
@@ -383,7 +383,7 @@ export async function handler({ project, iter, story, forceStart, route }) {
           `--iter=${iterNum}`,
         ];
         if (state.draftPath) writerArgs.push(`--draft=${state.draftPath}`);
-        result = await runCli('blueprint-contract-writer.cjs', writerArgs);
+        result = await runCli('blueprint/contract-writer.cjs', writerArgs);
         break;
       }
 
@@ -411,7 +411,7 @@ export async function handler({ project, iter, story, forceStart, route }) {
       if (draftPath) lines.push(`Draft: ${draftPath}`);
       lines.push('');
       lines.push(`@EXPECTED: 寫完後執行:`);
-      lines.push(`node sdid-tools/blueprint-contract-writer.cjs --contract=${contractPath} --target=${projectRoot}${draftPath ? ` --draft=${draftPath}` : ''} --iter=${iterNum}`);
+      lines.push(`node sdid-tools/blueprint/contract-writer.cjs --contract=${contractPath} --target=${projectRoot}${draftPath ? ` --draft=${draftPath}` : ''} --iter=${iterNum}`);
       lines.push('');
       lines.push('@REMINDER: 執行 contract-writer @PASS 後再次呼叫 sdid-loop 繼續流程');
       return { content: [{ type: 'text', text: lines.join('\n') }] };
@@ -419,17 +419,17 @@ export async function handler({ project, iter, story, forceStart, route }) {
     case 'NEXT_ITER': {
       if (!state.draftPath) { lines.push('@BLOCKER: 找不到 draft 檔案，無法 EXPAND'); return { content: [{ type: 'text', text: lines.join('\n') }] }; }
       lines.push(`🚀 執行: blueprint-expand.cjs → iter-${iterNum + 1}`);
-      result = await runCli('blueprint-expand.cjs', [`--draft=${state.draftPath}`, `--iter=${iterNum + 1}`, `--target=${projectRoot}`]);
+      result = await runCli('blueprint/expand.cjs', [`--draft=${state.draftPath}`, `--iter=${iterNum + 1}`, `--target=${projectRoot}`]);
       break;
     }
     case 'POC-FIX': {
       lines.push(`🚀 執行: micro-fix-gate.cjs (POC-FIX 路線)`);
-      result = await runCli('micro-fix-gate.cjs', [`--target=${projectRoot}`, `--iter=${iterNum}`]);
+      result = await runCli('poc-fix/micro-fix-gate.cjs', [`--target=${projectRoot}`, `--iter=${iterNum}`]);
       break;
     }
     case 'MICRO-FIX': {
       lines.push(`🚀 執行: micro-fix-gate.cjs`);
-      result = await runCli('micro-fix-gate.cjs', [`--target=${projectRoot}`, `--iter=${iterNum}`]);
+      result = await runCli('poc-fix/micro-fix-gate.cjs', [`--target=${projectRoot}`, `--iter=${iterNum}`]);
       break;
     }
     default: {

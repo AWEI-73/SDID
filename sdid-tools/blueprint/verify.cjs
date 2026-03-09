@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
  * Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
  * 
@@ -18,8 +18,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const parser = require('./lib/draft-parser-standalone.cjs');
-const logOutput = require('../task-pipe/lib/shared/log-output.cjs');
+const parser = require('../lib/draft-parser-standalone.cjs');
+const logOutput = require('../../task-pipe/lib/shared/log-output.cjs');
 
 // ============================================
 // 參數解析
@@ -460,7 +460,7 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
   if (!fs.existsSync(functionsPath)) {
     // Wave 3.1: Auto-scan if functions.json missing (Blueprint Flow doesn't require SCAN)
     // 使用 gems-scanner-unified（支援 shrink 格式 + AST 降級鏈）
-    const unifiedPath = path.resolve(__dirname, '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
+    const unifiedPath = path.resolve(__dirname, '..', '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
     if (args.target && fs.existsSync(unifiedPath)) {
       try {
         const unified = require(unifiedPath);
@@ -519,7 +519,7 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
   // functions.json may have been generated before BUILD added // AC-X.Y comments.
   // enrichWithACIds is lightweight (reads only affected files) and safe to re-run.
   if (args.target) {
-    const unifiedPath = path.resolve(__dirname, '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
+    const unifiedPath = path.resolve(__dirname, '..', '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
     if (fs.existsSync(unifiedPath)) {
       try {
         const unified = require(unifiedPath);

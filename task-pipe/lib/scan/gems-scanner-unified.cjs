@@ -22,7 +22,7 @@ const fs = require('fs');
 // ── 載入 scanner 版本 ──
 
 let scannerV2 = null;
-const V2_PATH = path.resolve(__dirname, '..', '..', '..', 'sdid-tools', 'gems-scanner-v2.cjs');
+const V2_PATH = path.resolve(__dirname, '..', '..', '..', 'sdid-tools', 'lib', 'gems-scanner-v2.cjs');
 try {
   if (fs.existsSync(V2_PATH)) {
     scannerV2 = require(V2_PATH);

@@ -353,10 +353,16 @@ Report JSON 格式:
 
   // 終端輸出
   if (result.pass) {
-    // v2.0: Single Source of Truth，自動將狀態推入 PLAN
+    // v2.1: 只在 state.currentNode 確實是 CYNEFIN_CHECK 時才推進
+    // 若 state 已是 BUILD-1（由 SPEC_TO_PLAN 設定），不覆蓋
     try {
       const stateManager = require('../task-pipe/lib/shared/state-manager-v3.cjs');
-      stateManager.advanceState(args.target, `iter-${args.iter}`, 'CYNEFIN_CHECK', 'run');
+      const currentState = stateManager.readState(args.target, `iter-${args.iter}`);
+      const currentNode = currentState && currentState.flow && currentState.flow.currentNode;
+      if (currentNode && currentNode.startsWith('CYNEFIN_CHECK')) {
+        stateManager.advanceState(args.target, `iter-${args.iter}`, 'CYNEFIN_CHECK', 'run');
+      }
+      // 否則 state 已在正確位置（如 BUILD-1），不動
     } catch (e) {
       console.log(`[Warn] 無法推進 state.json: ${e.message}`);
     }

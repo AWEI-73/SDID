@@ -1,5 +1,5 @@
 # SDID 快速導航
-> 自動生成 — 2026-03-08 14:07:30 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
+> 自動生成 — 2026-03-09 06:17:16 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
 
 ## 框架路線
 ARCHITECTURE.md v5.0
@@ -15,8 +15,9 @@ ARCHITECTURE.md v5.0
 
 ## 專案動向
 
-### 訓練資源管理 `@PASS`
-- iter: iter-2 | phase: DONE
+### 訓練資源管理 `@BLOCK`
+- iter: iter-4 | phase: BUILD-8
+- 下一步: `node task-pipe/runner.cjs --phase=BUILD --step=8 --target=訓練資源管理`
 
 ### ExamForge `@PASS`
 - iter: iter-11 | phase: DONE
@@ -28,7 +29,14 @@ ARCHITECTURE.md v5.0
 ### test-blueprint-flow
 - iter: iter-2 | phase: —
 
-_非 SDID 管理: sdid-core_
+### test-loop-calc `@PASS`
+- iter: iter-1 | phase: DONE
+
+### test-taskpipe-flow `@PASS`
+- iter: iter-1 | phase: BUILD-5
+- 下一步: `node task-pipe/runner.cjs --phase=BUILD --step=6 --target=test-taskpipe-flow`
+
+_非 SDID 管理: bluemouse-main, sdid-core_
 
 ## 工具快速參考
 

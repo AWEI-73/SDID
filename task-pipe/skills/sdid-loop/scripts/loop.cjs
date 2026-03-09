@@ -180,7 +180,7 @@ ${t.modules.map(m => `- [x] ${m}`).join('\n')}
 
 ---
 
-**草稿狀態**: [x] DONE
+**草稿狀態**: ✅ PASS
 **POC Level**: M
 
 `;
@@ -508,8 +508,8 @@ function detectProjectState(projectPath, detectedLevel = 'M') {
             // 讀取 draft 內容判斷是否已 PASS
             const draftFile = pocFiles.find(f => f.startsWith('requirement_draft_'));
             const draftContent = fs.readFileSync(path.join(pocPath, draftFile), 'utf8');
-            const draftPassed = /\*\*草稿狀態\*\*:\s*(\[OK\]|✅)?\s*PASS/i.test(draftContent) ||
-                                /\*\*狀態\*\*:\s*✅\s*PASS/i.test(draftContent);
+            const draftPassed = /\*\*草稿狀態\*\*:\s*(\[OK\]|✅|✓)?\s*(PASS|DONE)/i.test(draftContent) ||
+                                /\*\*狀態\*\*:\s*✅\s*(PASS|已確認)/i.test(draftContent);
             
             if (draftPassed) {
                 // Draft 已 PASS，檢查 logs 找最新完成的 POC step
@@ -948,6 +948,48 @@ function main() {
     
     // 檢查是否完成
     if (state.phase === 'COMPLETE') {
+        // 多 Story 檢查：COMPLETE 前先確認所有 Story 的 BUILD 都完成
+        const planPath = path.join(projectPath, '.gems', 'iterations', state.iteration, 'plan');
+        const buildPath = path.join(projectPath, '.gems', 'iterations', state.iteration, 'build');
+        if (fs.existsSync(planPath)) {
+            const planFiles = fs.readdirSync(planPath).filter(f => f.startsWith('implementation_plan_'));
+            const completedStories = fs.existsSync(buildPath)
+                ? fs.readdirSync(buildPath).filter(f => f.startsWith('Fillback_')).map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean)
+                : [];
+            const allPlanStories = planFiles.map(f => { const m = f.match(/Story-(\d+\.\d+)/i); return m ? `Story-${m[1]}` : null; }).filter(Boolean).sort();
+            const nextIncompleteStory = allPlanStories.find(s => !completedStories.includes(s));
+            if (nextIncompleteStory) {
+                log(`\n📋 還有未完成的 Story: ${nextIncompleteStory}，繼續 BUILD`, 'yellow');
+                // 把 state 改回 BUILD-1 for next story
+                try {
+                    const stateManager = require(path.join(TASK_PIPE_ROOT, 'lib', 'shared', 'state-manager-v3.cjs'));
+                    const current = stateManager.readState(projectPath, state.iteration) || {};
+                    current.flow = current.flow || {};
+                    current.flow.currentNode = 'BUILD-1';
+                    current.lastUpdated = new Date().toISOString();
+                    stateManager.writeState(projectPath, state.iteration, current);
+                } catch (e) {
+                    const stateFile = path.join(projectPath, '.gems', 'iterations', state.iteration, '.state.json');
+                    if (fs.existsSync(stateFile)) {
+                        const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+                        s.flow = s.flow || {};
+                        s.flow.currentNode = 'BUILD-1';
+                        s.lastUpdated = new Date().toISOString();
+                        fs.writeFileSync(stateFile, JSON.stringify(s, null, 2), 'utf8');
+                    }
+                }
+                const result = runRunner(projectPath, 'BUILD', '1', state.iteration, args.level, nextIncompleteStory, args.dryRun, isQuick);
+                if (result.success) {
+                    log('\n✅ 執行完成', 'green');
+                } else {
+                    log('\n❌ 執行失敗', 'red');
+                }
+                log('\n@NEXT_ACTION', 'yellow');
+                log('請讀取上方輸出，根據 @TASK 指示執行任務，完成後再次執行此腳本。', 'yellow');
+                return;
+            }
+        }
+
         log(`\n✅ ${state.iteration} 所有階段已完成！`, 'green');
 
         // 偵測路線：Blueprint vs Task-Pipe
@@ -1037,6 +1079,52 @@ function main() {
         return;
     }
     
+    // SPEC_TO_PLAN: 直接執行 spec-to-plan 工具（不走 runner）
+    if (state.phase === 'SPEC_TO_PLAN') {
+        const specToPlanPath = path.join(TASK_PIPE_ROOT, 'tools', 'spec-to-plan.cjs');
+        log(`\n📐 SPEC_TO_PLAN: 機械轉換 spec → implementation_plan`, 'blue');
+        log(`   node task-pipe/tools/spec-to-plan.cjs --target=${projectPath} --iteration=${state.iteration}`, 'cyan');
+
+        const result = spawnSync('node', [
+            specToPlanPath,
+            `--target=${projectPath}`,
+            `--iteration=${state.iteration}`,
+        ], {
+            stdio: 'inherit',
+            cwd: TASK_PIPE_ROOT,
+            encoding: 'utf-8'
+        });
+
+        if (result.status === 0) {
+            // 更新 state 到 BUILD-1
+            try {
+                const stateManager = require(path.join(TASK_PIPE_ROOT, 'lib', 'shared', 'state-manager-v3.cjs'));
+                const current = stateManager.readState(projectPath, state.iteration) || {};
+                current.flow = current.flow || {};
+                current.flow.currentNode = 'BUILD-1';
+                stateManager.writeState(projectPath, state.iteration, current);
+            } catch (e) {
+                // state-manager 不可用，直接改 .state.json
+                const stateFile = path.join(projectPath, '.gems', 'iterations', state.iteration, '.state.json');
+                if (fs.existsSync(stateFile)) {
+                    const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+                    s.flow = s.flow || {};
+                    s.flow.currentNode = 'BUILD-1';
+                    s.lastUpdated = new Date().toISOString();
+                    fs.writeFileSync(stateFile, JSON.stringify(s, null, 2), 'utf8');
+                }
+            }
+            log('\n✅ spec-to-plan 完成，state 已推進到 BUILD-1', 'green');
+            log('\n@NEXT_ACTION', 'yellow');
+            log('請再次執行此腳本繼續 BUILD Phase 1。', 'yellow');
+        } else {
+            log('\n❌ spec-to-plan 失敗', 'red');
+            log('\n@NEXT_ACTION', 'yellow');
+            log('請檢查 requirement_spec 格式，確認 5.5 函式規格表存在。', 'yellow');
+        }
+        return;
+    }
+
     // CYNEFIN_CHECK: AI 語意域分析（不走 runner，直接輸出 @TASK 指引）
     if (state.phase === 'CYNEFIN_CHECK') {
         const iterPath = path.join(projectPath, '.gems', 'iterations', state.iteration);
@@ -1084,13 +1172,31 @@ function main() {
     }
 
     // 執行 runner
+    // BUILD 階段：如果 story 未指定，從 plan 目錄自動偵測第一個未完成的 Story
+    let resolvedStory = args.story || state.story || null;
+    if (state.phase === 'BUILD' && !resolvedStory) {
+        const planPath = path.join(projectPath, '.gems', 'iterations', state.iteration, 'plan');
+        const buildPath = path.join(projectPath, '.gems', 'iterations', state.iteration, 'build');
+        if (fs.existsSync(planPath)) {
+            const planFiles = fs.readdirSync(planPath).filter(f => f.startsWith('implementation_plan_'));
+            const completedStories = fs.existsSync(buildPath)
+                ? fs.readdirSync(buildPath).filter(f => f.startsWith('Fillback_')).map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean)
+                : [];
+            const allPlanStories = planFiles.map(f => { const m = f.match(/Story-(\d+\.\d+)/i); return m ? `Story-${m[1]}` : null; }).filter(Boolean).sort();
+            resolvedStory = allPlanStories.find(s => !completedStories.includes(s)) || allPlanStories[0] || null;
+            if (resolvedStory) {
+                log(`  📋 自動偵測 Story: ${resolvedStory}`, 'cyan');
+            }
+        }
+    }
+
     const result = runRunner(
         projectPath,
         state.phase,
         state.step,
         state.iteration,
         args.level,
-        args.story || state.story || null,
+        resolvedStory,
         args.dryRun,
         isQuick
     );

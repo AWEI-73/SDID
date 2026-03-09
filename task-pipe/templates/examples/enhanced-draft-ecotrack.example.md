@@ -171,29 +171,79 @@ src/
 **驗收條件骨架**:
 
 **AC-1.0** — CO2e 計算正確性
-- Given: factorId='elec-tw-2024'，對應係數值 0.494 kgCO2e/kWh
-- When: calcEmission(1000, 'elec-tw-2024')
-- Then: 回傳 494（四捨五入到整數），單位 kgCO2e
+DOMAIN: Clear | ERROR_RETURNS: ValidationError
+- Happy Path:
+  - Given: factorId='elec-tw-2024'，對應係數值 0.494 kgCO2e/kWh
+  - When: calcEmission(1000, 'elec-tw-2024')
+  - Then: 回傳 494（四捨五入到整數），單位 kgCO2e
+- Edge:
+  - Given: amount = 0
+  - When: calcEmission(0, 'elec-tw-2024')
+  - Then: 回傳 0，不拋錯
+- Failure:
+  - Given: factorId 不存在於係數庫
+  - When: calcEmission(1000, 'non-existent-factor')
+  - Then: throw ValidationError('排放係數不存在: non-existent-factor')
 
 **AC-1.1** — 新增排放紀錄
-- Given: dbClient 已連線，calcEmission 可用
-- When: createRecord({ orgId, scope: 'SCOPE2', category: '電力', amount: 1000, unit: 'kWh', factorId: 'elec-tw-2024', period: '2024-01' })
-- Then: 資料庫新增一筆紀錄，co2e 欄位自動填入 494
+DOMAIN: Complicated | ERROR_RETURNS: ValidationError | DbConnectionError
+- Happy Path:
+  - Given: dbClient 已連線，calcEmission 可用
+  - When: createRecord({ orgId: 'org-001', scope: 'SCOPE2', category: '電力', amount: 1000, unit: 'kWh', factorId: 'elec-tw-2024', period: '2024-01' })
+  - Then: 資料庫新增一筆紀錄，co2e 欄位自動填入 494，回傳含 id 的完整物件
+- Edge:
+  - Given: 同 orgId + period + factorId 的紀錄已存在
+  - When: createRecord({ orgId: 'org-001', period: '2024-01', factorId: 'elec-tw-2024', ... })
+  - Then: throw ValidationError('該期間已有相同係數的紀錄，請使用更新')
+- Failure:
+  - Given: dbClient 斷線
+  - When: createRecord({ ... })
+  - Then: throw DbConnectionError('資料庫寫入失敗，請稍後重試')
 
 **AC-1.2** — 查詢排放紀錄
-- Given: 資料庫有 org-001 在 2024-01 的 3 筆紀錄
-- When: getRecords('org-001', '2024-01')
-- Then: 回傳長度 3 的陣列，每筆含 co2e 欄位
+DOMAIN: Clear | ERROR_RETURNS: ValidationError
+- Happy Path:
+  - Given: 資料庫有 org-001 在 2024-01 的 3 筆紀錄
+  - When: getRecords('org-001', '2024-01')
+  - Then: 回傳長度 3 的陣列，每筆含 co2e 欄位，按 createdAt 升序排列
+- Edge:
+  - Given: 該 orgId + period 無任何紀錄
+  - When: getRecords('org-001', '2099-12')
+  - Then: 回傳空陣列 []，不拋錯
+- Failure:
+  - Given: orgId 為空字串
+  - When: getRecords('', '2024-01')
+  - Then: throw ValidationError('orgId 不可為空')
 
 **AC-1.3** — 填報表單提交
-- Given: 使用者在填報頁，係數清單已載入
-- When: 選擇類別「電力」，輸入 1000 kWh，點擊提交
-- Then: 呼叫 createRecord，成功後顯示「新增成功」提示，表單清空
+DOMAIN: Complicated | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: 使用者在填報頁，係數清單已載入（至少 1 筆）
+  - When: 選擇類別「電力」，輸入 1000 kWh，點擊提交
+  - Then: 呼叫 createRecord，成功後顯示「新增成功」提示，表單清空
+- Edge:
+  - Given: 係數清單為空（factorService 回傳 []）
+  - When: 渲染 DataEntryForm
+  - Then: 顯示「目前無可用排放係數」提示，提交按鈕 disabled
+- Failure:
+  - Given: createRecord 拋出 ValidationError
+  - When: 使用者點擊提交
+  - Then: 顯示錯誤訊息於表單頂部，表單資料保留不清空
 
 **AC-1.4** — 填報頁路由
-- Given: 已登入使用者
-- When: 瀏覽 /data-entry
-- Then: 顯示填報表單，係數下拉選單有資料
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: 已登入使用者
+  - When: 瀏覽 /data-entry
+  - Then: 顯示填報表單，係數下拉選單有資料，無 console error
+- Edge:
+  - Given: 使用者未登入
+  - When: 直接瀏覽 /data-entry
+  - Then: 重導向至 /login，不顯示表單
+- Failure:
+  - Given: factorService 載入失敗（網路錯誤）
+  - When: 頁面初始化
+  - Then: 顯示「資料載入失敗，請重新整理」，不白屏
 
 ### Iter 3: dashboard [STUB]
 
@@ -212,24 +262,64 @@ src/
 **驗收條件骨架**:
 
 **AC-2.0** — 範疇分佈統計
-- Given: org-001 在 2024 年有 SCOPE1: 200 kgCO2e, SCOPE2: 800 kgCO2e
-- When: getScopeSummary('org-001', 2024)
-- Then: 回傳 { SCOPE1: 200, SCOPE2: 800, SCOPE3: 0, total: 1000 }
+DOMAIN: Clear | ERROR_RETURNS: ValidationError
+- Happy Path:
+  - Given: org-001 在 2024 年有 SCOPE1: 200 kgCO2e, SCOPE2: 800 kgCO2e
+  - When: getScopeSummary('org-001', 2024)
+  - Then: 回傳 { SCOPE1: 200, SCOPE2: 800, SCOPE3: 0, total: 1000 }
+- Edge:
+  - Given: org-001 在 2024 年無任何排放紀錄
+  - When: getScopeSummary('org-001', 2024)
+  - Then: 回傳 { SCOPE1: 0, SCOPE2: 0, SCOPE3: 0, total: 0 }，不拋錯
+- Failure:
+  - Given: year 為非正整數（如 -1 或 0）
+  - When: getScopeSummary('org-001', -1)
+  - Then: throw ValidationError('year 必須為正整數')
 
 **AC-2.1** — 月度趨勢
-- Given: org-001 在 2024-01 到 2024-03 各有排放紀錄
-- When: getTrendData('org-001', 3)
-- Then: 回傳長度 3 的陣列，按月份升序排列，每筆含 month + totalCo2e
+DOMAIN: Clear | ERROR_RETURNS: ValidationError
+- Happy Path:
+  - Given: org-001 在 2024-01 到 2024-03 各有排放紀錄
+  - When: getTrendData('org-001', 3)
+  - Then: 回傳長度 3 的陣列，按月份升序排列，每筆含 month + totalCo2e
+- Edge:
+  - Given: months = 1
+  - When: getTrendData('org-001', 1)
+  - Then: 回傳長度 1 的陣列，只含最近一個月資料
+- Failure:
+  - Given: months <= 0
+  - When: getTrendData('org-001', 0)
+  - Then: throw ValidationError('months 必須大於 0')
 
 **AC-2.2** — 看板元件渲染
-- Given: getScopeSummary 回傳有效資料
-- When: 渲染 <DashboardView orgId="org-001" year={2024} />
-- Then: 顯示圓餅圖（3 個範疇）+ 折線圖（月度趨勢）
+DOMAIN: Complicated | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: getScopeSummary 回傳有效資料（total > 0）
+  - When: 渲染 <DashboardView orgId="org-001" year={2024} />
+  - Then: 顯示圓餅圖（3 個範疇）+ 折線圖（月度趨勢），無 console error
+- Edge:
+  - Given: getScopeSummary 回傳 total = 0
+  - When: 渲染元件
+  - Then: 顯示「本年度尚無排放紀錄」提示，不渲染空圖表
+- Failure:
+  - Given: getScopeSummary 拋出錯誤
+  - When: 渲染元件
+  - Then: 顯示「資料載入失敗」提示，提供重試按鈕，不白屏
 
 **AC-2.3** — 看板頁路由
-- Given: 已登入使用者
-- When: 瀏覽 /dashboard
-- Then: 顯示看板，圖表有資料，無 console error
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: 已登入使用者
+  - When: 瀏覽 /dashboard
+  - Then: 顯示看板，圖表有資料，無 console error
+- Edge:
+  - Given: 使用者未登入
+  - When: 直接瀏覽 /dashboard
+  - Then: 重導向至 /login，不顯示看板
+- Failure:
+  - Given: DashboardView 資料載入失敗
+  - When: 頁面初始化
+  - Then: ErrorBoundary 捕捉，顯示 fallback UI，不白屏
 
 ### Iter 4: report-gen [STUB]
 
@@ -247,14 +337,34 @@ src/
 **驗收條件骨架**:
 
 **AC-3.0** — 生成 PDF 報告
-- Given: org-001 在 2024 年有完整排放紀錄
-- When: generateReport('org-001', 2024)
-- Then: 回傳 Buffer，MIME type 為 application/pdf，檔案大小 > 0
+DOMAIN: Complicated | ERROR_RETURNS: ValidationError | ReportGenerationError
+- Happy Path:
+  - Given: org-001 在 2024 年有完整排放紀錄（至少 1 筆）
+  - When: generateReport('org-001', 2024)
+  - Then: 回傳 Buffer，MIME type 為 application/pdf，檔案大小 > 0
+- Edge:
+  - Given: org-001 在 2024 年無任何排放紀錄
+  - When: generateReport('org-001', 2024)
+  - Then: 仍回傳有效 PDF（含「本年度無排放紀錄」說明頁），不拋錯
+- Failure:
+  - Given: PDF 渲染引擎初始化失敗
+  - When: generateReport('org-001', 2024)
+  - Then: throw ReportGenerationError('PDF 生成失敗，請稍後重試')
 
 **AC-3.1** — 報告下載按鈕
-- Given: 使用者在報告頁
-- When: 點擊「下載報告」按鈕
-- Then: 觸發 generateReport，顯示 loading，完成後自動下載 PDF
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: 使用者在報告頁，generateReport 可用
+  - When: 點擊「下載報告」按鈕
+  - Then: 觸發 generateReport，顯示 loading，完成後自動下載 PDF，按鈕恢復可點擊
+- Edge:
+  - Given: 報告生成中（loading 狀態）
+  - When: 使用者再次點擊按鈕
+  - Then: 按鈕 disabled，不重複觸發 generateReport
+- Failure:
+  - Given: generateReport 拋出 ReportGenerationError
+  - When: 使用者點擊按鈕
+  - Then: 顯示「報告生成失敗，請稍後重試」，按鈕恢復可點擊
 
 ---
 
@@ -263,30 +373,61 @@ src/
 ### Iter 1: shared
 
 **AC-0.0** — CoreTypes 型別定義
-- Given: 專案初始化完成
-- When: import { Organization, EmissionRecord, EmissionFactor } from 'shared/types'
-- Then: TypeScript 編譯通過，Organization 含 id/name/industry/reportYear，EmissionRecord 含 co2e 欄位
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: 專案初始化完成
+  - When: import { Organization, EmissionRecord, EmissionFactor } from 'shared/types'
+  - Then: TypeScript 編譯通過，Organization 含 id/name/industry/reportYear，EmissionRecord 含 co2e 欄位
+- Edge:
+  - When: 只 import 部分型別（如只 import Organization）
+  - Then: 其餘型別不受影響，tree-shaking 正常，無 TypeScript 錯誤
 
 **AC-0.1** — API 介面契約
-- Given: IServiceContracts 已定義
-- When: 實作類別 implements IDataEntryService
-- Then: TypeScript 強制要求實作所有方法簽名，缺少任何方法時編譯報錯
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: IServiceContracts 已定義
+  - When: 實作類別 implements IDataEntryService
+  - Then: TypeScript 強制要求實作所有方法簽名
+- Failure:
+  - When: 缺少任何方法
+  - Then: TypeScript 編譯報錯，不可 build
 
 **AC-0.2** — 資料庫連線
-- Given: ENV_CONFIG 已載入，PostgreSQL 服務運行中
-- When: 呼叫 dbClient.query('SELECT 1')
-- Then: 回傳結果不為 null，連線池 pool.totalCount > 0
+DOMAIN: Complicated | ERROR_RETURNS: DbConnectionError
+- Happy Path:
+  - Given: ENV_CONFIG 已載入，PostgreSQL 服務運行中
+  - When: 呼叫 dbClient.query('SELECT 1')
+  - Then: 回傳結果不為 null，連線池 pool.totalCount > 0
+- Failure:
+  - Given: PostgreSQL 服務未啟動
+  - When: 呼叫 dbClient.query('SELECT 1')
+  - Then: throw DbConnectionError('無法連線到資料庫')
 
 **AC-0.3** — 排放係數 CRUD
-- Given: dbClient 已連線，emission_factors 表存在
-- When: factorService.create({ name: '台電電力', category: '電力', value: 0.494, unit: 'kgCO2e/kWh', source: '環保署', year: 2024 })
-- Then: 資料庫新增一筆紀錄，回傳含 id 的完整物件
-- And: factorService.findById(id) 回傳相同資料
+DOMAIN: Complicated | ERROR_RETURNS: ValidationError | NotFoundError
+- Happy Path:
+  - Given: dbClient 已連線，emission_factors 表存在
+  - When: factorService.create({ name: '台電電力', category: '電力', value: 0.494, unit: 'kgCO2e/kWh', source: '環保署', year: 2024 })
+  - Then: 資料庫新增一筆紀錄，回傳含 id 的完整物件，factorService.findById(id) 回傳相同資料
+- Edge:
+  - Given: 同名同年度的係數已存在
+  - When: factorService.create({ name: '台電電力', year: 2024, ... })
+  - Then: throw ValidationError('係數已存在，請使用 update')
+- Failure:
+  - Given: value 為負數
+  - When: factorService.create({ value: -0.5, ... })
+  - Then: throw ValidationError('係數值不可為負數')
 
 **AC-0.4** — 前端主入口殼
-- Given: npm run dev 啟動
-- When: 瀏覽器開啟 localhost
-- Then: 首頁框架可見（Header + 導覽列 + 主內容區），無 console error
+DOMAIN: Clear | ERROR_RETURNS: N/A
+- Happy Path:
+  - Given: npm run dev 啟動
+  - When: 瀏覽器開啟 localhost
+  - Then: 首頁框架可見（Header + 導覽列 + 主內容區），無 console error
+- Failure:
+  - Given: 子元件拋出 runtime error
+  - When: 任意頁面渲染失敗
+  - Then: ErrorBoundary 捕捉，顯示 fallback UI，不白屏
 
 ---
 

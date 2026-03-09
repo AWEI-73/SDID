@@ -2,16 +2,18 @@
 /**
  * BUILD Phase 2: 標籤驗收
  * 輸入: 源碼檔案 + implementation plan | 產物: GEMS 標籤合規 + checkpoint
- * 
+ *
  * 職責：
  * - [v2.3 新增] 編碼驗證 - 確保檔案為有效 UTF-8 (無 BOM、無亂碼)
  * - 檢查 GEMS 標籤是否存在、格式正確
- * - P0/P1 是否有擴展標籤 (FLOW, DEPS, TEST, TEST-FILE)
+ * - P0/P1 是否有擴展標籤 (FLOW, DEPS, DEPS-RISK)
  * - 對比 implementation plan 的標籤規格
- * 
+ *
  * v2.2 更新：基於函式清單計算覆蓋率（只計算 PLAN 定義的函式）
  * v2.3 更新：加入編碼驗證 gate，避免 PowerShell 編碼災難
- * 
+ * v3.0 更新：GEMS-TEST/GEMS-TEST-FILE 降為「文件說明」，不再驅動 BLOCKER
+ *            測試驗收完全交由 Phase 4 (AC coverage) + Phase 5 (ac-runner) 處理
+ *
  * 注意：測試檔案是否存在是 Phase 4 的職責
  */
 const fs = require('fs');
@@ -67,8 +69,8 @@ function buildTagTemplate(funcName, startLine, endLine, filePath, story) {
     ` * GEMS-FLOW: ValidateInput→Execute→Return`,
     ` * GEMS-DEPS: [Internal.Dependency (說明)]`,
     ` * GEMS-DEPS-RISK: LOW`,
-    ` * GEMS-TEST: ✓ Unit | - Integration | - E2E`,
-    ` * GEMS-TEST-FILE: {module}.test.ts`,
+    ` * GEMS-TEST: jest-unit  ← 文件說明用，不影響 BUILD gate`,
+    ` * GEMS-TEST-FILE: {module}.test.ts  ← 文件說明用，Phase 3/4 hint`,
     ` */`,
   ].join('\n');
 
@@ -124,10 +126,8 @@ function getScannerV2Adapter(projectRoot) {
       const issues = [];
       for (const fn of functions) {
         if (fn.priority !== 'P0' && fn.priority !== 'P1') continue;
-        // 每個 issue 附帶 file + line 精確位置
+        // v3.0: 只驗 GEMS-FLOW + GEMS-DEPS-RISK，GEMS-TEST/GEMS-TEST-FILE 為文件說明不驗
         if (!fn.flow)    issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-FLOW' });
-        if (!fn.test)    issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-TEST' });
-        if (!fn.testFile)issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-TEST-FILE' });
         if (fn.priority === 'P0' && !fn.depsRisk)
           issues.push({ fn: fn.name, file: fn.file, line: fn.line, priority: fn.priority, issue: '缺少 GEMS-DEPS-RISK' });
       }
@@ -233,9 +233,8 @@ function getScannerForProject(projectType, projectRoot) {
         const issues = [];
         for (const fn of functions) {
           if (fn.priority === 'P0' || fn.priority === 'P1') {
+            // v3.0: 只驗 GEMS-FLOW + GEMS-DEPS-RISK，GEMS-TEST/GEMS-TEST-FILE 為文件說明不驗
             if (!fn.flow) issues.push({ fn: fn.name, priority: fn.priority, issue: '缺少 GEMS-FLOW' });
-            if (!fn.test) issues.push({ fn: fn.name, priority: fn.priority, issue: '缺少 GEMS-TEST' });
-            if (!fn.testFile) issues.push({ fn: fn.name, priority: fn.priority, issue: '缺少 GEMS-TEST-FILE' });
             if (fn.priority === 'P0' && !fn.depsRisk) {
               issues.push({ fn: fn.name, priority: fn.priority, issue: '缺少 GEMS-DEPS-RISK' });
             }
@@ -271,10 +270,10 @@ function run(options) {
   const gateSpec = {
     checks: [
       { name: '標籤覆蓋率', pattern: '>=80%', desc: '至少 80% 函式有 GEMS 標籤' },
-      { name: 'P0/P1 擴展標籤', pattern: 'GEMS-FLOW, GEMS-DEPS, GEMS-TEST', desc: 'P0/P1 必須有完整標籤' },
-      { name: 'GEMS-TEST-FILE', pattern: '{module}.test.ts', desc: '測試檔案路徑' },
+      { name: 'P0/P1 擴展標籤', pattern: 'GEMS-FLOW, GEMS-DEPS-RISK', desc: 'P0/P1 必須有 GEMS-FLOW；P0 必須有 GEMS-DEPS-RISK' },
       { name: 'Plan 函式清單', pattern: 'implementation_plan 定義的函式', desc: '與 Plan 一致' },
-      { name: 'STUB-001 空骨架偵測', pattern: 'P0 函式體非空', desc: 'P0 函式不得為空骨架（return []/{}、// TODO、throw not implemented）' }
+      { name: 'STUB-001 空骨架偵測', pattern: 'P0 函式體非空', desc: 'P0 函式不得為空骨架（return []/{}、// TODO、throw not implemented）' },
+      { name: 'GEMS-TEST/GEMS-TEST-FILE', pattern: '文件說明', desc: '不驗、不 BLOCKER，只作為文件與 Phase 3/4 hint' }
     ]
   };
 
@@ -832,7 +831,7 @@ mkdir -p src/modules src/shared src/config`,
         if (spec) return generateGemsBlock(spec);
         const priority = fn.priority || 'P2';
         const status = priority === 'P0' || priority === 'P1' ? '○○' : '○';
-        return `/**\n * GEMS: ${fn.name} | ${priority} | ${status} | (args)→Result | ${story} | ${fn.description || 'TODO: 描述'}\n * GEMS-FLOW: Step1→Step2→Step3\n * GEMS-DEPS: [Type.Name (說明)]\n * GEMS-DEPS-RISK: LOW\n * GEMS-TEST: ✓ Unit | - Integration | - E2E\n * GEMS-TEST-FILE: {module}.test.ts (模組級，內含 describe('${fn.name}'))\n */`;
+        return `/**\n * GEMS: ${fn.name} | ${priority} | ${status} | (args)→Result | ${story} | ${fn.description || 'TODO: 描述'}\n * GEMS-FLOW: Step1→Step2→Step3\n * GEMS-DEPS: [Type.Name (說明)]\n * GEMS-DEPS-RISK: LOW\n * GEMS-TEST: jest-unit  ← 文件說明，不影響 BUILD\n * GEMS-TEST-FILE: {module}.test.ts  ← hint，Phase 3/4 參考\n */`;
       }).join('\n\n');
       missingListText = missingFns.length > 0
         ? `缺失函式 (共 ${missingFns.length} 個):\n${missingFns.slice(0, 5).map(f => `- ${f.name} (${f.priority})${f.file ? ` → ${f.file}` : ''}`).join('\n')}${missingFns.length > 5 ? `\n...還有 ${missingFns.length - 5} 個` : ''}`

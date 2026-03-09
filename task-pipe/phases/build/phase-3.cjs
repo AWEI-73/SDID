@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 3: 測試腳本 v2.0
+ * BUILD Phase 3: 測試腳本 v3.0
  * 輸入: 源碼檔案 + contract_iter-N.ts | 產物: 測試檔案 + checkpoint
- * 
- * v2.0 變更：AC 驅動測試指引
- * - 從 contract_iter-N.ts 讀取 @GEMS-AC，注入具體 I/O 給 AI
- * - 按 GEMS-TEST 策略分組（ac-runner/jest-unit/jest-integ/poc-html/skip）
- * - contract 不存在時 WARN + 降級為通用約束
- * 
+ *
+ * v3.0 變更：純 AC 驅動，廢棄 GEMS-TEST 分組邏輯
+ * - 從 contract_iter-N.ts 讀取 @GEMS-AC，決定哪些函式需要 jest 測試
+ * - 有 @GEMS-AC → 需要 it('AC-X.Y') jest 測試
+ * - 無 @GEMS-AC → skip（由人工 POC 驗收 / Phase 5 直接跳過）
+ * - contract 不存在 → 全部 SKIP，PASS（不強制 jest）
+ * - GEMS-TEST 標籤保留為文件說明，不再驅動 Phase 3 分組
+ *
  * 軍規 3: TDD 100% - 禁止在測試中重寫函式邏輯
  */
 const fs = require('fs');
@@ -87,13 +89,13 @@ function run(options) {
   const relativeTarget = path.relative(process.cwd(), target) || '.';
   const iterNum = parseInt(iteration.replace('iter-', ''));
 
-  // 門控規格 - 告訴 AI 這個 phase 會檢查什麼
+  // 門控規格 v3.0 - 告訴 AI 這個 phase 會檢查什麼
   const gateSpec = {
     checks: [
-      { name: '測試檔案存在', pattern: '*.test.ts', desc: '每個需要 jest 的函式有對應測試檔' },
-      { name: 'AC 覆蓋', pattern: "it('AC-X.Y')", desc: 'jest 函式的每個 AC 必須有對應 it()' },
+      { name: '有 @GEMS-AC → 需要測試檔', pattern: '*.test.ts', desc: 'contract 有 @GEMS-AC 的函式必須有對應 jest 測試' },
+      { name: 'AC 覆蓋', pattern: "it('AC-X.Y')", desc: '每個 @GEMS-AC 必須對應一個 it()' },
       { name: '測試 import', pattern: 'import { fn } from', desc: '測試必須 import 被測函式' },
-      { name: 'ac-runner/poc-html/skip', pattern: '跳過', desc: '這些策略不需要 jest 測試檔' }
+      { name: '無 @GEMS-AC → SKIP', pattern: 'contract 不存在 → 全部 SKIP', desc: '無 AC spec 的函式不需要 jest，由人工 POC 驗收' }
     ]
   };
 
@@ -142,25 +144,33 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   // 讀取 AC specs（Task-Pipe contract，Blueprint/POC-FIX 不存在時為 null）
   const acSpecs = loadAcSpecs(target, iterNum);
   if (acSpecs === null) {
-    console.log(`[WARN] contract_iter-${iterNum}.ts 不存在，降級為通用約束（無 AC I/O 注入）`);
+    // v3.0: contract 不存在 → 沒有 AC 規格 → 不強制 jest，直接 PASS
+    console.log(`[INFO] contract_iter-${iterNum}.ts 不存在，無 AC specs → 跳過 jest 測試指引（all SKIP）`);
+    writeCheckpoint(target, iteration, story, '3', {
+      verdict: 'PASS',
+      reason: 'no-contract-no-ac',
+      acSpecs: 0
+    });
+    anchorPass('BUILD', 'Phase 3',
+      `無 contract → 無 @GEMS-AC → 跳過 jest 測試（Phase 5 ac-runner 也會 SKIP）`,
+      getNextCmd('BUILD', '3', { story, level, target: relativeTarget, iteration }),
+      { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-3', story }
+    );
+    return { verdict: 'PASS' };
   } else {
     console.log(`[AC] 讀取 contract_iter-${iterNum}.ts，找到 ${acSpecs.length} 個 AC specs`);
   }
 
-  // 按 GEMS-TEST 策略分組
-  const jestFns = scanResult.functions.filter(f => {
-    const s = (f.testStrategy || '').toLowerCase();
-    return s === 'jest-unit' || s === 'jest-integ';
-  });
-  const skipFns = scanResult.functions.filter(f => {
-    const s = (f.testStrategy || '').toLowerCase();
-    return s === 'ac-runner' || s === 'poc-html' || s === 'skip';
-  });
-  // 沒有 GEMS-TEST 標籤的函式（舊格式或未標）
-  const unknownFns = scanResult.functions.filter(f => !f.testStrategy);
+  // v3.0: AC 驅動分組 — 以 contract @GEMS-AC 決定哪些函式需要 jest
+  // 有 @GEMS-AC → 需要 it('AC-X.Y') 測試；無 @GEMS-AC → skip（人工 POC）
+  const acFnNames = acSpecs ? new Set(acSpecs.map(ac => ac.fn)) : new Set();
+  const targetFns = acSpecs
+    ? scanResult.functions.filter(f => acFnNames.has(f.name))   // 有 AC 規格
+    : [];                                                        // 無 contract → 不強制
+  const skipFns = scanResult.functions.filter(f => !acFnNames.has(f.name));
 
-  // 需要 jest 的函式（有明確策略優先，否則 fallback 到 unknown）
-  const targetFns = jestFns.length > 0 ? jestFns : unknownFns;
+  // 統計（for display only，不再驅動 BLOCKER）
+  const jestFns = targetFns; // alias，讓下方 anchorOutput 的 info 欄位語意保持
 
   // 統計
   const p0Fns = scanResult.functions.filter(f => f.priority === 'P0');
@@ -183,7 +193,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       });
 
       anchorPass('BUILD', 'Phase 3',
-        `測試檔案: ${testFiles.length} | jest: ${jestFns.length} | skip/ac-runner/poc-html: ${skipFns.length}`,
+        `測試檔案: ${testFiles.length} | 有 AC 的函式: ${targetFns.length} | 無 AC (skip): ${skipFns.length}`,
         getNextCmd('BUILD', '3', { story, level, target: relativeTarget, iteration }),
         {
           projectRoot: target,
@@ -200,9 +210,9 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       context: `Phase 3 | ${story} | 測試不完整`,
       error: {
         type: 'TACTICAL_FIX',
-        summary: `${missingFns.length} 個 jest 函式缺少測試檔案`
+        summary: `${missingFns.length} 個有 @GEMS-AC 的函式缺少測試檔案`
       },
-      task: missingFns.slice(0, 5).map(f => `補充 ${f.name} (${f.testStrategy || 'jest-unit'}) 的測試檔案`),
+      task: missingFns.slice(0, 5).map(f => `補充 ${f.name} 的測試檔案（contract 有 @GEMS-AC，需對應 it('AC-X.Y')）`),
       output: `NEXT: ${getRetryCmd('BUILD', '3', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
@@ -223,13 +233,13 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   acGuideLines.push(``);
 
   if (skipFns.length > 0) {
-    acGuideLines.push(`[SKIP] 以下函式不需要 jest 測試（ac-runner/poc-html/skip）：`);
-    skipFns.forEach(f => acGuideLines.push(`  - ${f.name} (${f.testStrategy})`));
+    acGuideLines.push(`[SKIP] 以下函式在 contract 無 @GEMS-AC，不需要 jest 測試（人工 POC 驗收）：`);
+    skipFns.forEach(f => acGuideLines.push(`  - ${f.name}`));
     acGuideLines.push(``);
   }
 
   if (targetFns.length > 0) {
-    acGuideLines.push(`[JEST] 以下函式需要撰寫測試（每個 AC 必須對應一個 it()）：`);
+    acGuideLines.push(`[JEST] 以下函式在 contract 有 @GEMS-AC，需要撰寫測試（每個 AC 必須對應一個 it()）：`);
     acGuideLines.push(``);
     for (const fn of targetFns) {
       acGuideLines.push(buildAcTestGuide(fn, acSpecs));
@@ -248,12 +258,9 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   anchorOutput({
     context: `Phase 3 | ${story} | AC 驅動測試指引`,
     info: {
-      'jest 函式': jestFns.length,
-      'skip/ac-runner/poc-html': skipFns.length,
-      'AC specs': acSpecs ? acSpecs.length : '(contract 不存在，使用通用約束)',
-      'P0': p0Fns.length,
-      'P1': p1Fns.length,
-      'P2': p2Fns.length
+      '有 @GEMS-AC 的函式（需 jest）': targetFns.length,
+      '無 @GEMS-AC（skip）': skipFns.length,
+      'AC specs 總數': acSpecs ? acSpecs.length : 0
     },
     task: [
       '在源碼旁邊建立 __tests__/ 資料夾',

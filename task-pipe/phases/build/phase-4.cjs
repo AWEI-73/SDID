@@ -191,7 +191,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     const { emitTaskBlock } = require('../../lib/shared/log-output.cjs');
 
     const tasks = acCoverageResult.gaps.slice(0, 8).map(gap => {
-      const fn = jestTargetFns.find(f => f.name === gap.fn);
+      const fn = scanResult.functions.find(f => f.name === gap.fn);
       const testFilePath = fn?.testFile
         ? (fn.file ? path.join(path.dirname(fn.file), '__tests__', fn.testFile) : fn.testFile)
         : `__tests__/${gap.fn}.test.ts`;

@@ -268,10 +268,10 @@ src/
 
 | 業務語意 | 類型 | 技術名稱 | Signature | P | 流向 | 依賴 | AC |
 |---------|------|---------|-----------|---|------|------|----|
-| {functionA 業務描述} | SVC | {functionA} | ({param}: {Type}) → {ReturnType} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types] | AC-1.0 |
-| {functionB 業務描述} | SVC | {functionB} | ({param}: {Type}) → {ReturnType} | P1 | {STEP1→STEP2→RETURN} | [Internal.{functionA}] | AC-1.1 |
-| {UI 元件描述} | UI | {ModuleView} | N/A | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionA}] | AC-1.2 |
-| {路由描述} | ROUTE | {ModulePage} | N/A | P1 | CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT | [Internal.{ModuleView}] | AC-1.3 |
+| {functionA 業務描述} | SVC | {functionA} | ({param}: {Type}) → {ReturnType} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types] | AC-1.0 [CALC] |
+| {functionB 業務描述} | SVC | {functionB} | ({param}: {Type}) → {ReturnType} | P1 | {STEP1→STEP2→RETURN} | [Internal.{functionA}] | AC-1.1 [MOCK] |
+| {UI 元件描述} | UI | {ModuleView} | N/A | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionA}] | AC-1.2 [MANUAL] |
+| {路由描述} | ROUTE | {ModulePage} | N/A | P1 | CHECK_AUTH→LOAD_DATA→RENDER_LAYOUT | [Internal.{ModuleView}] | AC-1.3 [MANUAL] |
 
 **驗收條件骨架**:
 
@@ -295,8 +295,8 @@ src/
 
 | 業務語意 | 類型 | 技術名稱 | Signature | P | 流向 | 依賴 | AC |
 |---------|------|---------|-----------|---|------|------|----|
-| {functionC 業務描述} | SVC | {functionC} | ({param}: {Type}) → {ReturnType} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types, {moduleA}.{functionA}] | AC-2.0 |
-| {UI 元件描述} | UI | {ModuleBView} | N/A | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionC}] | AC-2.1 |
+| {functionC 業務描述} | SVC | {functionC} | ({param}: {Type}) → {ReturnType} | P0 | {STEP1→STEP2→STEP3→RETURN} | [shared/types, {moduleA}.{functionA}] | AC-2.0 [CALC] |
+| {UI 元件描述} | UI | {ModuleBView} | N/A | P1 | FETCH_DATA→RENDER→BIND_EVENTS | [Internal.{functionC}] | AC-2.1 [MANUAL] |
 
 **驗收條件骨架**:
 
@@ -341,19 +341,46 @@ src/
   ❌ 無效: 系統處理完成
   ❌ 無效: 路由接線完成
 
-  純計算類 AC 落地規則（v2.3）:
-  - 流向含 CALC/PARSE/FORMAT/CONVERT/DATE/ROC 的函式（條件 A）
-  - 除在此處寫 Given/When/Then 外，必須在 contract_iter-N.ts 補 @GEMS-AC 標籤
-  - Phase 5 的 ac-runner 會讀 contract 的 @GEMS-AC，機械執行並比對 expect
+  AC 分類標記（v2.4）— 每個 AC 必須在括號內標明類型：
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ [CALC]   = 純計算函式（無 side effect、無 API/DB）                   │
+  │            → Phase 5 ac-runner 機械驗收                              │
+  │            → contract 補 @GEMS-AC 完整標籤（FN/MODULE/INPUT/EXPECT） │
+  │            → 失敗路徑用 @GEMS-AC-EXPECT-THROW: ErrorClassName        │
+  │                                                                      │
+  │ [MOCK]   = 有外部依賴（API/DB/GAS）但含純計算核心                    │
+  │            → jest mock test（mock 邊界，驗計算核心）                  │
+  │            → contract 補 @GEMS-AC-SKIP: <原因>（ac-runner 跳過）     │
+  │                                                                      │
+  │ [MANUAL] = UI 互動 / DOM / side effect / 真實外部狀態                │
+  │            → 人工 POC 驗收（POC.HTML）                               │
+  │            → contract 補 @GEMS-AC-SKIP: UI 互動，人工 POC 驗收       │
+  └──────────────────────────────────────────────────────────────────────┘
 
-  contract_iter-N.ts 的 @GEMS-AC 格式:
+  contract_iter-N.ts 的 @GEMS-AC 格式（依類型）:
+
+  [CALC] 正常路徑（ac-runner 直驗）:
   // @GEMS-AC: AC-1.0
   // @GEMS-AC-FN: functionName
   // @GEMS-AC-MODULE: modules/ModuleName/lib/function-name
   // @GEMS-AC-INPUT: [arg1, arg2]
   // @GEMS-AC-EXPECT: { key: "value" }
 
-  UI/Hook/GAS 類 AC：繼續用 Given/When/Then，靠人工 POC 驗收，不寫 @GEMS-AC
+  [CALC] 失敗路徑（驗收 throw）:
+  // @GEMS-AC: AC-1.1
+  // @GEMS-AC-FN: functionName
+  // @GEMS-AC-MODULE: modules/ModuleName/lib/function-name
+  // @GEMS-AC-INPUT: [invalidArg]
+  // @GEMS-AC-EXPECT-THROW: InvalidInputError
+
+  [MOCK] 有外部依賴（ac-runner SKIP，靠 jest mock 驗）:
+  // @GEMS-AC: AC-2.0
+  // @GEMS-AC-FN: parseSheetResponse
+  // @GEMS-AC-SKIP: Google Sheets API 依賴 | 純解析邏輯可 mock 驗
+
+  [MANUAL] UI 或 side effect（人工 POC 驗收）:
+  // @GEMS-AC: AC-3.0
+  // @GEMS-AC-SKIP: UI 互動，人工 POC 驗收
 -->
 
 ### Iter 1: shared
@@ -391,9 +418,9 @@ DOMAIN: Clear | ERROR_RETURNS: N/A
 
 ### Iter 2: {moduleA}
 
-**AC-1.0** — {functionA} 核心業務邏輯
+**AC-1.0** [CALC] — {functionA} 核心業務邏輯
 DOMAIN: {Clear | Complicated | Complex} | ERROR_RETURNS: {ErrorTypeA} | {ErrorTypeB}
-> 🔧 純計算函式 → 需在 contract_iter-N.ts 補 @GEMS-AC 標籤（格式見上方說明）
+> 🔧 純計算 → contract_iter-N.ts 補 @GEMS-AC 完整標籤（FN/MODULE/INPUT/EXPECT）
 - Happy Path:
   - Given: {前置狀態，例如: DataStore 中無資料 / 使用者已登入}
   - When: 呼叫 `{functionA}({ {必要參數}: '{測試值}' })`
@@ -406,9 +433,11 @@ DOMAIN: {Clear | Complicated | Complex} | ERROR_RETURNS: {ErrorTypeA} | {ErrorTy
   - Given: {非法輸入，如 null 或負數}
   - When: 呼叫 `{functionA}(null)`
   - Then: throw {ErrorTypeA}('{錯誤訊息}')
+  > contract 失敗路徑: @GEMS-AC-EXPECT-THROW: {ErrorTypeA}
 
-**AC-1.1** — {functionB} 狀態變更
+**AC-1.1** [MOCK] — {functionB} 狀態變更
 DOMAIN: {Clear | Complicated} | ERROR_RETURNS: {ErrorTypeA}
+> 🔌 有外部依賴 → contract_iter-N.ts 補 @GEMS-AC-SKIP: <原因>，jest mock 驗核心邏輯
 - Happy Path:
   - Given: 已存在一筆 `{狀態欄位}='{初始狀態}'` 的資料（id = testId）
   - When: 呼叫 `{functionB}(testId)`
@@ -418,8 +447,9 @@ DOMAIN: {Clear | Complicated} | ERROR_RETURNS: {ErrorTypeA}
   - When: 呼叫 `{functionB}('non-existent-id')`
   - Then: throw {ErrorTypeA}('找不到資料')
 
-**AC-1.2** — {ModuleView} 渲染與互動
+**AC-1.2** [MANUAL] — {ModuleView} 渲染與互動
 DOMAIN: Complicated | ERROR_RETURNS: N/A
+> 👁 UI/side effect → contract_iter-N.ts 補 @GEMS-AC-SKIP: UI 互動，人工 POC 驗收
 - Happy Path:
   - Given: DataStore 中有 2 筆 `{過濾條件}` 的資料
   - When: 渲染 `<{ModuleView} {prop}="{值}" />`

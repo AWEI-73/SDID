@@ -47,7 +47,9 @@ function parseArgs() {
  * @property {string} module    - 相對於 src/ 的模組路徑
  * @property {any[]}  input     - 函式參數陣列
  * @property {any}    expect    - 預期回傳值
- * @property {string[]} [fields] - 只比對特定欄位（可選）
+ * @property {string[]} [fields]      - 只比對特定欄位（可選）
+ * @property {string}   [skip]        - @GEMS-AC-SKIP 原因（MOCK/MANUAL AC，ac-runner 跳過不 BLOCKER）
+ * @property {string}   [expectThrow] - @GEMS-AC-EXPECT-THROW 預期拋出的 Error 類型（失敗路徑驗收）
  */
 
 function parseAcSpecs(contractContent) {
@@ -94,6 +96,14 @@ function parseAcSpecs(contractContent) {
       current.fields = fieldMatch[1].split(',').map(f => f.trim()).filter(Boolean);
       continue;
     }
+
+    // @GEMS-AC-SKIP: <原因>  → MOCK/MANUAL AC，ac-runner 跳過，不計入 BLOCKER
+    const skipMatch = trimmed.match(/^\/\/\s*@GEMS-AC-SKIP:\s*(.+)/);
+    if (skipMatch) { current.skip = skipMatch[1].trim(); continue; }
+
+    // @GEMS-AC-EXPECT-THROW: ErrorClassName  → 失敗路徑驗收：期望函式拋出指定 Error
+    const expectThrowMatch = trimmed.match(/^\/\/\s*@GEMS-AC-EXPECT-THROW:\s*(\S+)/);
+    if (expectThrowMatch) { current.expectThrow = expectThrowMatch[1]; continue; }
 
     // 遇到非 @GEMS-AC 的非空行就結束當前 spec
     if (trimmed && !trimmed.startsWith('//')) {
@@ -364,11 +374,17 @@ function partialMatch(actual, expect) {
 function runAc(spec, target) {
   const result = { id: spec.id, fn: spec.fn, status: 'UNKNOWN', actual: null, error: null };
 
+  // @GEMS-AC-SKIP: MOCK/MANUAL AC → 直接 SKIP，不進入驗收流程（不計入 BLOCKER）
+  if (spec.skip) return { ...result, status: 'SKIP', error: `[SKIP] ${spec.skip}` };
+
   // 驗證 spec 完整性
   if (!spec.fn)     return { ...result, status: 'SKIP', error: '缺少 @GEMS-AC-FN' };
   if (!spec.module) return { ...result, status: 'SKIP', error: '缺少 @GEMS-AC-MODULE' };
   if (spec.input === null) return { ...result, status: 'SKIP', error: spec.inputParseError || '缺少 @GEMS-AC-INPUT' };
-  if (spec.expect === null) return { ...result, status: 'SKIP', error: spec.expectParseError || '缺少 @GEMS-AC-EXPECT' };
+  // @GEMS-AC-EXPECT-THROW 不需要 @GEMS-AC-EXPECT
+  if (!spec.expectThrow && spec.expect === null) {
+    return { ...result, status: 'SKIP', error: spec.expectParseError || '缺少 @GEMS-AC-EXPECT' };
+  }
 
   // 載入函式
   const loaded = loadFunction(target, spec.module, spec.fn);
@@ -376,7 +392,28 @@ function runAc(spec, target) {
     return { ...result, status: 'ERROR', error: loaded.error };
   }
 
-  // 執行函式
+  // @GEMS-AC-EXPECT-THROW: 失敗路徑驗收 — 期望函式拋出指定 Error
+  if (spec.expectThrow) {
+    try {
+      const retVal = loaded.fn(...(spec.input || []));
+      // 處理 Promise（async 函式）
+      if (retVal && typeof retVal.then === 'function') {
+        return { ...result, status: 'SKIP', error: 'async 函式需要 await，ac-runner 目前只支援同步函式' };
+      }
+      // 函式正常返回 → 預期它應該拋出 → FAIL
+      return { ...result, status: 'FAIL', diff: { expected: `throw ${spec.expectThrow}`, actual: '正常返回（未拋出例外）' } };
+    } catch (e) {
+      const errorName = e.constructor?.name || e.name || 'Error';
+      const matched = errorName === spec.expectThrow || (e.message && e.message.includes(spec.expectThrow));
+      if (matched) return { ...result, status: 'PASS' };
+      return {
+        ...result, status: 'FAIL',
+        diff: { expected: `throw ${spec.expectThrow}`, actual: `throw ${errorName}: ${e.message}` }
+      };
+    }
+  }
+
+  // 執行函式（正常路徑）
   let actual;
   try {
     actual = loaded.fn(...spec.input);
@@ -427,7 +464,7 @@ function main() {
 
   if (args.help) {
     console.log(`
-AC Runner v1.0 — 純計算函式驗收
+AC Runner v1.1 — 純計算函式驗收
 
 用法:
   node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N]
@@ -438,15 +475,32 @@ AC Runner v1.0 — 純計算函式驗收
   --iter=<N>         迭代編號（用於存 log，預設: 1）
   --help             顯示此訊息
 
-@GEMS-AC 格式（寫在 contract.ts）:
-  // @GEMS-AC: AC-1.0
-  // @GEMS-AC-FN: computeNodeDates
-  // @GEMS-AC-MODULE: modules/Dashboard/lib/compute-node-dates
-  // @GEMS-AC-INPUT: ["2026-04-13", [{"taskCode":"N-75","offsetDays":75,"earlyAlertDays":7}]]
-  // @GEMS-AC-EXPECT: [{"taskCode":"N-75","dueDate":"2026-01-28","alertDate":"2026-01-21"}]
+AC 分類與 contract 格式:
+
+  [CALC] 純計算（ac-runner 機械驗收）:
+    // @GEMS-AC: AC-1.0
+    // @GEMS-AC-FN: computeNodeDates
+    // @GEMS-AC-MODULE: modules/Dashboard/lib/compute-node-dates
+    // @GEMS-AC-INPUT: ["2026-04-13", [{"taskCode":"N-75","offsetDays":75}]]
+    // @GEMS-AC-EXPECT: [{"taskCode":"N-75","dueDate":"2026-01-28"}]
+
+  [CALC] 失敗路徑（驗收 throw）:
+    // @GEMS-AC: AC-1.1
+    // @GEMS-AC-FN: transitionOrderStatus
+    // @GEMS-AC-MODULE: modules/Order/lib/transition-status
+    // @GEMS-AC-INPUT: [{"status":"DELIVERED","event":"PAYMENT_RECEIVED"}]
+    // @GEMS-AC-EXPECT-THROW: InvalidTransitionError
+
+  [MOCK] 有外部依賴（ac-runner SKIP，靠 jest mock 驗）:
+    // @GEMS-AC: AC-2.0
+    // @GEMS-AC-SKIP: Google Sheets API 依賴 | 純解析邏輯可 mock 驗
+
+  [MANUAL] UI 或 side effect（人工 POC 驗收）:
+    // @GEMS-AC: AC-3.0
+    // @GEMS-AC-SKIP: UI 互動，人工 POC 驗收
 
 輸出:
-  @PASS    — 所有 AC 通過，存 ac-pass-*.log
+  @PASS    — 所有 AC 通過（SKIP 不計入失敗），存 ac-pass-*.log
   @BLOCKER — 有 AC 失敗，存 ac-error-*.log，輸出 @TASK 修復指引
 `);
     process.exit(0);
@@ -536,7 +590,7 @@ AC Runner v1.0 — 純計算函式驗收
 
   if (isPass) {
     console.log(`\n@PASS | ac-runner | ${passed.length}/${specs.length} AC 通過`);
-    if (skipped.length > 0) console.log(`  ⚠ ${skipped.length} 個 AC 跳過（async 或格式問題）`);
+    if (skipped.length > 0) console.log(`  ⚠ ${skipped.length} 個 AC 跳過（MOCK/MANUAL 或 async 或格式問題）`);
     console.log(`  Log: ${relLog}\n`);
     process.exit(0);
   }

@@ -11,8 +11,8 @@
  * 獨立工具，不 import task-pipe。
  * 
  * 用法:
- *   node sdid-tools/blueprint-expand.cjs --draft=<path> --iter=2 --target=<project>
- *   node sdid-tools/blueprint-expand.cjs --draft=<path> --iter=2 --target=<project> --dry-run
+ *   node sdid-tools/blueprint/expand.cjs --draft=<path> --iter=2 --target=<project>
+ *   node sdid-tools/blueprint/expand.cjs --draft=<path> --iter=2 --target=<project> --dry-run
  * 
  * 輸出:
  *   更新後的活藍圖 (Stub 函式 flow 清單 → 完整動作表格 + 狀態欄位)
@@ -313,7 +313,7 @@ function main() {
 Blueprint Expand v1.0 - Stub 展開器
 
 用法:
-  node sdid-tools/blueprint-expand.cjs --draft=<path> --iter=2 --target=<project>
+  node sdid-tools/blueprint/expand.cjs --draft=<path> --iter=2 --target=<project>
 
 選項:
   --draft=<path>    活藍圖路徑 (必填)
@@ -338,8 +338,8 @@ Blueprint Expand v1.0 - Stub 展開器
     logOutput.anchorErrorSpec({
       targetFile: 'CLI 參數',
       missing: ['--draft'],
-      example: `node sdid-tools/blueprint-expand.cjs --draft=<project>/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=2 --target=<project>`,
-      nextCmd: 'node sdid-tools/blueprint-expand.cjs --draft=<path> --iter=N --target=<project>',
+      example: `node sdid-tools/blueprint/expand.cjs --draft=<project>/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=2 --target=<project>`,
+      nextCmd: 'node sdid-tools/blueprint/expand.cjs --draft=<path> --iter=N --target=<project>',
       gateSpec: {
         checks: [
           { name: '--draft 參數', pattern: '活藍圖路徑', desc: '必須指定 --draft=<path>' },
@@ -500,14 +500,14 @@ Blueprint Expand v1.0 - Stub 展開器
       return `⏭️ ${c.module} — ${c.reason}`;
     }).join('\n');
 
-    const nextCmd = `node sdid-tools/blueprint-gate.cjs --draft=${args.draft} --iter=${args.iter}`;
+    const nextCmd = `node sdid-tools/blueprint/gate.cjs --draft=${args.draft} --iter=${args.iter}`;
     logOutput.anchorPass('gate', 'expand',
       `Blueprint Expand 完成 — iter-${args.iter} 已展開 (${expandedCount} 模組)`,
       nextCmd,
       { projectRoot: logProjectRoot, iteration: args.iter, phase: 'gate', step: 'expand', details });
   } else {
     console.log(`\n@PASS | Blueprint Expand 完成 — iter-${args.iter} 已展開`);
-    console.log(`下一步: node sdid-tools/blueprint-gate.cjs --draft=${args.draft} --iter=${args.iter}`);
+    console.log(`下一步: node sdid-tools/blueprint/gate.cjs --draft=${args.draft} --iter=${args.iter}`);
     console.log(`        (驗證展開後的藍圖品質，然後用 Gem chatbot 補充 flow 細節)`);
   }
 }

@@ -418,28 +418,28 @@ function buildNextCommand(st) {
   const ta = projectRoot ? `--target=${projectRoot}` : '--target=<project>';
   if (!phase) return '(unknown)';
   switch (phase) {
-    case 'GATE':       return `node sdid-tools/blueprint-gate.cjs ${da || '--draft=<draft>'} ${ta} --iter=${iterNum}`;
+    case 'GATE':       return `node sdid-tools/blueprint/gate.cjs ${da || '--draft=<draft>'} ${ta} --iter=${iterNum}`;
     case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
     case 'CONTRACT': {
       const contractPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc', `contract_iter-${iterNum}.ts`);
-      return `node sdid-tools/blueprint-contract-writer.cjs --contract=${contractPath} ${ta} --iter=${iterNum}`;
+      return `node sdid-tools/blueprint/contract-writer.cjs --contract=${contractPath} ${ta} --iter=${iterNum}`;
     }
     case 'PLAN': {
       if (route === 'Task-Pipe') {
         return `node task-pipe/tools/spec-to-plan.cjs --target=${ta.replace('--target=', '')} --iteration=${iter || `iter-${iterNum}`}`;
       }
       const draftArg = da ? `${da} ` : '';
-      return `node sdid-tools/draft-to-plan.cjs ${draftArg}--iter=${iterNum} ${ta}`;
+      return `node sdid-tools/blueprint/draft-to-plan.cjs ${draftArg}--iter=${iterNum} ${ta}`;
     }
     case 'BUILD':      return story
       ? `node task-pipe/runner.cjs --phase=BUILD --step=${step || 1} --story=${story} ${ta} --iteration=${iter}`
       : `node task-pipe/runner.cjs --phase=BUILD --step=${step || 1} ${ta} --iteration=${iter}`;
-    case 'SHRINK':     return `node sdid-tools/blueprint-shrink.cjs ${da || '--draft=<draft>'} --iter=${iterNum} ${ta}`;
+    case 'SHRINK':     return `node sdid-tools/blueprint/shrink.cjs ${da || '--draft=<draft>'} --iter=${iterNum} ${ta}`;
     case 'SCAN':       return `node task-pipe/runner.cjs --phase=SCAN ${ta} --iteration=${iter}`;
-    case 'VERIFY':     return `node sdid-tools/blueprint-verify.cjs ${da || '--draft=<draft>'} ${ta} --iter=${iterNum}`;
+    case 'VERIFY':     return `node sdid-tools/blueprint/verify.cjs ${da || '--draft=<draft>'} ${ta} --iter=${iterNum}`;
     case 'NEXT_ITER': {
       const ni = st.nextIter || `iter-${iterNum + 1}`;
-      return `node sdid-tools/blueprint-expand.cjs ${da || '--draft=<draft>'} --iter=${parseInt(ni.replace('iter-', ''), 10)} ${ta}`;
+      return `node sdid-tools/blueprint/expand.cjs ${da || '--draft=<draft>'} --iter=${parseInt(ni.replace('iter-', ''), 10)} ${ta}`;
     }
     case 'COMPLETE':   return 'done';
     case 'POC':        return `node task-pipe/runner.cjs --phase=POC --step=${step || 1} ${ta} --iteration=${iter}`;

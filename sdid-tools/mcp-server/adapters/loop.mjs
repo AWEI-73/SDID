@@ -311,7 +311,7 @@ export async function handler({ project, iter, story, forceStart, route }) {
       // 若由 forceStart=SHRINK 觸發，仍可手動執行（向後相容）
       lines.push(`ℹ️  SHRINK 已移為可選工具，自動跳至下一階段`);
       lines.push(`💡 若需壓縮 GEMS 標籤，請手動執行: node task-pipe/tools/shrink-tags.cjs --target=${projectRoot}`);
-      lines.push(`💡 若需壓縮 draft/plan 文件，請手動執行: node sdid-tools/blueprint-shrink.cjs --draft=<draft> --target=${projectRoot} --iter=${iterNum}`);
+      lines.push(`💡 若需壓縮 draft/plan 文件，請手動執行: node sdid-tools/blueprint/shrink.cjs --draft=<draft> --target=${projectRoot} --iter=${iterNum}`);
       lines.push('');
       // 根據路線決定下一步
       state.phase = effectiveRoute === 'Task-Pipe' ? 'SCAN' : 'VERIFY';

@@ -463,7 +463,7 @@ Level: ${stats.level || 'M'} | 模組: ${stats.totalModules} | 動作: ${stats.t
           type: 'BLOCKER',
           summary: `Enhanced Draft 解析錯誤: ${err.message}`
         },
-        output: `NEXT: 先通過 Gate: node sdid-tools/blueprint-gate.cjs --draft=${fromDraft} --target=${relativeTarget}`
+        output: `NEXT: 先通過 Gate: node sdid-tools/blueprint/gate.cjs --draft=${fromDraft} --target=${relativeTarget}`
       }, {
         projectRoot: target,
         iteration: parseInt(iteration.replace('iter-', '')),

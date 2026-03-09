@@ -13,8 +13,8 @@
  * 獨立工具，不 import task-pipe。
  * 
  * 用法:
- *   node sdid-tools/blueprint-gate.cjs --draft=<path> [--iter=1] [--level=M]
- *   node sdid-tools/blueprint-gate.cjs --draft=<path> --strict
+ *   node sdid-tools/blueprint/gate.cjs --draft=<path> [--iter=1] [--level=M]
+ *   node sdid-tools/blueprint/gate.cjs --draft=<path> --strict
  * 
  * 輸出:
  *   @PASS — 藍圖品質合格，可進入 draft-to-plan
@@ -78,7 +78,7 @@ function main() {
 Blueprint Gate v1.1 - 活藍圖品質門控
 
 用法:
-  node sdid-tools/blueprint-gate.cjs --draft=<path> [--iter=1] [--level=M] [--target=<project>]
+  node sdid-tools/blueprint/gate.cjs --draft=<path> [--iter=1] [--level=M] [--target=<project>]
 
 選項:
   --draft=<path>    活藍圖路徑 (必填)
@@ -154,7 +154,7 @@ Blueprint Gate v1.1 - 活藍圖品質門控
       console.log('  1. 開啟 Gemini Gem (gemini-gem-architect-v2.1)');
       console.log('  2. 描述你的專案需求，讓 Gem 產出 Enhanced Draft v2');
       console.log('  3. 儲存到 <project>/.gems/draft/enhanced-draft.md');
-      console.log(`  4. 重跑: node sdid-tools/blueprint-gate.cjs --draft=<project>/.gems/draft/enhanced-draft.md${args.target ? ' --target=' + path.relative(process.cwd(), args.target) : ''}`);
+      console.log(`  4. 重跑: node sdid-tools/blueprint/gate.cjs --draft=<project>/.gems/draft/enhanced-draft.md${args.target ? ' --target=' + path.relative(process.cwd(), args.target) : ''}`);
       console.log('');
       process.exit(1);
     }

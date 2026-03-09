@@ -8,8 +8,8 @@
  * 獨立工具，不 import task-pipe。
  * 
  * 用法:
- *   node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=1 --target=<project>
- *   node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=1 --target=<project> --dry-run
+ *   node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=1 --target=<project>
+ *   node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=1 --target=<project> --dry-run
  * 
  * 輸出:
  *   更新後的活藍圖 (原檔覆寫或 --out 指定路徑)
@@ -324,7 +324,7 @@ function main() {
 Blueprint Shrink v1.0 - 活藍圖收縮器
 
 用法:
-  node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=1 --target=<project>
+  node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=1 --target=<project>
 
 選項:
   --draft=<path>    活藍圖路徑 (必填)
@@ -341,8 +341,8 @@ Blueprint Shrink v1.0 - 活藍圖收縮器
     logOutput.anchorErrorSpec({
       targetFile: 'CLI 參數',
       missing: ['--draft'],
-      example: `node sdid-tools/blueprint-shrink.cjs --draft=<project>/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=<project>`,
-      nextCmd: 'node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=N --target=<project>',
+      example: `node sdid-tools/blueprint/shrink.cjs --draft=<project>/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=<project>`,
+      nextCmd: 'node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=N --target=<project>',
       gateSpec: {
         checks: [
           { name: '--draft 參數', pattern: '活藍圖路徑', desc: '必須指定 --draft=<path>' },
@@ -432,7 +432,7 @@ Blueprint Shrink v1.0 - 活藍圖收縮器
       logOutput.emitBlock({
         scope: `Blueprint Shrink | iter-${args.iter}`,
         summary: `iter-${args.iter} 沒有模組被收縮 — 可能已是 [DONE]/[STUB] 或找不到動作清單區塊`,
-        nextCmd: `node sdid-tools/blueprint-shrink.cjs --draft=${args.draft} --iter=${args.iter} --target=${logProjectRoot}`,
+        nextCmd: `node sdid-tools/blueprint/shrink.cjs --draft=${args.draft} --iter=${args.iter} --target=${logProjectRoot}`,
         tasks: [{
           action: 'FIX',
           file: args.draft,

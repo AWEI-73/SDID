@@ -56,7 +56,7 @@ SDID 有兩條開發路線，根據你的情境選擇：
 ┌─────────────────────────────────────────────────────────────┐
 │  Phase 1: Blueprint Gate (品質門控)                           │
 │                                                              │
-│  node sdid-tools/blueprint-gate.cjs --draft=<path>           │
+│  node sdid-tools/blueprint/gate.cjs --draft=<path>           │
 │                                                              │
 │  驗證: 格式 + 標籤 + 依賴 + DAG + 佔位符 + 演化層 + 狀態 + 負載  │
 │  結果: @PASS → 繼續 | @BLOCKER → 修復                        │
@@ -65,7 +65,7 @@ SDID 有兩條開發路線，根據你的情境選擇：
 ┌─────────────────────────────────────────────────────────────┐
 │  Phase 2: Draft-to-Plan (機械轉換)                            │
 │                                                              │
-│  node sdid-tools/draft-to-plan.cjs --draft=<path>            │
+│  node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path>            │
 │       --iter=1 --target=<project>                            │
 │                                                              │
 │  轉換: 活藍圖動作清單 → implementation_plan per Story          │
@@ -85,7 +85,7 @@ SDID 有兩條開發路線，根據你的情境選擇：
 ┌─────────────────────────────────────────────────────────────┐
 │  Phase 4: Blueprint Shrink (藍圖收縮)                         │
 │                                                              │
-│  node sdid-tools/blueprint-shrink.cjs --draft=<path>         │
+│  node sdid-tools/blueprint/shrink.cjs --draft=<path>         │
 │       --iter=1 --suggestions=<path>                          │
 │                                                              │
 │  已完成 iter → 一行摘要 [DONE] 或 [EVOLVED]                   │
@@ -135,7 +135,7 @@ node task-pipe/tools/blueprint-architect.cjs --template
 #### Step 3: 執行 Blueprint Gate
 
 ```bash
-node sdid-tools/blueprint-gate.cjs \
+node sdid-tools/blueprint/gate.cjs \
   --draft=my-project/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md \
   --target=my-project
 ```
@@ -159,7 +159,7 @@ node sdid-tools/blueprint-gate.cjs \
 #### Step 4: 執行 Draft-to-Plan
 
 ```bash
-node sdid-tools/draft-to-plan.cjs \
+node sdid-tools/blueprint/draft-to-plan.cjs \
   --draft=my-project/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md \
   --iter=1 \
   --target=my-project
@@ -194,7 +194,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-1.1 --target=my-p
 #### Step 6: 收縮藍圖
 
 ```bash
-node sdid-tools/blueprint-shrink.cjs \
+node sdid-tools/blueprint/shrink.cjs \
   --draft=my-project/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md \
   --iter=1 \
   --target=my-project
@@ -212,7 +212,7 @@ log 存檔: `logs/gate-shrink-pass-*.log`
 node task-pipe/runner.cjs --phase=SCAN --target=my-project
 
 # 再驗證
-node sdid-tools/blueprint-verify.cjs \
+node sdid-tools/blueprint/verify.cjs \
   --draft=my-project/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md \
   --target=my-project \
   --iter=1
@@ -222,13 +222,13 @@ node sdid-tools/blueprint-verify.cjs \
 
 ```bash
 # 展開 Stub 為 Full
-node sdid-tools/blueprint-expand.cjs \
+node sdid-tools/blueprint/expand.cjs \
   --draft=my-project/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md \
   --iter=2 \
   --suggestions=my-project/.gems/iterations/iter-1/build/
 
 # 重新跑 Gate
-node sdid-tools/blueprint-gate.cjs --draft=<updated-draft> --iter=2
+node sdid-tools/blueprint/gate.cjs --draft=<updated-draft> --iter=2
 
 # 繼續 draft-to-plan → BUILD → Shrink ...
 ```
@@ -585,10 +585,10 @@ sdid-tools 的門控工具需要 `--target` 參數來決定 log 存檔位置：
 
 ```bash
 # 明確指定 (推薦)
-node sdid-tools/blueprint-gate.cjs --draft=<path> --target=my-project
+node sdid-tools/blueprint/gate.cjs --draft=<path> --target=my-project
 
 # 自動推導 (從 draft 路徑中的 .gems/iterations/ 推導)
-node sdid-tools/blueprint-gate.cjs --draft=my-project/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md
+node sdid-tools/blueprint/gate.cjs --draft=my-project/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md
 # → 自動推導 projectRoot = my-project
 ```
 
@@ -607,17 +607,17 @@ node task-pipe/tools/blueprint-architect.cjs --template > calculator/.gems/itera
 # 編輯填入實際內容...
 
 # 3. Gate 驗證
-node sdid-tools/blueprint-gate.cjs --draft=calculator/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --target=calculator
+node sdid-tools/blueprint/gate.cjs --draft=calculator/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --target=calculator
 
 # 4. 產出執行計畫
-node sdid-tools/draft-to-plan.cjs --draft=calculator/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=calculator
+node sdid-tools/blueprint/draft-to-plan.cjs --draft=calculator/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=calculator
 
 # 5. BUILD (每個 Story)
 node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-1.0 --target=calculator
 # ... step 2-8
 
 # 6. 收縮藍圖
-node sdid-tools/blueprint-shrink.cjs --draft=calculator/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=calculator
+node sdid-tools/blueprint/shrink.cjs --draft=calculator/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=calculator
 
 # 7. 查看完整 log 記錄
 ls calculator/.gems/iterations/iter-1/logs/
@@ -661,10 +661,10 @@ node task-pipe/runner.cjs --phase=SCAN --target=existing-app
 #    L3+ 自動標記 [STUB]
 
 # 3. Gate 驗證 (會檢查演化層依賴)
-node sdid-tools/blueprint-gate.cjs --draft=<path>
+node sdid-tools/blueprint/gate.cjs --draft=<path>
 
 # 4. draft-to-plan (會處理 Modify 動作)
-node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
+node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
 
 # 5. BUILD → Shrink → iter-2 展開 L3 ...
 ```

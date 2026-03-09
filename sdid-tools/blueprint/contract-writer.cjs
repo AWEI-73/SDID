@@ -9,7 +9,7 @@
  *   整合: draft-to-plan 讀 contract 鎖定型別
  *
  * 用法:
- *   node sdid-tools/blueprint-contract-writer.cjs --contract=<path> --target=<project> --iter=<N>
+ *   node sdid-tools/blueprint/contract-writer.cjs --contract=<path> --target=<project> --iter=<N>
  *
  * 輸出:
  *   @PASS      — 格式合格，log 存檔，draft-to-plan 可讀取
@@ -422,7 +422,7 @@ function main() {
 Blueprint Contract Writer v1.0
 
 用法:
-  node sdid-tools/blueprint-contract-writer.cjs --contract=<path> --target=<project> --iter=<N>
+  node sdid-tools/blueprint/contract-writer.cjs --contract=<path> --target=<project> --iter=<N>
 
 選項:
   --contract=<path>  contract_iter-N.ts 路徑（必填）
@@ -448,7 +448,7 @@ Gate 規則:
 
   if (!args.contract || !args.target) {
     console.error('錯誤: 需要 --contract 和 --target 參數');
-    console.error('用法: node sdid-tools/blueprint-contract-writer.cjs --contract=<path> --target=<project> --iter=N');
+    console.error('用法: node sdid-tools/blueprint/contract-writer.cjs --contract=<path> --target=<project> --iter=N');
     process.exit(1);
   }
 
@@ -507,7 +507,7 @@ Gate 規則:
     console.log(`  Contract: ${relContract}`);
     console.log(`  Log: ${relLog}`);
     console.log('');
-    console.log(`NEXT: node sdid-tools/draft-to-plan.cjs --draft=<draft> --iter=${args.iter} --target=${path.relative(process.cwd(), args.target) || '.'}`);
+    console.log(`NEXT: node sdid-tools/blueprint/draft-to-plan.cjs --draft=<draft> --iter=${args.iter} --target=${path.relative(process.cwd(), args.target) || '.'}`);
     process.exit(0);
   } else {
     console.log('');
@@ -524,7 +524,7 @@ Gate 規則:
     console.log(`  Log: ${relLog}`);
     console.log('');
     console.log('修復後重跑:');
-    console.log(`  node sdid-tools/blueprint-contract-writer.cjs --contract=${relContract} --target=${path.relative(process.cwd(), args.target) || '.'} --iter=${args.iter}`);
+    console.log(`  node sdid-tools/blueprint/contract-writer.cjs --contract=${relContract} --target=${path.relative(process.cwd(), args.target) || '.'} --iter=${args.iter}`);
     console.log('═══════════════════════════════════════════════════════════');
     process.exit(1);
   }

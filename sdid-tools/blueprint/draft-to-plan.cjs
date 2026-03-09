@@ -7,8 +7,8 @@
  * 零 AI 推導，純格式轉換。
  * 
  * 用法:
- *   node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
- *   node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project> --dry-run
+ *   node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
+ *   node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project> --dry-run
  * 
  * 輸出:
  *   .gems/iterations/iter-N/plan/implementation_plan_Story-N.Y.md (per Story)
@@ -514,7 +514,7 @@ function main() {
 Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
 
 用法:
-  node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
+  node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>
 
 選項:
   --draft=<path>    活藍圖路徑 (必填)
@@ -542,8 +542,8 @@ Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
     logOutput.anchorErrorSpec({
       targetFile: 'CLI 參數',
       missing: !args.draft && !args.target ? ['--draft', '--target'] : !args.draft ? ['--draft'] : ['--target'],
-      example: `node sdid-tools/draft-to-plan.cjs --draft=<project>/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=<project>`,
-      nextCmd: 'node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>',
+      example: `node sdid-tools/blueprint/draft-to-plan.cjs --draft=<project>/.gems/iterations/iter-1/poc/requirement_draft_iter-1.md --iter=1 --target=<project>`,
+      nextCmd: 'node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>',
       gateSpec
     });
     process.exit(1);
@@ -558,7 +558,7 @@ Draft-to-Plan v1.1 - 藍圖→執行計畫 機械轉換器
   } catch (err) {
     logOutput.anchorError('BLOCKER',
       `藍圖解析失敗: ${err.message}`,
-      `先通過 Gate: node sdid-tools/blueprint-gate.cjs --draft=${args.draft} --target=${args.target}`,
+      `先通過 Gate: node sdid-tools/blueprint/gate.cjs --draft=${args.draft} --target=${args.target}`,
       {
         projectRoot: args.target,
         iteration: args.iter,

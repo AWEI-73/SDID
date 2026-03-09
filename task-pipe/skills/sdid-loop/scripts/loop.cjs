@@ -1046,17 +1046,17 @@ function main() {
                 log(`\n🔄 iter-${nextIterNum} expand 已完成，直接進入 GATE`, 'blue');
                 log(`\n@NEXT_ACTION`, 'yellow');
                 if (draftPath) {
-                    log(`node sdid-tools/blueprint-gate.cjs --draft="${draftPath}" --target="${projectPath}" --iter=${nextIterNum}`, 'yellow');
+                    log(`node sdid-tools/blueprint/gate.cjs --draft="${draftPath}" --target="${projectPath}" --iter=${nextIterNum}`, 'yellow');
                 } else {
-                    log(`node sdid-tools/blueprint-gate.cjs --draft=<draft_path> --target="${projectPath}" --iter=${nextIterNum}`, 'yellow');
+                    log(`node sdid-tools/blueprint/gate.cjs --draft=<draft_path> --target="${projectPath}" --iter=${nextIterNum}`, 'yellow');
                 }
             } else {
                 log(`\n📐 Blueprint Flow: 執行 blueprint-expand 進入 iter-${nextIterNum}`, 'blue');
                 log(`\n@NEXT_ACTION`, 'yellow');
                 if (draftPath) {
-                    log(`node sdid-tools/blueprint-expand.cjs --draft="${draftPath}" --iter=${nextIterNum} --target="${projectPath}"`, 'yellow');
+                    log(`node sdid-tools/blueprint/expand.cjs --draft="${draftPath}" --iter=${nextIterNum} --target="${projectPath}"`, 'yellow');
                 } else {
-                    log(`node sdid-tools/blueprint-expand.cjs --draft=<draft_path> --iter=${nextIterNum} --target="${projectPath}"`, 'yellow');
+                    log(`node sdid-tools/blueprint/expand.cjs --draft=<draft_path> --iter=${nextIterNum} --target="${projectPath}"`, 'yellow');
                     log(`  ⚠ 找不到 draft 路徑，請手動指定`, 'yellow');
                 }
             }
@@ -1163,9 +1163,9 @@ function main() {
         log(`\n📐 Blueprint GATE: iter-${iterNum} 需要 Gate 驗證`, 'cyan');
         log(`\n@NEXT_ACTION`, 'yellow');
         if (draftPath) {
-            log(`node sdid-tools/blueprint-gate.cjs --draft="${draftPath}" --target="${projectPath}" --iter=${iterNum}`, 'yellow');
+            log(`node sdid-tools/blueprint/gate.cjs --draft="${draftPath}" --target="${projectPath}" --iter=${iterNum}`, 'yellow');
         } else {
-            log(`node sdid-tools/blueprint-gate.cjs --draft=<draft_path> --target="${projectPath}" --iter=${iterNum}`, 'yellow');
+            log(`node sdid-tools/blueprint/gate.cjs --draft=<draft_path> --target="${projectPath}" --iter=${iterNum}`, 'yellow');
             log(`  ⚠ 找不到 draft 路徑，請手動指定`, 'yellow');
         }
         return;

@@ -429,15 +429,15 @@ function generateRoadmap(hub) {
       let nextCmd = null;
       if (phase && phase !== 'DONE' && phase !== '—') {
         if (phase === 'GATE' || phase.startsWith('GATE')) {
-          nextCmd = `node sdid-tools/blueprint-gate.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
+          nextCmd = `node sdid-tools/blueprint/gate.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
         } else if (phase === 'PLAN') {
-          nextCmd = `node sdid-tools/draft-to-plan.cjs --draft=<draft.md> --iter=${iter.replace('iter-', '')} --target=${name}`;
+          nextCmd = `node sdid-tools/blueprint/draft-to-plan.cjs --draft=<draft.md> --iter=${iter.replace('iter-', '')} --target=${name}`;
         } else if (phase.startsWith('BUILD-')) {
           const phaseNum = parseInt(phase.replace('BUILD-', '')) || 1;
           const nextPhase = badge === '@BLOCK' ? phaseNum : phaseNum + 1;
           nextCmd = `node task-pipe/runner.cjs --phase=BUILD --step=${nextPhase} --target=${name}`;
         } else if (phase === 'SHRINK✓' || phase === 'VERIFY') {
-          nextCmd = `node sdid-tools/blueprint-verify.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
+          nextCmd = `node sdid-tools/blueprint/verify.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
         } else if (phase.startsWith('POC-')) {
           const stepNum = parseInt(phase.replace('POC-', '')) || 1;
           nextCmd = `node task-pipe/runner.cjs --phase=POC --step=${stepNum} --target=${name}`;
@@ -474,14 +474,14 @@ function generateRoadmap(hub) {
   lines.push('');
   lines.push('```bash');
   lines.push('# Blueprint Flow');
-  lines.push('node sdid-tools/blueprint-gate.cjs --draft=<path> --target=<proj> --iter=N');
-  lines.push('node sdid-tools/draft-to-plan.cjs  --draft=<path> --iter=N --target=<proj>');
+  lines.push('node sdid-tools/blueprint/gate.cjs --draft=<path> --target=<proj> --iter=N');
+  lines.push('node sdid-tools/blueprint/draft-to-plan.cjs  --draft=<path> --iter=N --target=<proj>');
   lines.push('node task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<proj>');
-  lines.push('node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=N --target=<proj>');
-  lines.push('node sdid-tools/blueprint-verify.cjs --draft=<path> --target=<proj> --iter=N');
+  lines.push('node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=N --target=<proj>');
+  lines.push('node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<proj> --iter=N');
   lines.push('');
   lines.push('# POC-FIX / MICRO-FIX');
-  lines.push('node sdid-tools/micro-fix-gate.cjs --changed=<files> --target=<proj> --iter=N');
+  lines.push('node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<proj> --iter=N');
   lines.push('');
   lines.push('# 狀態查詢');
   lines.push('node sdid-tools/state-guide.cjs --project=<proj>');

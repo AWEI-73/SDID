@@ -8,8 +8,8 @@
  * 獨立工具，不 import task-pipe。
  * 
  * 用法:
- *   node sdid-tools/blueprint-verify.cjs --draft=<path> --functions=<path> [--iter=1] [--out=<dir>]
- *   node sdid-tools/blueprint-verify.cjs --draft=<path> --target=<project> [--iter=1]
+ *   node sdid-tools/blueprint/verify.cjs --draft=<path> --functions=<path> [--iter=1] [--out=<dir>]
+ *   node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> [--iter=1]
  * 
  * 輸出 (寫入 .gems/docs/ 或 --out):
  *   blueprint-verify.json  — 結構化差異
@@ -401,8 +401,8 @@ function main() {
 Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
 
 用法:
-  node sdid-tools/blueprint-verify.cjs --draft=<path> --functions=<path> [--iter=1]
-  node sdid-tools/blueprint-verify.cjs --draft=<path> --target=<project> [--iter=1]
+  node sdid-tools/blueprint/verify.cjs --draft=<path> --functions=<path> [--iter=1]
+  node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> [--iter=1]
 
 選項:
   --draft=<path>       活藍圖路徑 (必填)
@@ -663,7 +663,7 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
     const summary = `Blueprint Verify — 結構一致但 ${acCoverage.untagged.length} 個 AC 未標記 (${acCoverage.untagged.join(', ')})`;
     if (logProjectRoot) {
       logOutput.anchorError('TACTICAL_FIX', summary,
-        `補齊 AC 標記後重跑: node sdid-tools/blueprint-verify.cjs --draft=${args.draft} --target=${args.target}`,
+        `補齊 AC 標記後重跑: node sdid-tools/blueprint/verify.cjs --draft=${args.draft} --target=${args.target}`,
         { ...logOptions, details });
     } else {
       console.log(`\n@WARN | ${summary}`);
@@ -672,7 +672,7 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
     const summary = `Blueprint Verify — ${s.missing} 個藍圖動作尚未實作 (覆蓋率 ${s.coverage}%)`;
     if (logProjectRoot) {
       logOutput.anchorError('TACTICAL_FIX', summary,
-        `補齊缺失函式後重跑: node sdid-tools/blueprint-verify.cjs --draft=${args.draft} --target=${args.target}`,
+        `補齊缺失函式後重跑: node sdid-tools/blueprint/verify.cjs --draft=${args.draft} --target=${args.target}`,
         { ...logOptions, details });
     } else {
       console.log(`\n@WARN | ${summary}`);

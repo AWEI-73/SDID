@@ -312,18 +312,18 @@ sdid-loop(project=<path>)
 
 ```bash
 # Blueprint Flow
-node sdid-tools/blueprint-gate.cjs --draft=<path> --target=<project> --iter=N
-node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+node sdid-tools/blueprint/gate.cjs --draft=<path> --target=<project> --iter=N
+node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
 node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=<project>
-node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=N --target=<project>
-node sdid-tools/blueprint-verify.cjs --draft=<path> --target=<project> --iter=N
+node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=N --target=<project>
+node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> --iter=N
 
 # POC-FIX Phase 4
 node sdid-tools/poc-to-scaffold.cjs --log=<consolidation-log.md> --target=<project>
-node sdid-tools/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
+node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
 
 # MICRO-FIX
-node sdid-tools/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
+node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
 
 # 骨架工具
 node sdid-tools/plan-to-scaffold.cjs --plan=<plan.md> --target=<project> --dry-run

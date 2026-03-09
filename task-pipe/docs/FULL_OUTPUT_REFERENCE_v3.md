@@ -421,13 +421,13 @@ NEXT: node task-pipe/runner.cjs --phase=BUILD --step=8 --story=Story-X.Y
 **@PASS:**
 ```
 @PASS | gate-check | 藍圖品質合格，可進入 draft-to-plan
-NEXT: node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+NEXT: node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
 ```
 
 **@BLOCKER:**
 ```
 @BLOCKER (1/3) | 藍圖有 N 個結構性問題
-NEXT: node sdid-tools/blueprint-gate.cjs --draft=<path> --iter=N
+NEXT: node sdid-tools/blueprint/gate.cjs --draft=<path> --iter=N
 @READ: .gems/iterations/iter-X/logs/gate-check-error-{timestamp}.log
   ↳ 包含: 錯誤詳情 + 修復指引
 @GUARD: 🚫 task-pipe/ sdid-tools/ | ✅ 專案檔案
@@ -446,7 +446,7 @@ NEXT: node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-N.0 --targe
 **@PASS:**
 ```
 @PASS | gate-shrink | 收縮完成，N 個模組已折疊
-NEXT: node sdid-tools/blueprint-expand.cjs --draft=<path> --iter={N+1} --target=<project>
+NEXT: node sdid-tools/blueprint/expand.cjs --draft=<path> --iter={N+1} --target=<project>
 ```
 
 ### Blueprint Expand
@@ -454,7 +454,7 @@ NEXT: node sdid-tools/blueprint-expand.cjs --draft=<path> --iter={N+1} --target=
 **@PASS:**
 ```
 @PASS | gate-expand | 展開完成，N 個 Stub 已展開
-NEXT: node sdid-tools/blueprint-gate.cjs --draft=<path> --iter=N --target=<project>
+NEXT: node sdid-tools/blueprint/gate.cjs --draft=<path> --iter=N --target=<project>
 ```
 
 ### Blueprint Verify

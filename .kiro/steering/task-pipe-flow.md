@@ -76,22 +76,22 @@ Gem 對話 → Gate → draft-to-plan → BUILD (Phase 1-8) → Shrink → [Expa
 ### 指令格式
 ```bash
 # 1. Gate 門控
-node sdid-tools/blueprint-gate.cjs --draft=<path> --target=<project> [--iter=N]
+node sdid-tools/blueprint/gate.cjs --draft=<path> --target=<project> [--iter=N]
 
 # 2. 藍圖→Plan
-node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
 
 # 3. BUILD (與 Task-Pipe 共用)
 node task-pipe/runner.cjs --phase=BUILD --step=1~8 --story=Story-X.Y --target=<project>
 
 # 4. 收縮
-node sdid-tools/blueprint-shrink.cjs --draft=<path> --iter=N --target=<project>
+node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=N --target=<project>
 
 # 5. 展開 (進入下一個 iter)
-node sdid-tools/blueprint-expand.cjs --draft=<path> --iter=N --target=<project>
+node sdid-tools/blueprint/expand.cjs --draft=<path> --iter=N --target=<project>
 
 # 6. 驗證
-node sdid-tools/blueprint-verify.cjs --draft=<path> --target=<project> --iter=N
+node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> --iter=N
 ```
 
 ### Log 讀取規則 (Blueprint Flow)

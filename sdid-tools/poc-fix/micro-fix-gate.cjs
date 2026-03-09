@@ -8,8 +8,8 @@
  * 不驗: 測試、路由、UI bind、plan 一致性
  *
  * 用法:
- *   node sdid-tools/micro-fix-gate.cjs --changed=src/foo.ts,src/bar.ts --target=<project>
- *   node sdid-tools/micro-fix-gate.cjs --target=<project>   (自動掃 src/)
+ *   node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=src/foo.ts,src/bar.ts --target=<project>
+ *   node sdid-tools/poc-fix/micro-fix-gate.cjs --target=<project>   (自動掃 src/)
  *
  * 輸出:
  *   @PASS   — 標籤 OK + 整合 OK
@@ -195,8 +195,8 @@ function main() {
 Micro-Fix Gate v1.0 — 輕量驗證器
 
 用法:
-  node sdid-tools/micro-fix-gate.cjs --changed=src/foo.ts,src/bar.ts [--target=<project>]
-  node sdid-tools/micro-fix-gate.cjs --target=<project>   (自動掃 src/)
+  node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=src/foo.ts,src/bar.ts [--target=<project>]
+  node sdid-tools/poc-fix/micro-fix-gate.cjs --target=<project>   (自動掃 src/)
 
 選項:
   --changed=<files>  逗號分隔的改動檔案清單 (相對或絕對路徑)
@@ -318,7 +318,7 @@ Micro-Fix Gate v1.0 — 輕量驗證器
   const changedArg = args.changed.length > 0 ? ` --changed=${args.changed.join(',')}` : '';
   const targetArg = args.target ? ` --target=${path.relative(process.cwd(), args.target) || '.'}` : '';
   const iterArg = args.iter ? ` --iter=${args.iter}` : '';
-  console.log(`  node sdid-tools/micro-fix-gate.cjs${changedArg}${targetArg}${iterArg}`);
+  console.log(`  node sdid-tools/poc-fix/micro-fix-gate.cjs${changedArg}${targetArg}${iterArg}`);
   console.log('═══════════════════════════════════════════════════════════');
 
   const blockerSummary = [

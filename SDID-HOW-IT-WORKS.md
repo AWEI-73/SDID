@@ -163,7 +163,7 @@ sdid-tools/mcp-server/
   sdid-micro-fix-gate    → 呼叫 micro-fix-gate.cjs
 ```
 
-**白話**：沒有 MCP 的時候，AI 要自己打 `node sdid-tools/spec-gate.cjs --project=ExamForge`。
+**白話**：沒有 MCP 的時候，AI 要自己打 `node sdid-tools/spec/gate.cjs --project=ExamForge`。
 有了 MCP，AI 直接說「我要呼叫 sdid-spec-gate」就好，不用背路徑和參數。
 
 **SKILL.md 跟 MCP 的關係：**
@@ -398,7 +398,7 @@ A: SKILL.md 是「AI 的行為手冊」（決策層），MCP 是「工具的 API
    SKILL.md 告訴 AI「你現在該跑 spec-gate」，MCP 讓 AI 能直接呼叫它。
 
 **Q: 沒有 MCP 可以用嗎？**
-A: 可以。AI 自己手動跑 `node sdid-tools/spec-gate.cjs --project=ExamForge`。
+A: 可以。AI 自己手動跑 `node sdid-tools/spec/gate.cjs --project=ExamForge`。
    MCP 只是讓這件事更方便（不用背指令）。
 
 **Q: 沒有 SKILL.md 可以用嗎？**

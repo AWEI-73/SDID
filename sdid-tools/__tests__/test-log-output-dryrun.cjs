@@ -49,7 +49,7 @@ function simulateGatePass() {
 
   logOutput.anchorPass('gate', 'check',
     'Blueprint Gate 通過 (0 blocker, 2 warn)',
-    'node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>',
+    'node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=1 --target=<project>',
     {
       projectRoot: TEST_ROOT,
       iteration: ITER,
@@ -66,7 +66,7 @@ function simulateGateFail() {
 
   logOutput.anchorError('BLOCKER',
     'Blueprint Gate 失敗 — 3 個結構性問題必須修復',
-    '修復藍圖後重跑: node sdid-tools/blueprint-gate.cjs --draft=<path>',
+    '修復藍圖後重跑: node sdid-tools/blueprint/gate.cjs --draft=<path>',
     {
       projectRoot: TEST_ROOT,
       iteration: ITER,
@@ -162,7 +162,7 @@ function simulateAnchorOutput() {
       attempt: 2,
       maxAttempts: 3,
     },
-    output: '@BLOCKER | 修復後重跑: node sdid-tools/blueprint-gate.cjs --draft=<path>',
+    output: '@BLOCKER | 修復後重跑: node sdid-tools/blueprint/gate.cjs --draft=<path>',
   }, {
     projectRoot: TEST_ROOT,
     iteration: ITER,
@@ -187,7 +187,7 @@ function simulateErrorSpec() {
 | 業務語意 | 類型 | 技術名稱 | P | 流向 | 依賴 | 狀態 |
 |---------|------|---------|---|------|------|------|
 | 定價型別定義 | CONST | PricingTypes | P0 | DEFINE→VALIDATE→FREEZE→EXPORT | 無 | ○○ |`,
-    nextCmd: 'node sdid-tools/blueprint-gate.cjs --draft=<path> --iter=1',
+    nextCmd: 'node sdid-tools/blueprint/gate.cjs --draft=<path> --iter=1',
     attempt: 1,
     maxAttempts: 3,
     gateSpec: {
@@ -267,7 +267,7 @@ function simulateExpandPass() {
 
   logOutput.anchorPass('gate', 'expand',
     'Blueprint Expand 完成 — iter-2 已展開 (3 模組)',
-    'node sdid-tools/blueprint-gate.cjs --draft=<path> --iter=2',
+    'node sdid-tools/blueprint/gate.cjs --draft=<path> --iter=2',
     {
       projectRoot: TEST_ROOT,
       iteration: 2,

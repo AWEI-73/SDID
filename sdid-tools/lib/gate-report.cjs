@@ -96,7 +96,7 @@ function generateReport(draft, allIssues, args, rawContent = '') {
     if (score.total < SCORE_THRESHOLD) {
       const scoreBlocker = `Blueprint Score ${score.total}/100 低於門檻 ${SCORE_THRESHOLD} — 必須改善 draft 品質才能進入 PLAN`;
       const scoreDetails = score.suggestions.map(s => `  - ${s}`).join('\n');
-      const fixCmd = `修復藍圖後重跑: node sdid-tools/blueprint-gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
+      const fixCmd = `修復藍圖後重跑: node sdid-tools/blueprint/gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
       console.log(`\n@BLOCKER: ${scoreBlocker}`);
       console.log(scoreDetails);
       if (projectRoot) {
@@ -107,7 +107,7 @@ function generateReport(draft, allIssues, args, rawContent = '') {
       return { passed: false, blockers: 1, warns: warns.length, issues: [...allIssues, { level: 'BLOCKER', code: 'SCORE-001', msg: scoreBlocker }] };
     }
 
-    const nextCmd = `node sdid-tools/draft-to-plan.cjs --draft=${args.draft} --iter=${args.iter || 1} --target=<project>`;
+    const nextCmd = `node sdid-tools/blueprint/draft-to-plan.cjs --draft=${args.draft} --iter=${args.iter || 1} --target=<project>`;
     const summary = `Blueprint Gate 通過 (${blockers.length} blocker, ${warns.length} warn)`;
 
     if (projectRoot) {
@@ -116,7 +116,7 @@ function generateReport(draft, allIssues, args, rawContent = '') {
       logOutput.outputPass(nextCmd, summary);
     }
   } else {
-    const nextCmd = `修復藍圖後重跑: node sdid-tools/blueprint-gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
+    const nextCmd = `修復藍圖後重跑: node sdid-tools/blueprint/gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
     const summary = `Blueprint Gate 失敗 — ${blockers.length} 個結構性問題必須修復`;
 
     // 將 blockers 轉成 @TASK 格式，讓 AI 知道要修什麼

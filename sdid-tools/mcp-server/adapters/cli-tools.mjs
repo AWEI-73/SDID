@@ -133,7 +133,7 @@ export const run = {
     title: 'SDID CLI Runner',
     description: '通用 SDID CLI 執行器 — 執行任何 sdid-tools/ 或 task-pipe/ 下的腳本命令，回傳 stdout（含 anchor 標籤）。搭配 sdid-state-guide 的 NEXT: 命令使用。',
     inputSchema: {
-      command: z.string().describe('完整的 node 命令（如 "node sdid-tools/blueprint-gate.cjs --draft=... --target=..."）'),
+      command: z.string().describe('完整的 node 命令（如 "node sdid-tools/blueprint/gate.cjs --draft=... --target=..."）'),
       project: z.string().optional().describe('專案根目錄路徑（用於替換命令中的 --target=<project>）'),
     },
   },

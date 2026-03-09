@@ -232,7 +232,7 @@ POC-to-Scaffold v1.0 — 從 poc-consolidation-log.md 產出骨架檔
 
   if (!args.dryRun && genCount > 0) {
     const changedFiles = result.generated.map(g => g.file).join(',');
-    console.log(`\n下一步: node sdid-tools/micro-fix-gate.cjs --changed=${changedFiles} --target=${path.relative(process.cwd(), args.target) || '.'}`);
+    console.log(`\n下一步: node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=${changedFiles} --target=${path.relative(process.cwd(), args.target) || '.'}`);
   }
 }
 

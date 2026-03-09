@@ -167,7 +167,7 @@ console.log('\n[Step 8] blueprint-contract-writer CLI — @PASS 輸出');
   const { execSync } = require('child_process');
   try {
     const out = execSync(
-      `node sdid-tools/blueprint-contract-writer.cjs --contract="${contractPath}" --target="${tmpDir}" --iter=1`,
+      `node sdid-tools/blueprint/contract-writer.cjs --contract="${contractPath}" --target="${tmpDir}" --iter=1`,
       { cwd: path.resolve('.'), encoding: 'utf8' }
     );
     const hasPass = out.includes('@PASS');

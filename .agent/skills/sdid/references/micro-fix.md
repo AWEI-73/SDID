@@ -21,7 +21,7 @@
 2. 直接修改檔案
 3. 執行 gate 驗證：
    ```bash
-   node sdid-tools/micro-fix-gate.cjs --changed=<改動的檔案> --target=<project>
+   node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<改動的檔案> --target=<project>
    ```
 4. `@PASS` → 完成
 5. `@BLOCKER` → 根據輸出修復，重跑 gate

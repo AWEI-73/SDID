@@ -9,9 +9,9 @@
  *   spec-gen → spec-gate → BUILD → dict-sync → SCAN
  *
  * 用法:
- *   node sdid-tools/spec-gen.cjs --project=<dir> --input=<draft.md>
- *   node sdid-tools/spec-gen.cjs --project=<dir> --input=<draft.md> --iter=2
- *   node sdid-tools/spec-gen.cjs --project=<dir> --input=<draft.md> --dry-run
+ *   node sdid-tools/spec/gen.cjs --project=<dir> --input=<draft.md>
+ *   node sdid-tools/spec/gen.cjs --project=<dir> --input=<draft.md> --iter=2
+ *   node sdid-tools/spec/gen.cjs --project=<dir> --input=<draft.md> --dry-run
  *
  * 選項:
  *   --project=<dir>    專案根目錄（必填，specs 寫入 <dir>/.gems/specs/）
@@ -881,7 +881,7 @@ function printTodoForAI(modules) {
       console.log(`  ${c('cyan', action.gemsId)}: ${todos.join(', ')}`);
     }
   }
-  console.log(`\n  ${c('dim', '提示: 補完後執行')} node sdid-tools/spec-gate.cjs --project=<dir> ${c('dim', '驗證字典品質')}`);
+  console.log(`\n  ${c('dim', '提示: 補完後執行')} node sdid-tools/spec/gate.cjs --project=<dir> ${c('dim', '驗證字典品質')}`);
 }
 
 // ──────────────────────────────────────────
@@ -899,9 +899,9 @@ spec-gen.cjs — GEMS 字典生成器（原 Skill A）
   解析「模組動作清單表」→ 產出 .gems/specs/*.json + _index.json
 
   用法:
-    node sdid-tools/spec-gen.cjs --project=<dir> --input=<draft.md>
-    node sdid-tools/spec-gen.cjs --project=<dir> --input=<draft.md> --iter=2
-    node sdid-tools/spec-gen.cjs --project=<dir> --input=<draft.md> --dry-run
+    node sdid-tools/spec/gen.cjs --project=<dir> --input=<draft.md>
+    node sdid-tools/spec/gen.cjs --project=<dir> --input=<draft.md> --iter=2
+    node sdid-tools/spec/gen.cjs --project=<dir> --input=<draft.md> --dry-run
 
   選項:
     --project=<dir>    專案根目錄（必填）
@@ -951,7 +951,7 @@ spec-gen.cjs — GEMS 字典生成器（原 Skill A）
 
   if (!args.dryRun) {
     console.log(c('green', `\n✅ spec-gen 完成`));
-    console.log(`  下一步: ${c('dim', `node sdid-tools/spec-gate.cjs --project=${args.project}`)}`);
+    console.log(`  下一步: ${c('dim', `node sdid-tools/spec/gate.cjs --project=${args.project}`)}`);
   }
 }
 

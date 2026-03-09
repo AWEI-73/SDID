@@ -262,11 +262,11 @@ Enhanced Draft
     產物: cynefin-check-pass-*.log
   ↓
 [2] CONTRACT — 從 draft 推導型別邊界，寫 contract_iter-N.ts
-    node sdid-tools/blueprint-contract-writer.cjs --contract=<path> --target=<project> --iter=N
+    node sdid-tools/blueprint/contract-writer.cjs --contract=<path> --target=<project> --iter=N
     產物: contract-pass-*.log + contract_iter-N.ts
   ↓
 [3] PLAN — 機械轉換 draft → implementation_plan，骨架注入 contract 型別
-    node sdid-tools/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+    node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
     產物: implementation_plan_Story-N.Y.md + .ts 骨架
   ↓
 BUILD Phase 1-8

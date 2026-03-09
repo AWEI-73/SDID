@@ -12,9 +12,9 @@
  *   SPEC-005: lineRange 格式與邏輯（L{n}-{m} 且 n ≤ m）
  *
  * 用法:
- *   node sdid-tools/spec-gate.cjs --project=<projectRoot>
- *   node sdid-tools/spec-gate.cjs --project=<projectRoot> --spec=<specFileName>
- *   node sdid-tools/spec-gate.cjs --project=<projectRoot> --fix-index
+ *   node sdid-tools/spec/gate.cjs --project=<projectRoot>
+ *   node sdid-tools/spec/gate.cjs --project=<projectRoot> --spec=<specFileName>
+ *   node sdid-tools/spec/gate.cjs --project=<projectRoot> --fix-index
  *
  * 選項:
  *   --project=<dir>      專案根目錄（必填）
@@ -327,7 +327,7 @@ function main() {
     console.log(`
 spec-gate.cjs — GEMS 字典品質 Gate
 
-  用法: node sdid-tools/spec-gate.cjs --project=<projectRoot> [options]
+  用法: node sdid-tools/spec/gate.cjs --project=<projectRoot> [options]
 
   選項:
     --project=<dir>    專案根目錄（必填）

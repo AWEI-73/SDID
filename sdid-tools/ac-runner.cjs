@@ -656,9 +656,12 @@ AC 分類與 contract 格式:
     console.log('');
   }
 
-  console.log(`@FORBIDDEN`);
-  console.log(`  🚫 禁止修改 contract.ts 的 @GEMS-AC-EXPECT（那是 Gate 鎖定的規格）`);
-  console.log(`  🚫 禁止修改 @GEMS-AC-INPUT（那是 Gate 鎖定的測試案例）`);
+  console.log(`@RULES`);
+  console.log(`  🔒 contract @GEMS-AC-EXPECT / @GEMS-AC-INPUT 是 Gate 鎖定的規格`);
+  console.log(`  ✅ 若確認是實作錯誤 → 修正函式，不動 contract`);
+  console.log(`  ✅ 若確認是規格錯誤 → 可修改 contract，但必須在該 AC 上方加：`);
+  console.log(`     // [SPEC-FIX] YYYY-MM-DD: <原因>`);
+  console.log(`  🚫 不可靜默修改 contract（無 [SPEC-FIX] 標記視為違規）`);
   const failedModules = [...new Set(
     [...failed, ...errored].map(r => specs.find(s => s.id === r.id)?.module).filter(Boolean)
   )];

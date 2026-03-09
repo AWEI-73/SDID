@@ -525,7 +525,7 @@ AC 分類與 contract 格式:
     process.exit(0);
   }
 
-  console.log(`\n🧪 AC Runner v1.0`);
+  console.log(`\n🧪 AC Runner v1.1`);
   console.log(`   Contract: ${path.relative(args.target, args.contract)}`);
   console.log(`   AC 數量: ${specs.length} 個\n`);
 
@@ -538,18 +538,31 @@ AC 分類與 contract 格式:
   const skipped = results.filter(r => r.status === 'SKIP');
 
   // 印出結果
+  // intentional SKIP = 有 @GEMS-AC-SKIP 標記（MOCK/MANUAL）；accidental SKIP = 格式殘缺
   for (const r of results) {
-    const icon = r.status === 'PASS' ? '✅' : r.status === 'FAIL' ? '❌' : r.status === 'ERROR' ? '💥' : '⏭';
+    const isIntentionalSkip = r.status === 'SKIP' && r.error?.startsWith('[SKIP]');
+    const icon = r.status === 'PASS'  ? '✅'
+               : r.status === 'FAIL'  ? '❌'
+               : r.status === 'ERROR' ? '💥'
+               : isIntentionalSkip    ? '⏭'
+               :                        '⚠ ';
     console.log(`   ${icon} ${r.id} — ${r.fn || '?'} → ${r.status}`);
     if (r.status === 'FAIL') {
-      console.log(`      期望: ${JSON.stringify(r.diff.expected)}`);
-      console.log(`      實際: ${JSON.stringify(r.diff.actual)}`);
+      if (r.diff?.expected !== undefined) {
+        console.log(`      期望: ${JSON.stringify(r.diff.expected)}`);
+        console.log(`      實際: ${JSON.stringify(r.diff.actual)}`);
+      }
     }
     if (r.status === 'ERROR') {
       console.log(`      錯誤: ${r.error}`);
     }
     if (r.status === 'SKIP') {
-      console.log(`      跳過: ${r.error}`);
+      if (isIntentionalSkip) {
+        console.log(`      ⏭  ${r.error.replace('[SKIP] ', '')} → 請用 jest mock 或人工 POC 驗收`);
+      } else {
+        console.log(`      ⚠  格式異常: ${r.error}`);
+        console.log(`         → 請補齊 contract 的 @GEMS-AC 標籤（FN/MODULE/INPUT/EXPECT）`);
+      }
     }
   }
 
@@ -565,22 +578,29 @@ AC 分類與 contract 格式:
   const logType = isPass ? 'pass' : 'error';
   const logFile = path.join(logsDir, `ac-${logType}-${ts}.log`);
 
+  const intentionalSkipCount = skipped.filter(r => r.error?.startsWith('[SKIP]')).length;
+  const accidentalSkipCount  = skipped.length - intentionalSkipCount;
+
   const logLines = [
     '=== AC RUNNER LOG ===',
     `時間: ${new Date().toISOString()}`,
     `Contract: ${args.contract}`,
     `結果: ${isPass ? 'PASS' : 'FAIL'}`,
-    `統計: ${passed.length} PASS | ${failed.length} FAIL | ${errored.length} ERROR | ${skipped.length} SKIP`,
+    `統計: ${passed.length} PASS | ${failed.length} FAIL | ${errored.length} ERROR | ${intentionalSkipCount} SKIP(MOCK/MANUAL) | ${accidentalSkipCount} SKIP(格式異常)`,
     '',
   ];
 
   for (const r of results) {
-    logLines.push(`[${r.status}] ${r.id} — ${r.fn}`);
+    const isIntentionalSkip = r.status === 'SKIP' && r.error?.startsWith('[SKIP]');
+    const statusTag = r.status === 'SKIP'
+      ? (isIntentionalSkip ? '[SKIP:MOCK/MANUAL]' : '[SKIP:格式異常]')
+      : `[${r.status}]`;
+    logLines.push(`${statusTag} ${r.id} — ${r.fn}`);
     if (r.diff) {
       logLines.push(`  期望: ${JSON.stringify(r.diff.expected, null, 2)}`);
       logLines.push(`  實際: ${JSON.stringify(r.diff.actual, null, 2)}`);
     }
-    if (r.error) logLines.push(`  錯誤: ${r.error}`);
+    if (r.error) logLines.push(`  備註: ${r.error}`);
   }
   logLines.push('=====================');
 
@@ -589,8 +609,16 @@ AC 分類與 contract 格式:
   const relLog = path.relative(process.cwd(), logFile);
 
   if (isPass) {
+    const intentionalSkips = skipped.filter(r => r.error?.startsWith('[SKIP]'));
+    const accidentalSkips  = skipped.filter(r => !r.error?.startsWith('[SKIP]'));
     console.log(`\n@PASS | ac-runner | ${passed.length}/${specs.length} AC 通過`);
-    if (skipped.length > 0) console.log(`  ⚠ ${skipped.length} 個 AC 跳過（MOCK/MANUAL 或 async 或格式問題）`);
+    if (intentionalSkips.length > 0)
+      console.log(`  ⏭ ${intentionalSkips.length} 個 SKIP（MOCK/MANUAL，已標記 @GEMS-AC-SKIP）`);
+    if (accidentalSkips.length > 0) {
+      console.log(`  ⚠ ${accidentalSkips.length} 個 AC 格式異常（未被驗收，請補齊）:`);
+      accidentalSkips.forEach(r => console.log(`    - ${r.id || '?'}: ${r.error}`));
+      console.log(`    → 補齊 @GEMS-AC-FN / @GEMS-AC-MODULE / @GEMS-AC-INPUT，重跑 Phase 5`);
+    }
     console.log(`  Log: ${relLog}\n`);
     process.exit(0);
   }
@@ -611,12 +639,19 @@ AC 分類與 contract 格式:
     console.log(`  FUNCTION: ${r.fn}`);
     if (r.status === 'FAIL') {
       console.log(`  INPUT: ${JSON.stringify(spec?.input)}`);
-      console.log(`  EXPECTED: ${JSON.stringify(r.diff.expected)}`);
-      console.log(`  ACTUAL: ${JSON.stringify(r.diff.actual)}`);
-      console.log(`  FIX: 函式回傳值與 contract.ts 的 @GEMS-AC-EXPECT 不符，修正計算邏輯`);
+      console.log(`  EXPECTED: ${JSON.stringify(r.diff?.expected)}`);
+      console.log(`  ACTUAL: ${JSON.stringify(r.diff?.actual)}`);
+      console.log(`  ─────────────────────────────────────────`);
+      console.log(`  [方案 A] 實作錯誤 → 修正函式邏輯，使回傳值符合 @GEMS-AC-EXPECT`);
+      console.log(`           FILE: src/${spec?.module}.ts`);
+      console.log(`           FUNCTION: ${r.fn}`);
+      console.log(`  [方案 B] 規格錯誤 → 修正 contract @GEMS-AC-EXPECT，並留下變更記錄`);
+      console.log(`           在 contract 該 AC 上方加: // [SPEC-FIX] YYYY-MM-DD <原因>`);
+      console.log(`           例: // [SPEC-FIX] 2026-03-09: 初始設計忽略 UTC offset，修正期望值`);
     } else {
       console.log(`  ERROR: ${r.error}`);
       console.log(`  FIX: 確認函式存在且正確 export`);
+      console.log(`       若 ERROR 原因是外部依賴（API/DB），改用 @GEMS-AC-SKIP 標記此 AC`);
     }
     console.log('');
   }

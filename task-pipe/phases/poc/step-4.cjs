@@ -482,17 +482,28 @@ ${features.length > 0 ? features.map(f => `  - [x] ${f}`).join('\n') : '  - [x] 
   const pocFilePath = path.join(pocDir, 'ModulePOC.html');
   fs.writeFileSync(pocFilePath, smartPocHtml, 'utf8');
 
+  // 從 draft 提取目標描述，供 AI 改寫參考
+  const goalMatch = draftContent.match(/## ?一句話目標\s*\n([^\n]+)/);
+  const projectGoal = goalMatch ? goalMatch[1].trim() : '';
+
   anchorOutput({
-    context: `POC Step 4 | ${iteration} | 智慧 POC 已自動產生`,
+    context: `POC Step 4 | ${iteration} | 智慧 POC scaffold 已產生（⚠️ 需要改寫）`,
     info: {
       'Title': projectTitle,
+      'Goal': projectGoal || '（請從 requirement_draft 確認）',
       'Features': features.length > 0 ? features.join(', ') : '基本 CRUD',
       'File': pocFilePath
     },
     task: [
-      '已自動產生 POC 檔案',
-      '請根據需求調整標題、欄位、功能',
-      '確認後重新執行此步驟驗證品質'
+      '⚠️ 這是通用 scaffold，內容與你的專案無關，必須改寫',
+      `📌 專案目標: ${projectGoal || '請讀 requirement_draft 確認'}`,
+      '必須改寫的項目:',
+      '  1. <title> 和 <h1> — 改成專案實際名稱（不是「Module 管理」）',
+      '  2. Mock 資料 — 改成符合 contract_iter-1.ts 的欄位和語意',
+      '  3. 函式邏輯 — 改成符合專案功能（不是通用 CRUD）',
+      '  4. @GEMS-VERIFIED — 列出實際實作的函式名稱',
+      '  5. @GEMS-FIELD-COVERAGE — 對應 contract 的欄位',
+      '改寫完成後重新執行此步驟驗證品質'
     ],
     output: `NEXT: node task-pipe/runner.cjs --phase=POC --step=4`
   }, {

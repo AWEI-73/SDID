@@ -593,22 +593,28 @@ function checkPocQuality(pocPath, draftPath, contractPath) {
         '範例項目 A',
         '範例項目 B',
         '已完成項目',
-        '專案 POC',  // 通用標題
+        '專案 POC',       // 通用標題
+        'Module 管理',    // step-4 scaffold 的通用 h1
+        'id="inputField"', // step-4 scaffold 的通用 input id
+        '輸入內容...',    // step-4 scaffold 的通用 placeholder
     ];
 
     const foundFingerprints = SCAFFOLD_FINGERPRINTS.filter(fp => pocContent.includes(fp));
     if (foundFingerprints.length > 0) {
-        issues.push({
+        blockers.push({
             type: 'SCAFFOLD_NOT_CUSTOMIZED',
-            severity: 'HIGH',
-            message: `POC 仍包含自動生成的範例資料，請客製化：${foundFingerprints.join('、')}`,
+            severity: 'BLOCKER',
+            message: `POC 仍包含通用 scaffold 內容，尚未根據專案需求改寫：${foundFingerprints.join('、')}`,
             fixGuide: [
-                '請將「範例項目 A/B」替換為專案實際資料',
-                '請將「專案 POC」替換為專案實際名稱',
-                '確保 Mock 資料與 requirement_draft 的功能對應',
+                '⚠️ 這是 scaffold 自動產生的通用模板，必須改寫成符合專案的內容',
+                '必須改寫的項目:',
+                '  1. <title> 和 <h1> — 改成專案實際名稱（不是「Module 管理」）',
+                '  2. Mock 資料 — 改成符合 contract_iter-1.ts 的欄位和語意',
+                '  3. 函式邏輯 — 改成符合專案功能（不是通用 CRUD）',
+                '  4. @GEMS-VERIFIED — 列出實際實作的函式名稱',
             ]
         });
-        score -= 20;
+        score -= 40;
     }
 
     // ============================================

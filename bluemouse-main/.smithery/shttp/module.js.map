@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../index.js"],
+  "sourcesContent": ["console.log(\"BlueMouse MCP Server (Docker Container)\");\n"],
+  "mappings": "AAAA,QAAQ,IAAI,yCAAyC",
+  "names": []
+}

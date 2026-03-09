@@ -3,7 +3,7 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-09 06:17:16 UTC
+**更新**: 2026-03-09 06:34:29 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
@@ -36,6 +36,7 @@ ARCHITECTURE.md v5.0，更新 2026-03-04
 - `claude/agitated-taussig` → C:/Users/user/Desktop/SDID/.claude/worktrees/agitated-taussig
 
 **最近 commits**:
+- a066e46 chore: 同步 workspace-hub/ROADMAP 快照 + loop.cjs/cynefin 修正
 - ff87ae5 fix(phase-1+phase-8): 兩個放寬改善
 - d9669ea chore(cleanup): 移除 GEMS-TEST 標籤 + 新增 @CONTRACT-LOCK Layer 2 文件
 - f78d487 fix(ac-runner): @FORBIDDEN 改為 @RULES，允許 [SPEC-FIX] 標記後修改 contract
@@ -43,7 +44,6 @@ ARCHITECTURE.md v5.0，更新 2026-03-04
 - d7fe28c feat(ac-runner): @GEMS-AC-SKIP + @GEMS-AC-EXPECT-THROW + [CALC]/[MOCK]/[MANUAL] 分類
 - f29edb0 refactor(phase-2/3/4): @GEMS-AC 純驅動 v3.0 — 廢棄 GEMS-TEST BLOCKER 邏輯
 - a0019f4 fix(poc-step4): scaffold 改寫強制 — 指紋 BLOCKER + 產生時明確提醒
-- e7ee777 feat(ac-runner+test): tsc fallback 重構 + test-blueprint/taskpipe-flow 整合測試
 
 ## 專案狀態（SDID 管理中）
 

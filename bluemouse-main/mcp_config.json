@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "bluemouse-v6": {
+            "command": "python3",
+            "args": [
+                "run_standalone.py"
+            ],
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            }
+        }
+    }
+}

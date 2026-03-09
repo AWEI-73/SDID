@@ -575,6 +575,20 @@ function checkBundlerConfig(projectRoot, techStack) {
     }
   }
 
+  // v1.2: 如果 build script 是 tsc，視為純 TypeScript 編譯專案，不需要 bundler
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      const buildScript = pkg.scripts?.build || '';
+      if (buildScript.includes('tsc') || buildScript.includes('ts-node')) {
+        check.pass = true;
+        check.severity = 'SKIP';
+        check.message = '純 TypeScript 編譯專案 (tsc)，不需要 bundler';
+        return check;
+      }
+    } catch (e) { /* 忽略 */ }
+  }
+
   check.message = '缺少 bundler 配置';
   check.suggestion = '安裝 Vite: npm install vite --save-dev\n建立 vite.config.ts';
   check.severity = 'CRITICAL';

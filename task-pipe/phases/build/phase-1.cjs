@@ -521,7 +521,7 @@ modules/[module-name]/
       // v3.1: 範圍檢查 - 偵測 Plan 外的多餘檔案（Story-1.0 及後續 Story 都檢查）
       if (manifest.hasManifest) {
         const iterNum = parseInt(iteration.replace('iter-', ''));
-        const extraFiles = detectExtraFiles(srcDir, manifest, typeConfig.extensions, iterNum);
+        const extraFiles = detectExtraFiles(srcDir, manifest, typeConfig.extensions, iterNum, target, iteration, story);
         if (extraFiles.length > 0) {
           const retryCmd = getRetryCmd('BUILD', '1', { story, target: relativeTarget, iteration });
           const tasks = extraFiles.map(f => ({
@@ -935,16 +935,42 @@ function validateModule0Structure(target, srcDir, projectType) {
  * @param {string[]} extensions - 副檔名列表
  * @returns {string[]} 多餘檔案的完整路徑列表
  */
-function detectExtraFiles(srcDir, manifest, extensions, iterNum = 1) {
+function detectExtraFiles(srcDir, manifest, extensions, iterNum = 1, target = null, iteration = null, story = null) {
   const extraFiles = [];
 
   // 收集 Plan 定義的檔案路徑（正規化）
   const plannedPaths = new Set();
-  for (const fn of manifest.functions) {
-    if (fn.file) {
-      // 正規化：移除開頭的 src/ 或 ./src/
-      const norm = fn.file.replace(/^\.?\/?(src\/)?/, 'src/').replace(/\\/g, '/');
-      plannedPaths.add(norm);
+
+  function addManifestPaths(m) {
+    for (const fn of m.functions) {
+      if (fn.file) {
+        const norm = fn.file.replace(/^\.?\/?(src\/)?/, 'src/').replace(/\\/g, '/');
+        plannedPaths.add(norm);
+      }
+    }
+  }
+
+  addManifestPaths(manifest);
+
+  // v3.2: 讀取同 iter 前面 Story 的 plan，把它們定義的 shared 檔案也納入合法路徑
+  // 這樣後續 Story 不需要重複聲明前面 Story 已建立的 shared 檔案
+  if (target && iteration && story) {
+    const { extractFunctionManifest: extractFM } = require('../../lib/plan/plan-spec-extractor.cjs');
+    const planDir = path.join(target, '.gems', 'iterations', iteration, 'plan');
+    const storyMatch = story.match(/Story-(\d+)\.(\d+)/);
+    if (storyMatch && fs.existsSync(planDir)) {
+      const storyX = parseInt(storyMatch[1]);
+      const storyY = parseInt(storyMatch[2]);
+      // 讀取同 iter 所有 Story-X.0 ~ Story-X.(Y-1) 的 plan
+      for (let y = 0; y < storyY; y++) {
+        const prevPlan = path.join(planDir, `implementation_plan_Story-${storyX}.${y}.md`);
+        if (fs.existsSync(prevPlan)) {
+          try {
+            const prevManifest = extractFM(prevPlan);
+            addManifestPaths(prevManifest);
+          } catch (e) { /* 忽略解析錯誤 */ }
+        }
+      }
     }
   }
 

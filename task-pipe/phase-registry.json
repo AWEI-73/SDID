@@ -212,11 +212,12 @@
             "3": {
                 "name": "測試腳本",
                 "file": "phase-3.cjs",
-                "description": "掃描 GEMS 標籤，檢查測試檔案是否存在",
+                "description": "AC 驅動測試指引：從 contract 讀取 @GEMS-AC，按 GEMS-TEST 策略分組（jest-unit/jest-integ vs ac-runner/poc-html/skip）",
                 "actions": [
-                    "Detect project type",
-                    "Check scaffold files",
-                    "Output missing files list"
+                    "Load AC specs from contract_iter-N.ts",
+                    "Group functions by GEMS-TEST strategy",
+                    "Output AC-driven test guide with I/O",
+                    "Skip ac-runner/poc-html/skip functions"
                 ],
                 "requires": [
                     "source_code"
@@ -226,15 +227,17 @@
                 ]
             },
             "4": {
-                "name": "Test Gate v3.0",
+                "name": "Test Gate v4.0",
                 "file": "phase-4.cjs",
-                "description": "驗證測試檔案存在、import 正確、測試類型符合 Priority",
+                "description": "驗證測試檔案存在、import 正確、AC coverage、測試類型符合 Priority；ac-runner/poc-html/skip 直接 skip",
                 "actions": [
-                    "Verify GEMS-TEST-FILE exists",
-                    "Check test file imports tested function",
+                    "Skip ac-runner/poc-html/skip strategy functions",
+                    "Check test file imports tested function (jest-unit/jest-integ)",
+                    "AC coverage check: scan it('AC-X.Y') pattern vs contract ACs",
                     "Verify P0 has E2E test (*.e2e.test.ts or cypress)",
                     "Verify P1 has Integration test (*.integration.test.ts)",
-                    "Detect fake integration tests (>50% mock)"
+                    "Detect fake integration tests (>50% mock)",
+                    "GEMS-TEST-FILE is hint only (not BLOCKER)"
                 ],
                 "requires": [
                     "test_files"

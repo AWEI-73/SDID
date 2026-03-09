@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 3: 測試腳本
- * 輸入: 源碼檔案 | 產物: 測試檔案 + checkpoint
+ * BUILD Phase 3: 測試腳本 v2.0
+ * 輸入: 源碼檔案 + contract_iter-N.ts | 產物: 測試檔案 + checkpoint
  * 
- * 軍規 2: 測試依風險規格
- * - P0: Unit + Integration + E2E
- * - P1: Unit + Integration  
- * - P2: Unit
- * - P3: 手動測試
+ * v2.0 變更：AC 驅動測試指引
+ * - 從 contract_iter-N.ts 讀取 @GEMS-AC，注入具體 I/O 給 AI
+ * - 按 GEMS-TEST 策略分組（ac-runner/jest-unit/jest-integ/poc-html/skip）
+ * - contract 不存在時 WARN + 降級為通用約束
  * 
  * 軍規 3: TDD 100% - 禁止在測試中重寫函式邏輯
  */
@@ -15,11 +14,69 @@ const fs = require('fs');
 const path = require('path');
 const { writeCheckpoint } = require('../../lib/checkpoint.cjs');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
-const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePending } = require('../../lib/shared/log-output.cjs');
+const { anchorOutput, anchorPass, anchorErrorSpec } = require('../../lib/shared/log-output.cjs');
 
 const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
 const { scanGemsTags } = require('../../lib/scan/gems-scanner-unified.cjs');
-const { getNextCmd, getRetryCmd, getPassCmd } = require('../../lib/shared/next-command-helper.cjs');
+const { getNextCmd, getRetryCmd } = require('../../lib/shared/next-command-helper.cjs');
+
+// ─────────────────────────────────────────────────────────────
+// 讀取 contract AC specs
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 嘗試載入 ac-runner 的 parseAcSpecs，讀取 contract_iter-N.ts
+ * @returns {AcSpec[]|null} AC specs，或 null（contract 不存在）
+ */
+function loadAcSpecs(target, iterNum) {
+  const contractPath = path.join(
+    target, '.gems', 'iterations', `iter-${iterNum}`, 'poc', `contract_iter-${iterNum}.ts`
+  );
+  if (!fs.existsSync(contractPath)) return null;
+
+  try {
+    const acRunnerPath = path.resolve(__dirname, '..', '..', '..', 'sdid-tools', 'ac-runner.cjs');
+    const { parseAcSpecs } = require(acRunnerPath);
+    const content = fs.readFileSync(contractPath, 'utf8');
+    return parseAcSpecs(content);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * 產生 AC 驅動的測試指引（注入具體 I/O）
+ * @param {object} fn - GEMS 函式資訊
+ * @param {AcSpec[]} acSpecs - 所有 AC specs
+ * @returns {string} 測試指引文字
+ */
+function buildAcTestGuide(fn, acSpecs) {
+  const fnAcs = acSpecs ? acSpecs.filter(s => s.fn === fn.name) : [];
+
+  if (fnAcs.length === 0) {
+    // 無對應 AC：通用約束
+    return [
+      `函式: ${fn.name} (GEMS-TEST: ${fn.testStrategy || 'jest-unit'})`,
+      `  此函式沒有 AC spec，請根據 implementation_plan 的 AC 區塊，`,
+      `  用 it('AC-X.Y: [描述]') 格式，包含具體輸入和期望值`,
+      `  禁止: toBeDefined() / toBeTruthy() / toBeFalsy() 作為唯一斷言`,
+    ].join('\n');
+  }
+
+  const lines = [`函式: ${fn.name} (GEMS-TEST: ${fn.testStrategy || 'jest-unit'})`];
+  lines.push(`  每個 AC 必須對應一個 it()：`);
+  for (const ac of fnAcs) {
+    const inputStr = ac.input !== null ? JSON.stringify(ac.input) : '(見 contract)';
+    const expectStr = ac.expect !== null ? JSON.stringify(ac.expect) : '(見 contract)';
+    lines.push(`  it('${ac.id}: ...', () => {`);
+    lines.push(`    const result = ${fn.name}(...${inputStr});`);
+    lines.push(`    expect(result).toEqual(${expectStr}); // 精確值，來自 contract`);
+    lines.push(`  });`);
+  }
+  lines.push(`  禁止: toBeDefined() / toBeTruthy() / toBeFalsy() 作為唯一斷言`);
+  lines.push(`  禁止: 在測試檔案內重新實作被測函式的邏輯`);
+  return lines.join('\n');
+}
 
 function run(options) {
 
@@ -28,16 +85,15 @@ function run(options) {
   const { target, iteration = 'iter-1', story, level = 'M' } = options;
   // 計算相對路徑（用於輸出指令，避免絕對路徑問題）
   const relativeTarget = path.relative(process.cwd(), target) || '.';
-
+  const iterNum = parseInt(iteration.replace('iter-', ''));
 
   // 門控規格 - 告訴 AI 這個 phase 會檢查什麼
   const gateSpec = {
     checks: [
-      { name: '測試檔案存在', pattern: '*.test.ts', desc: '每個模組有對應測試檔' },
-      { name: 'P0 測試覆蓋', pattern: 'Unit + Integration + E2E', desc: 'P0 函式必須三種測試' },
-      { name: 'P1 測試覆蓋', pattern: 'Unit + Integration', desc: 'P1 函式必須兩種測試' },
-      { name: 'P2 測試覆蓋', pattern: 'Unit', desc: 'P2 函式至少 Unit 測試' },
-      { name: '測試 import', pattern: 'import { fn } from', desc: '測試必須 import 被測函式' }
+      { name: '測試檔案存在', pattern: '*.test.ts', desc: '每個需要 jest 的函式有對應測試檔' },
+      { name: 'AC 覆蓋', pattern: "it('AC-X.Y')", desc: 'jest 函式的每個 AC 必須有對應 it()' },
+      { name: '測試 import', pattern: 'import { fn } from', desc: '測試必須 import 被測函式' },
+      { name: 'ac-runner/poc-html/skip', pattern: '跳過', desc: '這些策略不需要 jest 測試檔' }
     ]
   };
 
@@ -79,39 +135,59 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     return { verdict: 'BLOCKER' };
   }
 
-  // 掃描 GEMS 標籤取得函式風險等級
+  // 掃描 GEMS 標籤
   const scanResult = scanGemsTags(srcPath);
   const testFiles = findTestFiles(srcPath);
 
-  // 統計各風險等級
+  // 讀取 AC specs（Task-Pipe contract，Blueprint/POC-FIX 不存在時為 null）
+  const acSpecs = loadAcSpecs(target, iterNum);
+  if (acSpecs === null) {
+    console.log(`[WARN] contract_iter-${iterNum}.ts 不存在，降級為通用約束（無 AC I/O 注入）`);
+  } else {
+    console.log(`[AC] 讀取 contract_iter-${iterNum}.ts，找到 ${acSpecs.length} 個 AC specs`);
+  }
+
+  // 按 GEMS-TEST 策略分組
+  const jestFns = scanResult.functions.filter(f => {
+    const s = (f.testStrategy || '').toLowerCase();
+    return s === 'jest-unit' || s === 'jest-integ';
+  });
+  const skipFns = scanResult.functions.filter(f => {
+    const s = (f.testStrategy || '').toLowerCase();
+    return s === 'ac-runner' || s === 'poc-html' || s === 'skip';
+  });
+  // 沒有 GEMS-TEST 標籤的函式（舊格式或未標）
+  const unknownFns = scanResult.functions.filter(f => !f.testStrategy);
+
+  // 需要 jest 的函式（有明確策略優先，否則 fallback 到 unknown）
+  const targetFns = jestFns.length > 0 ? jestFns : unknownFns;
+
+  // 統計
   const p0Fns = scanResult.functions.filter(f => f.priority === 'P0');
   const p1Fns = scanResult.functions.filter(f => f.priority === 'P1');
   const p2Fns = scanResult.functions.filter(f => f.priority === 'P2');
 
-  // 檢查是否已有測試檔案
+  // 已有測試檔案：檢查覆蓋
   if (testFiles.length > 0) {
-    const checks = validatePhase2(scanResult.functions, testFiles, srcPath);
-    const failed = checks.filter(c => !c.pass && c.blocking);
-    const warnings = checks.filter(c => !c.pass && !c.blocking);
+    const fnsNeedingTests = targetFns;
+    const fnsWithTests = fnsNeedingTests.filter(f => f.testFile);
+    const allCovered = fnsNeedingTests.length === 0 || fnsWithTests.length === fnsNeedingTests.length;
 
-    if (failed.length === 0) {
+    if (allCovered) {
       writeCheckpoint(target, iteration, story, '3', {
         verdict: 'PASS',
         testFiles: testFiles.length,
-        p0: p0Fns.length,
-        p1: p1Fns.length,
-        p2: p2Fns.length
+        jestFns: jestFns.length,
+        skipFns: skipFns.length,
+        acSpecs: acSpecs ? acSpecs.length : 0
       });
 
-      const summary = `測試檔案: ${testFiles.length} | P0: ${p0Fns.length} | P1: ${p1Fns.length} | P2: ${p2Fns.length}`;
-      const warningNote = warnings.length > 0 ? `\n[WARN] ${warnings.map(w => w.name).join(', ')}` : '';
-
       anchorPass('BUILD', 'Phase 3',
-        summary + warningNote,
+        `測試檔案: ${testFiles.length} | jest: ${jestFns.length} | skip/ac-runner/poc-html: ${skipFns.length}`,
         getNextCmd('BUILD', '3', { story, level, target: relativeTarget, iteration }),
         {
           projectRoot: target,
-          iteration: parseInt(iteration.replace('iter-', '')),
+          iteration: iterNum,
           phase: 'build',
           step: 'phase-3',
           story
@@ -119,17 +195,18 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
       return { verdict: 'PASS' };
     }
 
+    const missingFns = fnsNeedingTests.filter(f => !f.testFile);
     anchorOutput({
       context: `Phase 3 | ${story} | 測試不完整`,
       error: {
         type: 'TACTICAL_FIX',
-        summary: `缺少: ${failed.map(c => c.name).join(', ')}`
+        summary: `${missingFns.length} 個 jest 函式缺少測試檔案`
       },
-      task: ['補充測試檔案 (P0:U+I+E2E, P1:U+I, P2:U)'],
+      task: missingFns.slice(0, 5).map(f => `補充 ${f.name} (${f.testStrategy || 'jest-unit'}) 的測試檔案`),
       output: `NEXT: ${getRetryCmd('BUILD', '3', { story, target: relativeTarget, iteration })}`
     }, {
       projectRoot: target,
-      iteration: parseInt(iteration.replace('iter-', '')),
+      iteration: iterNum,
       phase: 'build',
       step: 'phase-3',
       story
@@ -137,60 +214,60 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     return { verdict: 'PENDING' };
   }
 
-  // 首次執行：顯示完整指引（含 template）
-  const template = `測試檔案位置規則：放在源碼旁邊的 __tests__/ 資料夾
-────────────────────────────────────────────────
-src/lib/storage.ts     → src/lib/__tests__/storage.test.ts
-src/index.ts           → src/__tests__/index.test.ts
-src/modules/user.ts    → src/modules/__tests__/user.test.ts
+  // 首次執行：顯示 AC 驅動的測試指引
+  const acGuideLines = [];
+  acGuideLines.push(`測試檔案位置規則：放在源碼旁邊的 __tests__/ 資料夾`);
+  acGuideLines.push(`────────────────────────────────────────────────`);
+  acGuideLines.push(`src/lib/storage.ts     → src/lib/__tests__/storage.test.ts`);
+  acGuideLines.push(`src/modules/user.ts    → src/modules/__tests__/user.test.ts`);
+  acGuideLines.push(``);
 
-測試檔案命名：
-  Unit:        {filename}.test.ts
-  Integration: {filename}.integration.test.ts
-  E2E:         {filename}.e2e.test.ts
-────────────────────────────────────────────────
+  if (skipFns.length > 0) {
+    acGuideLines.push(`[SKIP] 以下函式不需要 jest 測試（ac-runner/poc-html/skip）：`);
+    skipFns.forEach(f => acGuideLines.push(`  - ${f.name} (${f.testStrategy})`));
+    acGuideLines.push(``);
+  }
 
-// src/lib/__tests__/storage.test.ts
-import { saveData, loadData } from '../storage';
+  if (targetFns.length > 0) {
+    acGuideLines.push(`[JEST] 以下函式需要撰寫測試（每個 AC 必須對應一個 it()）：`);
+    acGuideLines.push(``);
+    for (const fn of targetFns) {
+      acGuideLines.push(buildAcTestGuide(fn, acSpecs));
+      acGuideLines.push(``);
+    }
+  }
 
-describe('saveData', () => {
-  it('should save data to localStorage', () => {
-    saveData('key', { value: 1 });
-    expect(localStorage.getItem('key')).toBe('{"value":1}');
-  });
-});
-
-describe('loadData', () => {
-  it('should load data from localStorage', () => {
-    localStorage.setItem('key', '{"value":1}');
-    expect(loadData('key')).toEqual({ value: 1 });
-  });
-});`;
+  acGuideLines.push(`────────────────────────────────────────────────`);
+  acGuideLines.push(`禁止規則：`);
+  acGuideLines.push(`  - 禁止 toBeDefined() / toBeTruthy() / toBeFalsy() 作為唯一斷言`);
+  acGuideLines.push(`  - 禁止在測試檔案內重新實作被測函式的邏輯`);
+  if (acSpecs && acSpecs.length > 0) {
+    acGuideLines.push(`  - expect 值必須與 contract @GEMS-AC-EXPECT 一致`);
+  }
 
   anchorOutput({
-    context: `Phase 3 | ${story} | 測試腳本`,
+    context: `Phase 3 | ${story} | AC 驅動測試指引`,
     info: {
-      'P0 函式': p0Fns.length,
-      'P1 函式': p1Fns.length,
-      'P2 函式': p2Fns.length
+      'jest 函式': jestFns.length,
+      'skip/ac-runner/poc-html': skipFns.length,
+      'AC specs': acSpecs ? acSpecs.length : '(contract 不存在，使用通用約束)',
+      'P0': p0Fns.length,
+      'P1': p1Fns.length,
+      'P2': p2Fns.length
     },
-    rules: [
-      'P0: Unit+Integration+E2E | P1: Unit+Integration | P2: Unit',
-      '測試必須 import 真實函式，禁止重寫邏輯'
-    ],
     task: [
       '在源碼旁邊建立 __tests__/ 資料夾',
-      '撰寫測試檔案 (P0:U+I+E2E, P1:U+I, P2:U)',
+      '按下方 AC 指引撰寫測試（每個 AC 一個 it()）',
       'getDiagnostics() = 0 errors'
     ],
     template: {
-      title: 'TEMPLATE',
-      content: template
+      title: 'AC 驅動測試指引',
+      content: acGuideLines.join('\n')
     },
     output: getNextCmd('BUILD', '3', { story, level, target: relativeTarget, iteration })
   }, {
     projectRoot: target,
-    iteration: parseInt(iteration.replace('iter-', '')),
+    iteration: iterNum,
     phase: 'build',
     step: 'phase-3',
     story
@@ -211,46 +288,6 @@ function findTestFiles(dir, files = []) {
     }
   }
   return files;
-}
-
-function validatePhase2(functions, testFiles, srcPath) {
-  const checks = [];
-
-  // P0 必須有測試
-  const p0Fns = functions.filter(f => f.priority === 'P0');
-  const p0WithTest = p0Fns.filter(f => f.testFile);
-  checks.push({
-    name: 'P0 測試覆蓋',
-    pass: p0Fns.length === 0 || p0WithTest.length === p0Fns.length,
-    blocking: true
-  });
-
-  // P1 必須有測試
-  const p1Fns = functions.filter(f => f.priority === 'P1');
-  const p1WithTest = p1Fns.filter(f => f.testFile);
-  checks.push({
-    name: 'P1 測試覆蓋',
-    pass: p1Fns.length === 0 || p1WithTest.length === p1Fns.length,
-    blocking: true
-  });
-
-  // P2 建議有測試 (warning)
-  const p2Fns = functions.filter(f => f.priority === 'P2');
-  const p2WithTest = p2Fns.filter(f => f.testFile);
-  checks.push({
-    name: 'P2 測試覆蓋',
-    pass: p2Fns.length === 0 || p2WithTest.length >= p2Fns.length * 0.5,
-    blocking: false
-  });
-
-  // 測試檔案存在
-  checks.push({
-    name: '測試檔案存在',
-    pass: testFiles.length > 0,
-    blocking: true
-  });
-
-  return checks;
 }
 
 // 自我執行判斷

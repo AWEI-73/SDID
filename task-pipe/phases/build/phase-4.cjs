@@ -1,17 +1,13 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 4: Test Gate v3.0
- * 輸入: 源碼 + 測試 | 產物: P0/P1 測試驗證 + checkpoint
+ * BUILD Phase 4: Test Gate v4.0
+ * 輸入: 源碼 + 測試 | 產物: P0/P1 測試驗證 + AC coverage + checkpoint
  * 
- * v3.0 變更：整合 Test Type Gate
- * - 驗證 P0 有 E2E 測試
- * - 驗證 P1 有 Integration 測試  
- * - 偵測假整合測試（過度 Mock）
- * 
- * 驗證規則 (blocking):
- * - testFileExists: GEMS-TEST-FILE 指定的測試檔案必須存在
- * - testImportsFunction: 測試檔案必須 import 被測函式
- * - testTypeMatch: 測試類型必須符合 Priority (v3.0 新增)
+ * v4.0 變更：AC coverage 層 + GEMS-TEST-FILE 降為 hint
+ * - ac-runner/poc-html/skip 策略直接 skip（不驗 AC coverage）
+ * - jest-unit/jest-integ 策略：掃測試檔，驗每個函式有 it('AC-X.Y') pattern
+ * - GEMS-TEST-FILE 從 BLOCKER 降為 hint（有填優先用，沒填從路徑推導）
+ * - 保留：isFakeIntegrationTest()、import 驗證、checkRiskLevels()
  * 
  * 優先級規則:
  * - P0: Unit + Integration + E2E (CRITICAL if missing)
@@ -40,11 +36,11 @@ function run(options) {
   // 門控規格 - 告訴 AI 這個 phase 會檢查什麼
   const gateSpec = {
     checks: [
-      { name: 'GEMS-TEST-FILE 存在', pattern: '測試檔案路徑有效', desc: '標籤指定的測試檔必須存在' },
-      { name: '測試 import 被測函式', pattern: 'import { fn }', desc: '測試必須真正 import 函式' },
-      { name: 'P0 有 E2E', pattern: '*.e2e.test.ts', desc: 'P0 函式必須有 E2E 測試' },
-      { name: 'P1 有 Integration', pattern: '*.integration.test.ts', desc: 'P1 函式必須有整合測試' },
-      { name: 'GEMS-DEPS-RISK 正確', pattern: 'LOW|MEDIUM|HIGH', desc: '風險等級與依賴匹配' }
+      { name: 'ac-runner/poc-html/skip 直接 skip', desc: '這些策略函式不需要 jest，直接過' },
+      { name: 'jest 函式有測試檔', desc: 'jest-unit/jest-integ 需要測試檔案存在' },
+      { name: '測試 import 被測函式', desc: '測試必須真正 import 函式，不能只有 toBeDefined()' },
+      { name: "AC coverage: it('AC-X.Y')", desc: 'contract 有 AC 時，每個 AC 必須有對應 it()' },
+      { name: 'GEMS-TEST-FILE 為 hint', desc: '有填優先用，沒填從路徑推導，不擋建置' }
     ]
   };
 
@@ -89,14 +85,59 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     return { verdict: 'BLOCKER' };
   }
 
-  // 掃描標籤
+  // 掃描標籤，先做分組再使用
   const scanResult = scanGemsTags(srcPath);
-  const missingTests = validateTestFiles(scanResult.functions, srcPath, target);
-  const testCoverage = checkTestCoverage(scanResult.functions, srcPath, target);
 
-  // 統計 P0/P1
-  const p0Fns = scanResult.functions.filter(f => f.priority === 'P0');
-  const p1Fns = scanResult.functions.filter(f => f.priority === 'P1');
+  // v4.0: ac-runner/poc-html/skip 策略直接 skip，不驗 AC coverage
+  const skipStrategies = ['ac-runner', 'poc-html', 'skip'];
+  const jestFns = scanResult.functions.filter(f => {
+    const s = (f.testStrategy || '').toLowerCase();
+    return s === 'jest-unit' || s === 'jest-integ';
+  });
+  const skipFns = scanResult.functions.filter(f => {
+    const s = (f.testStrategy || '').toLowerCase();
+    return skipStrategies.includes(s);
+  });
+  // 沒有 GEMS-TEST 標籤的函式（舊格式）也走 jest 路徑
+  const unknownFns = scanResult.functions.filter(f => !f.testStrategy);
+  // 需要 jest 驗證的函式（先宣告，後面才能安全使用）
+  const jestTargetFns = jestFns.length > 0 ? jestFns : unknownFns;
+
+  const missingTests = validateTestFiles(jestTargetFns, srcPath, target);
+  const testCoverage = checkTestCoverage(jestTargetFns, srcPath, target);
+
+  if (skipFns.length > 0 && jestTargetFns.length === 0) {
+    // 全部都是 skip 策略，直接 PASS
+    writeCheckpoint(target, iteration, story, '4', {
+      verdict: 'PASS',
+      skipFns: skipFns.length,
+      reason: 'all-skip-strategy'
+    });
+    emitPass({
+      scope: 'BUILD Phase 4',
+      summary: `全部 ${skipFns.length} 個函式為 ac-runner/poc-html/skip 策略，跳過 Test Gate`,
+      nextCmd: getNextCmd('BUILD', '4', { story, level, target: relativeTarget, iteration })
+    }, {
+      projectRoot: target,
+      iteration: parseInt(iteration.replace('iter-', '')),
+      phase: 'build',
+      step: 'phase-4',
+      story
+    });
+    return { verdict: 'PASS' };
+  }
+
+  // v4.0: AC coverage 層 — 從 contract 讀取 requiredACs，掃 coveredACs，找缺口
+  const acCoverageResult = checkAcCoverage(jestTargetFns, srcPath, target, iteration);
+  if (acCoverageResult.skipped) {
+    console.log(`[AC] 跳過 AC coverage 檢查（contract 不存在）`);
+  } else if (acCoverageResult.gaps.length > 0) {
+    console.log(`[AC] ${acCoverageResult.gaps.length} 個 AC 未被測試覆蓋`);
+  }
+
+  // 統計 P0/P1（只針對 jest 函式）
+  const p0Fns = jestTargetFns.filter(f => f.priority === 'P0');
+  const p1Fns = jestTargetFns.filter(f => f.priority === 'P1');
   const p0Tested = p0Fns.filter(f => f.testFile && !missingTests.find(m => m.fn === f.name) && testCoverage.covered.includes(f.name));
   const p1Tested = p1Fns.filter(f => f.testFile && !missingTests.find(m => m.fn === f.name) && testCoverage.covered.includes(f.name));
 
@@ -104,8 +145,8 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   const p1Pass = p1Fns.length === 0 || p1Tested.length === p1Fns.length;
   const riskIssues = checkRiskLevels(scanResult.functions);
 
-  // v3.0: Test Type Gate - 檢查測試類型
-  const testTypeResult = validateTestTypes(scanResult.functions, srcPath, target);
+  // v3.0: Test Type Gate - 只針對 jest 函式檢查測試類型
+  const testTypeResult = validateTestTypes(jestTargetFns, srcPath, target);
 
   // v3.1: 後端/library 專案放寬 E2E 要求 — 降級為 WARNING
   let techStackProfile = null;
@@ -134,7 +175,8 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   downgradeIssues = testTypeResult.issues.filter(i => i.severity === 'DOWNGRADE_SUGGESTION');
 
   const passed = missingTests.length === 0 && p0Pass && p1Pass &&
-    riskIssues.length === 0 && criticalIssues.length === 0;
+    riskIssues.length === 0 && criticalIssues.length === 0 &&
+    (!acCoverageResult || acCoverageResult.skipped || acCoverageResult.gaps.length === 0);
 
   // 通過
   if (passed) {
@@ -155,6 +197,9 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     const downgradeNote = downgradeIssues.length > 0
       ? `\n[DOWNGRADE] ${downgradeIssues.length} 個宣告型別建議降級 priority`
       : '';
+    const acNote = (!acCoverageResult || acCoverageResult.skipped)
+      ? ''
+      : `\n[AC] ${acCoverageResult.covered}/${acCoverageResult.total} AC 已覆蓋`;
 
     if (downgradeIssues.length > 0) {
       console.log('');
@@ -166,7 +211,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
 
     emitPass({
       scope: 'BUILD Phase 4',
-      summary: `P0: ${p0Tested.length}/${p0Fns.length} (E2E: ${testTypeResult.stats.p0WithE2E}) | P1: ${p1Tested.length}/${p1Fns.length} (Integration: ${testTypeResult.stats.p1WithIntegration})${warningNote}${typeWarningNote}${downgradeNote}`,
+      summary: `P0: ${p0Tested.length}/${p0Fns.length} (E2E: ${testTypeResult.stats.p0WithE2E}) | P1: ${p1Tested.length}/${p1Fns.length} (Integration: ${testTypeResult.stats.p1WithIntegration})${warningNote}${typeWarningNote}${downgradeNote}${acNote}`,
       nextCmd: getNextCmd('BUILD', '4', { story, level, target: relativeTarget, iteration })
     }, {
       projectRoot: target,
@@ -350,6 +395,39 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
     return { verdict: 'BLOCKER', reason: '風險等級錯誤' };
   }
 
+  // AC coverage gaps = BLOCKER（contract 存在時才檢查）
+  if (acCoverageResult && !acCoverageResult.skipped && acCoverageResult.gaps.length > 0) {
+    const { emitTaskBlock } = require('../../lib/shared/log-output.cjs');
+
+    const tasks = acCoverageResult.gaps.slice(0, 8).map(gap => {
+      const fn = jestTargetFns.find(f => f.name === gap.fn);
+      const testFilePath = fn?.testFile
+        ? (fn.file ? path.join(path.dirname(fn.file), '__tests__', fn.testFile) : fn.testFile)
+        : `__tests__/${gap.fn}.test.ts`;
+      return {
+        action: 'ADD_AC_TEST',
+        file: testFilePath,
+        expected: `在測試檔案中加入 it('${gap.acId}: ...') 對應 AC\n             格式: it('${gap.acId}: [描述]', () => { ... })`,
+        gemsSpec: `${gap.fn} | ${fn?.priority || '?'} | ${gap.acId}`,
+        reference: `contract AC: ${gap.acId}`
+      };
+    });
+
+    emitTaskBlock({
+      verdict: 'BLOCKER',
+      context: `Phase 4 | ${story} | AC coverage 缺口 (${acCoverageResult.gaps.length} 個)`,
+      tasks,
+      nextCommand: getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration })
+    }, {
+      projectRoot: target,
+      iteration: parseInt(iteration.replace('iter-', '')),
+      phase: 'build',
+      step: 'phase-4',
+      story
+    });
+    return { verdict: 'BLOCKER', reason: 'ac_coverage_gap' };
+  }
+
   // 記錄錯誤（每次執行都要記錄，才會累積計數）
   const errorHandler = createErrorHandler('BUILD', '4', story);
   const attempt = errorHandler.recordError('E7', `缺測試: ${missingTests.map(m => m.fn).slice(0, 3).join(', ')}`);
@@ -415,6 +493,88 @@ node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${rel
   });
 
   return { verdict: 'PENDING', attempt, missingTests };
+}
+
+/**
+ * v4.0: 檢查 AC coverage — 從 contract 讀取 requiredACs，掃測試檔找 it('AC-X.Y')，找缺口
+ * @param {object[]} jestFns - 需要 jest 測試的函式
+ * @param {string} srcPath - 源碼目錄
+ * @param {string} target - 專案根目錄
+ * @param {string} iteration - 迭代編號
+ * @returns {{ skipped: boolean, gaps: Array, covered: number, total: number }}
+ */
+function checkAcCoverage(jestFns, srcPath, target, iteration) {
+  const iterNum = parseInt(iteration.replace('iter-', ''));
+  const contractPath = path.join(
+    target, '.gems', 'iterations', `iter-${iterNum}`, 'poc', `contract_iter-${iterNum}.ts`
+  );
+
+  if (!fs.existsSync(contractPath)) {
+    return { skipped: true, gaps: [], covered: 0, total: 0 };
+  }
+
+  let acSpecs = [];
+  try {
+    const acRunnerPath = path.resolve(__dirname, '..', '..', '..', 'sdid-tools', 'ac-runner.cjs');
+    const { parseAcSpecs } = require(acRunnerPath);
+    const content = fs.readFileSync(contractPath, 'utf8');
+    acSpecs = parseAcSpecs(content);
+  } catch (e) {
+    return { skipped: true, gaps: [], covered: 0, total: 0 };
+  }
+
+  if (acSpecs.length === 0) {
+    return { skipped: true, gaps: [], covered: 0, total: 0 };
+  }
+
+  // 只檢查 jest 函式的 AC
+  const jestFnNames = new Set(jestFns.map(f => f.name));
+  const relevantAcs = acSpecs.filter(ac => jestFnNames.has(ac.fn));
+
+  if (relevantAcs.length === 0) {
+    return { skipped: true, gaps: [], covered: 0, total: 0 };
+  }
+
+  // 掃描所有測試檔案，找 it('AC-X.Y') pattern
+  const testFiles = findTestFilesInDir(srcPath);
+  const coveredAcIds = new Set();
+  const acPattern = /it\s*\(\s*['"`](AC-[\d.]+)/g;
+
+  for (const tf of testFiles) {
+    try {
+      const content = fs.readFileSync(tf, 'utf8');
+      let m;
+      while ((m = acPattern.exec(content)) !== null) {
+        coveredAcIds.add(m[1]);
+      }
+      acPattern.lastIndex = 0;
+    } catch { /* ignore */ }
+  }
+
+  const gaps = relevantAcs
+    .filter(ac => !coveredAcIds.has(ac.id))
+    .map(ac => ({ fn: ac.fn, acId: ac.id }));
+
+  return {
+    skipped: false,
+    gaps,
+    covered: relevantAcs.length - gaps.length,
+    total: relevantAcs.length
+  };
+}
+
+function findTestFilesInDir(dir, files = []) {
+  if (!fs.existsSync(dir)) return files;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory() && entry.name !== 'node_modules') {
+      findTestFilesInDir(fullPath, files);
+    } else if (entry.isFile() && /\.test\.(ts|tsx|js|jsx)$/.test(entry.name)) {
+      files.push(fullPath);
+    }
+  }
+  return files;
 }
 
 /**

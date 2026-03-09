@@ -340,6 +340,20 @@ src/
   ✅ 有效: throw {ErrorType}('{訊息}')
   ❌ 無效: 系統處理完成
   ❌ 無效: 路由接線完成
+
+  純計算類 AC 落地規則（v2.3）:
+  - 流向含 CALC/PARSE/FORMAT/CONVERT/DATE/ROC 的函式（條件 A）
+  - 除在此處寫 Given/When/Then 外，必須在 contract_iter-N.ts 補 @GEMS-AC 標籤
+  - Phase 5 的 ac-runner 會讀 contract 的 @GEMS-AC，機械執行並比對 expect
+
+  contract_iter-N.ts 的 @GEMS-AC 格式:
+  // @GEMS-AC: AC-1.0
+  // @GEMS-AC-FN: functionName
+  // @GEMS-AC-MODULE: modules/ModuleName/lib/function-name
+  // @GEMS-AC-INPUT: [arg1, arg2]
+  // @GEMS-AC-EXPECT: { key: "value" }
+
+  UI/Hook/GAS 類 AC：繼續用 Given/When/Then，靠人工 POC 驗收，不寫 @GEMS-AC
 -->
 
 ### Iter 1: shared
@@ -379,6 +393,7 @@ DOMAIN: Clear | ERROR_RETURNS: N/A
 
 **AC-1.0** — {functionA} 核心業務邏輯
 DOMAIN: {Clear | Complicated | Complex} | ERROR_RETURNS: {ErrorTypeA} | {ErrorTypeB}
+> 🔧 純計算函式 → 需在 contract_iter-N.ts 補 @GEMS-AC 標籤（格式見上方說明）
 - Happy Path:
   - Given: {前置狀態，例如: DataStore 中無資料 / 使用者已登入}
   - When: 呼叫 `{functionA}({ {必要參數}: '{測試值}' })`

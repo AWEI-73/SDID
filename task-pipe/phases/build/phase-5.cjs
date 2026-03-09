@@ -434,10 +434,12 @@ function parseTestStats(output) {
  */
 function detectTestStubs(testFiles, projectRoot) {
   const issues = [];
-  const WEAK_ONLY = /expect\([\s\S]*?\)\.(toBeDefined|toBeTruthy|not\.toBeUndefined|not\.toBeNull)\(\)/g;
+  const WEAK_ONLY = /expect\([\s\S]*?\)\.(toBeDefined|toBeTruthy|toBeFalsy|not\.toBeUndefined|not\.toBeNull)\(\)/g;
   const VALID_ASSERT = /expect\([\s\S]*?\)\.(toBe|toEqual|toContain|toHaveLength|toMatchObject|toHaveBeenCalledWith|toThrow|toHaveProperty|toMatch)\(/;
   // 偵測 hardcoded false：toBe(false) / toEqual(false) 作為斷言（debug 殘留）
   const HARDCODED_FALSE = /expect\([\s\S]*?\)\.(toBe|toEqual)\(\s*false\s*\)/;
+  // 偵測 expect(true).toBe(true)（永遠通過的無意義斷言）
+  const ALWAYS_TRUE = /expect\(\s*true\s*\)\.toBe\(\s*true\s*\)/;
 
   for (const file of testFiles) {
     const absFile = path.isAbsolute(file) ? file : path.join(projectRoot, file);
@@ -458,6 +460,7 @@ function detectTestStubs(testFiles, projectRoot) {
       WEAK_ONLY.lastIndex = 0;
       const hasValid = VALID_ASSERT.test(block);
       const hasHardcodedFalse = HARDCODED_FALSE.test(block);
+      const hasAlwaysTrue = ALWAYS_TRUE.test(block);
 
       // 嘗試從 import 推斷被測函式（排除 test framework imports）
       const imports = [...content.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)];
@@ -469,8 +472,16 @@ function detectTestStubs(testFiles, projectRoot) {
           file: path.relative(projectRoot, absFile),
           testName,
           fnName,
-          reason: '只有 toBeDefined/toBeTruthy，無實質行為驗證',
+          reason: '只有 toBeDefined/toBeTruthy/toBeFalsy/not.toBeUndefined，無實質行為驗證',
           type: 'STUB'
+        });
+      } else if (hasAlwaysTrue) {
+        issues.push({
+          file: path.relative(projectRoot, absFile),
+          testName,
+          fnName,
+          reason: '@SUSPICIOUS_ASSERT: expect(true).toBe(true) 是永遠通過的無意義斷言',
+          type: 'SUSPICIOUS'
         });
       } else if (hasHardcodedFalse && !block.includes('// intentional') && !block.includes('// expected false')) {
         // hardcoded false 且沒有明確標注「預期為 false」的 comment

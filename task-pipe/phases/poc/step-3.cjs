@@ -131,6 +131,7 @@ export interface Item {
     console.log(`@CONTEXT
 Contract: ${contract.path}
 資料結構: ${validation.stats.contracts} 個
+AC 規格: ${validation.stats.acSpecs} 個
 函式規格: ${validation.stats.functions} 個`);
 
     return { verdict: 'PASS' };
@@ -141,7 +142,7 @@ Contract: ${contract.path}
     checks: [
       { name: '@GEMS-CONTRACT', pattern: '/@GEMS-CONTRACT/', desc: '模組契約標籤' },
       { name: '@GEMS-TABLE', pattern: '/@GEMS-TABLE/', desc: '資料表定義' },
-      { name: '@GEMS-FUNCTION', pattern: '/@GEMS-FUNCTION/', desc: '函式規格 (含 Priority)' }
+      { name: '@GEMS-FUNCTION 或 @GEMS-API 或 @GEMS-AC', desc: '函式/服務/AC 規格（三選一）' }
     ]
   };
 
@@ -185,18 +186,38 @@ export interface Item {
  * @RETURN: string
  */
 
+// ─── AC SPECS (純計算函式驗收，由 ac-runner.cjs Phase 5 機械執行) ────────────
+//
+// 只放「純計算」類函式（無 side effect、無 DOM、無 API call）
+// 格式:
+//   @GEMS-AC: AC-X.Y
+//   @GEMS-AC-FN: functionName
+//   @GEMS-AC-MODULE: 相對於 src/ 的模組路徑（不含副檔名）
+//   @GEMS-AC-INPUT: JSON 陣列，對應函式參數
+//   @GEMS-AC-EXPECT: JSON 值，deep-equal 比對
+//
+// 沒有純計算函式時，整個區塊可省略
+
+// @GEMS-AC: AC-1.0
+// @GEMS-AC-FN: formatItemTitle
+// @GEMS-AC-MODULE: modules/FeatureName/lib/format-item-title
+// @GEMS-AC-INPUT: ["hello world"]
+// @GEMS-AC-EXPECT: "Hello World"
+
 // @GEMS-MOCK: items
 export const MOCK_ITEMS: Item[] = [
   { id: '1', title: '範例項目', createdAt: '2026-02-04' }
 ];`;
 
+  const iterNum = parseInt(iteration.replace('iter-', ''));
   anchorTemplatePending({
-    targetFile: `${pocPath}/xxxContract.ts`,
+    targetFile: `${pocPath}/contract_iter-${iterNum}.ts`,
     templateContent: templateContent,
     fillItems: [
       '@GEMS-CONTRACT - 模組名稱',
       '@GEMS-TABLE - 資料表名稱與欄位定義',
       '@GEMS-FUNCTION - 函式規格 (含 Priority P0/P1/P2)',
+      '@GEMS-AC - 純計算函式驗收（無 side effect 才填，否則省略整個區塊）',
       '@GEMS-MOCK - 測試用假資料'
     ],
     nextCmd: `node task-pipe/runner.cjs --phase=POC --step=3`,
@@ -225,12 +246,16 @@ function findContract(target, iteration) {
   if (!fs.existsSync(pocPath)) return { found: false };
 
   const files = fs.readdirSync(pocPath);
+  const iterNum = iteration.replace('iter-', '');
 
-  // 優先找符合命名的
+  // ① 新格式優先：contract_iter-N.ts（與 BUILD Phase 3/4/5 一致）
+  const newStyle = files.find(f => f === `contract_iter-${iterNum}.ts`);
+  if (newStyle) return { found: true, path: path.join(pocPath, newStyle), name: newStyle };
+
+  // ② 舊格式向後相容：xxxContract.ts
   const correct = files.find(f => f.endsWith('Contract.ts'));
   if (correct) return { found: true, path: path.join(pocPath, correct), name: correct };
 
-  // 找稍微不符但可能是的
   const fuzzy = files.find(f => f.includes('Contract') && f.endsWith('.ts'));
   if (fuzzy) return { found: true, path: path.join(pocPath, fuzzy), name: fuzzy, oldName: true };
 
@@ -242,18 +267,20 @@ function validateContract(content) {
   const valid = {
     contractTag: /@GEMS-CONTRACT/.test(content),
     tableTag: /@GEMS-TABLE/.test(content),
-    functionTag: /@GEMS-FUNCTION/.test(content),
+    // 接受任一：舊格式 @GEMS-FUNCTION / 新格式 @GEMS-API / AC格式 @GEMS-AC:
+    functionTag: /@GEMS-FUNCTION|@GEMS-API|@GEMS-AC:/.test(content),
     mockData: /MOCK/i.test(content) || /mock/i.test(content)
   };
 
   if (!valid.contractTag) errors.push('@GEMS-CONTRACT');
   if (!valid.tableTag) errors.push('@GEMS-TABLE');
-  if (!valid.functionTag) errors.push('@GEMS-FUNCTION');
+  if (!valid.functionTag) errors.push('@GEMS-FUNCTION 或 @GEMS-API 或 @GEMS-AC');
 
   // 統計
   const stats = {
     contracts: (content.match(/@GEMS-TABLE/g) || []).length,
-    functions: (content.match(/@GEMS-FUNCTION/g) || []).length
+    functions: (content.match(/@GEMS-FUNCTION/g) || []).length,
+    acSpecs: (content.match(/@GEMS-AC:/g) || []).length
   };
 
   return { errors, stats };

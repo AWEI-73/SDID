@@ -525,7 +525,7 @@ GEMS-TEST: poc-html           // 外部資源（GAS/fetch/DOM）
 GEMS-TEST: skip               // 無測試需求
 ```
 
-`GEMS-TEST-FILE` 只有 `jest-unit` / `jest-integ` 需要填，其他策略填 `-`。
+`GEMS-TEST-FILE` 只有 `jest-unit` / `jest-integ` 需要填，其他策略填 `-`。填了優先用，沒填從路徑推導（hint，非 BLOCKER）。
 
 ### 5.2 推導規則（優先順序由高到低）
 

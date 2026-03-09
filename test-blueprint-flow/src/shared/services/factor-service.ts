@@ -33,6 +33,7 @@ function updateCache(factor: EmissionFactor): void {
  * GEMS-TEST: ✓ Unit | ✓ Integration | - E2E
  * GEMS-TEST-FILE: factor-service.test.ts
  */
+// AC-1.2
 export const factorService = {
   create: async (data: EmissionFactor) => {
     validate(data);

@@ -1,4 +1,4 @@
-import { Organization, EmissionRecord, EmissionFactor, EmissionScope } from '../core-types';
+import { Organization, EmissionRecord, EmissionFactor, CoreTypes } from '../core-types';
 
 describe('CoreTypes', () => {
   it('should define Organization type', () => {

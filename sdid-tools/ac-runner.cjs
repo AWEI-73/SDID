@@ -189,7 +189,7 @@ function loadTypeScriptModule(target, filePath, fnName) {
     }
   } catch (e) { /* 繼續 */ }
 
-  // 策略 4: ts-node/register
+  // 策略 4: ts-node/register（target 的 node_modules）
   try {
     const tsNodePath = path.join(target, 'node_modules', 'ts-node');
     if (fs.existsSync(tsNodePath)) {
@@ -201,11 +201,28 @@ function loadTypeScriptModule(target, filePath, fnName) {
     }
   } catch (e) { /* 繼續 */ }
 
+  // 策略 4b: ts-node/register（往上找 node_modules，供 test 專案 fallback）
+  try {
+    // 從 ac-runner 所在目錄往上找，直到找到 ts-node
+    let searchDir = path.resolve(__dirname, '..');
+    for (let i = 0; i < 4; i++) {
+      const tsNodeFallback = path.join(searchDir, 'node_modules', 'ts-node');
+      if (fs.existsSync(tsNodeFallback)) {
+        require(path.join(tsNodeFallback, 'register'));
+        const mod = require(filePath);
+        const fn = mod[fnName] || mod.default?.[fnName];
+        if (typeof fn !== 'function') return { error: `模組 ${filePath} 沒有 export function ${fnName}` };
+        return { fn, filePath, loader: 'ts-node-fallback' };
+      }
+      searchDir = path.resolve(searchDir, '..');
+    }
+  } catch (e) { /* 繼續 */ }
+
   // 策略 5: esbuild CLI
   try {
     return compileAndLoad(target, filePath, fnName);
   } catch (e) {
-    return { error: `TypeScript 載入失敗（嘗試了 @babel/register、@babel/core、esbuild-register、ts-node、esbuild CLI）: ${e.message}`, filePath };
+    return { error: `TypeScript 載入失敗（嘗試了 @babel/register、@babel/core、esbuild-register、ts-node、tsc）: ${e.message}`, filePath };
   }
 }
 
@@ -252,28 +269,54 @@ function compileAndLoad(target, filePath, fnName) {
   const { execSync } = require('child_process');
   const os = require('os');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ac-runner-'));
-  const outFile = path.join(tmpDir, 'module.cjs');
+  const cleanup = () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} };
 
   try {
-    // 嘗試用專案的 esbuild
+    // 策略 A: esbuild（target 的 node_modules）
     const esbuildBin = path.join(target, 'node_modules', '.bin', 'esbuild');
-    const esbuildCmd = fs.existsSync(esbuildBin) ? esbuildBin : 'esbuild';
-
-    execSync(
-      `"${esbuildCmd}" "${filePath}" --bundle=false --platform=node --format=cjs --outfile="${outFile}"`,
-      { cwd: target, stdio: 'pipe' }
-    );
-
-    const mod = require(outFile);
-    const fn = mod[fnName] || mod.default?.[fnName];
-    if (typeof fn !== 'function') {
-      return { error: `編譯後模組沒有 export function ${fnName}` };
+    if (fs.existsSync(esbuildBin)) {
+      const outFile = path.join(tmpDir, 'module.cjs');
+      execSync(
+        `"${esbuildBin}" "${filePath}" --bundle=false --platform=node --format=cjs --outfile="${outFile}"`,
+        { cwd: target, stdio: 'pipe' }
+      );
+      const mod = require(outFile);
+      const fn = mod[fnName] || mod.default?.[fnName];
+      if (typeof fn !== 'function') return { error: `編譯後模組沒有 export function ${fnName}` };
+      return { fn, filePath, loader: 'esbuild-compile' };
     }
-    return { fn, filePath, loader: 'esbuild-compile' };
+
+    // 策略 B: tsc（ts-jest 專案必然有 typescript，所以 tsc 一定存在）
+    const tscBin = path.join(target, 'node_modules', '.bin', 'tsc');
+    if (fs.existsSync(tscBin)) {
+      const tscOutDir = path.join(tmpDir, 'tsc-out');
+      fs.mkdirSync(tscOutDir, { recursive: true });
+      execSync(
+        `"${tscBin}" "${filePath}" --outDir "${tscOutDir}" --module commonjs --target ES2020 --skipLibCheck --esModuleInterop --declaration false --noEmit false`,
+        { cwd: target, stdio: 'pipe' }
+      );
+      const baseName = path.basename(filePath, path.extname(filePath)) + '.js';
+      const findJs = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isDirectory()) { const r = findJs(path.join(dir, entry.name)); if (r) return r; }
+          else if (entry.name === baseName) return path.join(dir, entry.name);
+        }
+        return null;
+      };
+      const jsFile = findJs(tscOutDir);
+      if (jsFile) {
+        const mod = require(jsFile);
+        const fn = mod[fnName] || mod.default?.[fnName];
+        if (typeof fn !== 'function') return { error: `tsc 編譯後模組沒有 export function ${fnName}` };
+        return { fn, filePath, loader: 'tsc-compile' };
+      }
+    }
+
+    return { error: `TypeScript 編譯失敗：target 沒有 esbuild 或 tsc 可用`, filePath };
   } catch (e) {
-    return { error: `esbuild 編譯失敗: ${e.message}`, filePath };
+    return { error: `編譯失敗: ${e.message}`, filePath };
   } finally {
-    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+    cleanup();
   }
 }
 

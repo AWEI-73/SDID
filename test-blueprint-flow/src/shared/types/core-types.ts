@@ -6,6 +6,7 @@
  * GEMS-TEST: ✓ Unit | ✓ Integration | ✓ E2E
  * GEMS-TEST-FILE: core-types.test.ts
  */
+// AC-1.0
 
 // [STEP] DEFINE
 export interface Organization {

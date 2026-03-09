@@ -26,6 +26,7 @@ const pool = createPool(ENV_CONFIG.db);
  * GEMS-TEST: ✓ Unit | ✓ Integration | ✓ E2E
  * GEMS-TEST-FILE: db-client.test.ts
  */
+// AC-1.1
 export const dbClient = {
   query: async (sql: string, params?: unknown[]) => {
     if (!pool.connection.connected) throw new Error('DB not connected');

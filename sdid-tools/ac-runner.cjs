@@ -347,14 +347,28 @@ function runAc(spec, target) {
 
   result.actual = actual;
 
-  // 比對結果（使用 partial match，允許回傳值有額外欄位）
-  const matched = partialMatch(actual, spec.expect);
+  // 比對結果
+  // 若有 @GEMS-AC-FIELD，只取指定欄位做比對（適合回傳值含 timestamp 等不穩定欄位）
+  let compareActual = actual;
+  let compareExpect = spec.expect;
+  if (spec.fields && spec.fields.length > 0 &&
+      typeof actual === 'object' && actual !== null && !Array.isArray(actual)) {
+    compareActual = {};
+    compareExpect = {};
+    for (const f of spec.fields) {
+      compareActual[f] = actual[f];
+      compareExpect[f] = spec.expect?.[f];
+    }
+  }
+
+  const matched = partialMatch(compareActual, compareExpect);
   result.status = matched ? 'PASS' : 'FAIL';
 
   if (!matched) {
     result.diff = {
-      expected: spec.expect,
-      actual: actual,
+      expected: compareExpect,
+      actual: compareActual,
+      fields: spec.fields || null,
     };
   }
 
@@ -496,7 +510,7 @@ AC Runner v1.0 — 純計算函式驗收
     console.log(`@TASK-${taskNum}`);
     console.log(`  AC: ${r.id}`);
     console.log(`  ACTION: FIX_FUNCTION`);
-    console.log(`  FILE: src/${spec?.module}.ts`);
+    console.log(`  FILE: src/${spec?.module}  (.ts/.tsx/.js)`);
     console.log(`  FUNCTION: ${r.fn}`);
     if (r.status === 'FAIL') {
       console.log(`  INPUT: ${JSON.stringify(spec?.input)}`);

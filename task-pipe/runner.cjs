@@ -652,7 +652,7 @@ function runPhase(phase, step, options, config) {
  * Dry-run 模式：預覽將執行的動作
  */
 function runDryRun(phase, step, options) {
-  const { detectProjectType, getSrcDir } = require('./lib/project-type.cjs');
+  const { detectProjectType, getSrcDir } = require('./lib/shared/project-type.cjs');
 
   log('', 'reset');
   log(separator(), 'magenta');

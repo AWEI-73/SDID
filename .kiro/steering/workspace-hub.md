@@ -3,7 +3,7 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-09 23:35:59 UTC
+**更新**: 2026-03-10 00:05:14 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
@@ -37,6 +37,7 @@ ARCHITECTURE.md v5.0，更新 2026-03-04
 - `claude/festive-knuth` → C:/Users/user/Desktop/SDID/.claude/worktrees/festive-knuth
 
 **最近 commits**:
+- 06f98df fix: Wave 6 - update all old path strings to new folder structure
 - eb94ef5 fix: 修正 blueprint/ 移動後的 require 路徑 typo + BOM
 - 2a2b2ca refactor: Wave 1-5 — sdid-tools 資料夾重構 + MCP adapter 路徑更新 + 廢棄檔案清理
 - 1861101 chore: pre-refactor snapshot — Wave 0 rollback point
@@ -44,7 +45,6 @@ ARCHITECTURE.md v5.0，更新 2026-03-04
 - ff87ae5 fix(phase-1+phase-8): 兩個放寬改善
 - d9669ea chore(cleanup): 移除 GEMS-TEST 標籤 + 新增 @CONTRACT-LOCK Layer 2 文件
 - f78d487 fix(ac-runner): @FORBIDDEN 改為 @RULES，允許 [SPEC-FIX] 標記後修改 contract
-- 96d859b fix(ac-runner): 強化 log output 指引，區分 intentional/accidental SKIP
 
 ## 專案狀態（SDID 管理中）
 

@@ -1,7 +1,7 @@
 # 📖 SDID 操作手冊 — 雙流程對照指南
 
-**版本**: v1.3
-**日期**: 2026-02-13
+**版本**: v1.4
+**日期**: 2026-03-10
 **語言**: 繁體中文
 
 ---
@@ -453,11 +453,11 @@ SCAN 產出:
 | 工具 | 路徑 | 用途 | 所屬路線 |
 |------|------|------|---------|
 | blueprint-architect.cjs | task-pipe/tools/ | 產出 Gem prompt / 驗證 Draft | A |
-| blueprint-gate.cjs | sdid-tools/ | 藍圖品質門控 | A |
-| draft-to-plan.cjs | sdid-tools/ | 藍圖→執行計畫 | A |
-| blueprint-shrink.cjs | sdid-tools/ | 藍圖收縮 | A |
-| blueprint-expand.cjs | sdid-tools/ | Stub 展開 | A |
-| blueprint-verify.cjs | sdid-tools/ | 藍圖↔源碼比對 | A |
+| blueprint-gate.cjs | sdid-tools/blueprint/ | 藍圖品質門控 | A |
+| draft-to-plan.cjs | sdid-tools/blueprint/ | 藍圖→執行計畫 | A |
+| blueprint-shrink.cjs | sdid-tools/blueprint/ | 藍圖收縮 | A |
+| blueprint-expand.cjs | sdid-tools/blueprint/ | Stub 展開 | A |
+| blueprint-verify.cjs | sdid-tools/blueprint/ | 藍圖↔源碼比對 | A |
 | runner.cjs | task-pipe/ | Task-Pipe 主入口 | B (BUILD 共用) |
 | draft-parser-standalone.cjs | sdid-tools/lib/ | 藍圖解析器 | A |
 | log-output.cjs | sdid-tools/lib/ | Log 存檔 (獨立版) | A |
@@ -729,4 +729,4 @@ node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=1 --target=<pr
 
 ---
 
-**文件版本**: v1.3 | **方法論**: SDID v2.1 | **日期**: 2026-02-13
+**文件版本**: v1.4 | **方法論**: SDID v2.1 | **日期**: 2026-03-10

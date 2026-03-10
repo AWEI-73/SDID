@@ -28,7 +28,7 @@
 const fs   = require('fs');
 const path = require('path');
 
-const { scanV2 }  = require('./gems-scanner-v2.cjs');
+const { scanV2 }  = require('./lib/gems-scanner-v2.cjs');
 const specGatePath = path.join(__dirname, 'spec-gate.cjs');
 
 // ─────────────────────────────────────────────────────────────

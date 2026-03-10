@@ -9,7 +9,7 @@ import { TOOLS_DIR, resolvePath } from '../lib/utils.mjs';
 
 const require = createRequire(import.meta.url);
 const fs = require('fs');
-const scanner = require(path.join(TOOLS_DIR, 'gems-scanner-v2.cjs'));
+const scanner = require(path.join(TOOLS_DIR, 'lib', 'gems-scanner-v2.cjs'));
 const dictSync = require(path.join(TOOLS_DIR, 'dict-sync.cjs'));
 
 // ── sdid-dict-sync ──

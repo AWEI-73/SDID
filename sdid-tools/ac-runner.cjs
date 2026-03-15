@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AC Runner v1.0
+ * AC Runner v2.0
  * 讀取 contract_iter-N.ts 的 @GEMS-AC 標記，直接 require 函式執行比對
  *
  * 設計原則:
@@ -8,12 +8,17 @@
  *   - 只驗收「純計算」類 AC（無 side effect、無 DOM、無 API call）
  *   - UI/Hook/整合類 AC 繼續靠 POC.HTML 人工確認
  *
+ * v2.0 變更:
+ *   - Story-scope: 自動從 @GEMS-STORY-ITEM 推導 AC→Story 映射
+ *     --story=Story-X.Y 時只跑該 Story 的 AC，不依賴 @GEMS-AC-STORY 標記
+ *   - 格式異常升級為 ERROR: INPUT/EXPECT parse 失敗 → BLOCKER，不再靜默跳過
+ *
  * 用法:
- *   node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N]
+ *   node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N] [--story=Story-X.Y]
  *
  * 輸出:
  *   @PASS    — 所有 AC 通過
- *   @BLOCKER — 有 AC 失敗（函式回傳值與預期不符）
+ *   @BLOCKER — 有 AC 失敗（函式回傳值與預期不符）或格式異常
  */
 
 'use strict';
@@ -56,6 +61,24 @@ function parseAcSpecs(contractContent) {
   const specs = [];
   const lines = contractContent.split('\n');
 
+  // ── Pass 1: 從 @GEMS-STORY / @GEMS-STORY-ITEM 建立 AC→Story 映射 ──────────
+  // 格式: // @GEMS-STORY: Story-X.Y | moduleName | desc | type
+  //       // @GEMS-STORY-ITEM: fnName | TYPE | P0 | FLOW | DEPS | AC-X.Y
+  const acStoryMap = {}; // { 'AC-1.0': 'Story-1.0', ... }
+  let _currentStory = null;
+  for (const line of lines) {
+    const t = line.trim();
+    // 只匹配帶 pipe 的 STORY 區段標頭（區分 @GEMS-STORY: Story-0.0 | ... 和 metadata）
+    const storyHeaderMatch = t.match(/^\/\/\s*@GEMS-STORY:\s*(Story-[\w.]+)\s*\|/);
+    if (storyHeaderMatch) { _currentStory = storyHeaderMatch[1]; continue; }
+    if (_currentStory) {
+      // 取最後一欄為 AC-X.Y（忽略 "-"）
+      const itemMatch = t.match(/^\/\/\s*@GEMS-STORY-ITEM:.*\|\s*(AC-[\d.]+)\s*$/);
+      if (itemMatch) acStoryMap[itemMatch[1]] = _currentStory;
+    }
+  }
+
+  // ── Pass 2: 解析 @GEMS-AC 區塊（原有邏輯）────────────────────────────────
   let current = null;
   for (const line of lines) {
     const trimmed = line.trim();
@@ -85,8 +108,14 @@ function parseAcSpecs(contractContent) {
 
     const expectMatch = trimmed.match(/^\/\/\s*@GEMS-AC-EXPECT:\s*(.+)/);
     if (expectMatch) {
-      try { current.expect = JSON.parse(expectMatch[1]); } catch (e) {
-        current.expectParseError = `JSON parse failed: ${e.message}`;
+      const raw = expectMatch[1].trim();
+      // 支援函式形式: (result) => ... 或 result => ...
+      if (raw.startsWith('(') || /^\w+\s*=>/.test(raw)) {
+        current.expectFn = raw;
+      } else {
+        try { current.expect = JSON.parse(raw); } catch (e) {
+          current.expectParseError = `JSON parse failed: ${e.message}`;
+        }
       }
       continue;
     }
@@ -105,12 +134,24 @@ function parseAcSpecs(contractContent) {
     const expectThrowMatch = trimmed.match(/^\/\/\s*@GEMS-AC-EXPECT-THROW:\s*(\S+)/);
     if (expectThrowMatch) { current.expectThrow = expectThrowMatch[1]; continue; }
 
+    // @GEMS-AC-STORY: Story-X.Y  → 所屬 Story，供 --story 過濾
+    const storyMatch = trimmed.match(/^\/\/\s*@GEMS-AC-STORY:\s*(\S+)/);
+    if (storyMatch) { current.story = storyMatch[1]; continue; }
+
     // 遇到非 @GEMS-AC 的非空行就結束當前 spec
     if (trimmed && !trimmed.startsWith('//')) {
       if (current) { specs.push(current); current = null; }
     }
   }
   if (current) specs.push(current);
+
+  // ── Pass 3: 補上從 STORY-ITEM 推導的 story（未有明確 @GEMS-AC-STORY 時）──
+  for (const spec of specs) {
+    if (!spec.story && acStoryMap[spec.id]) {
+      spec.story = acStoryMap[spec.id];
+      spec.storyDerived = true; // 標記為推導來源，供 debug 用
+    }
+  }
 
   return specs;
 }
@@ -287,7 +328,7 @@ function compileAndLoad(target, filePath, fnName) {
     if (fs.existsSync(esbuildBin)) {
       const outFile = path.join(tmpDir, 'module.cjs');
       execSync(
-        `"${esbuildBin}" "${filePath}" --bundle=false --platform=node --format=cjs --outfile="${outFile}"`,
+        `"${esbuildBin}" "${filePath}" --bundle=true --platform=node --format=cjs --outfile="${outFile}"`,
         { cwd: target, stdio: 'pipe' }
       );
       const mod = require(outFile);
@@ -377,13 +418,19 @@ function runAc(spec, target) {
   // @GEMS-AC-SKIP: MOCK/MANUAL AC → 直接 SKIP，不進入驗收流程（不計入 BLOCKER）
   if (spec.skip) return { ...result, status: 'SKIP', error: `[SKIP] ${spec.skip}` };
 
-  // 驗證 spec 完整性
-  if (!spec.fn)     return { ...result, status: 'SKIP', error: '缺少 @GEMS-AC-FN' };
-  if (!spec.module) return { ...result, status: 'SKIP', error: '缺少 @GEMS-AC-MODULE' };
-  if (spec.input === null) return { ...result, status: 'SKIP', error: spec.inputParseError || '缺少 @GEMS-AC-INPUT' };
+  // 驗證 spec 完整性（格式殘缺 → ERROR，不是 SKIP，Phase 2 應 BLOCKER）
+  if (!spec.fn)     return { ...result, status: 'ERROR', error: '格式異常: 缺少 @GEMS-AC-FN' };
+  if (!spec.module) return { ...result, status: 'ERROR', error: '格式異常: 缺少 @GEMS-AC-MODULE' };
+  if (spec.input === null) {
+    return { ...result, status: 'ERROR', error: spec.inputParseError
+      ? `格式異常: @GEMS-AC-INPUT ${spec.inputParseError}`
+      : '格式異常: 缺少 @GEMS-AC-INPUT' };
+  }
   // @GEMS-AC-EXPECT-THROW 不需要 @GEMS-AC-EXPECT
-  if (!spec.expectThrow && spec.expect === null) {
-    return { ...result, status: 'SKIP', error: spec.expectParseError || '缺少 @GEMS-AC-EXPECT' };
+  if (!spec.expectThrow && spec.expect === null && !spec.expectFn) {
+    return { ...result, status: 'ERROR', error: spec.expectParseError
+      ? `格式異常: @GEMS-AC-EXPECT ${spec.expectParseError}`
+      : '格式異常: 缺少 @GEMS-AC-EXPECT' };
   }
 
   // 載入函式
@@ -427,6 +474,23 @@ function runAc(spec, target) {
 
   result.actual = actual;
 
+  // 函式形式 expect: (result) => boolean
+  if (spec.expectFn) {
+    try {
+      // eslint-disable-next-line no-new-func
+      const fn = new Function('result', `return (${spec.expectFn})(result)`);
+      const passed = fn(actual);
+      result.status = passed ? 'PASS' : 'FAIL';
+      if (!passed) {
+        result.diff = { expected: spec.expectFn, actual };
+      }
+    } catch (e) {
+      result.status = 'ERROR';
+      result.error = `expectFn 執行失敗: ${e.message}`;
+    }
+    return result;
+  }
+
   // 比對結果
   // 若有 @GEMS-AC-FIELD，只取指定欄位做比對（適合回傳值含 timestamp 等不穩定欄位）
   let compareActual = actual;
@@ -464,16 +528,17 @@ function main() {
 
   if (args.help) {
     console.log(`
-AC Runner v1.1 — 純計算函式驗收
+AC Runner v2.0 — 純計算函式驗收
 
 用法:
-  node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N]
+  node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N] [--story=Story-X.Y]
 
 選項:
-  --contract=<path>  contract_iter-N.ts 路徑（必填）
-  --target=<path>    專案根目錄（必填）
-  --iter=<N>         迭代編號（用於存 log，預設: 1）
-  --help             顯示此訊息
+  --contract=<path>    contract_iter-N.ts 路徑（必填）
+  --target=<path>      專案根目錄（必填）
+  --iter=<N>           迭代編號（用於存 log，預設: 1）
+  --story=<Story-X.Y>  只跑該 Story 的 AC（從 @GEMS-STORY-ITEM 自動推導映射）
+  --help               顯示此訊息
 
 AC 分類與 contract 格式:
 
@@ -518,14 +583,29 @@ AC 分類與 contract 格式:
 
   const iterNum = args.iter || 1;
   const content = fs.readFileSync(args.contract, 'utf8');
-  const specs = parseAcSpecs(content);
+  let specs = parseAcSpecs(content);
 
   if (specs.length === 0) {
     console.log('\n@SKIP | ac-runner | contract 沒有 @GEMS-AC 標記，跳過 AC 驗收\n');
     process.exit(0);
   }
 
-  console.log(`\n🧪 AC Runner v1.1`);
+  // --story 過濾 v2: 從 @GEMS-STORY-ITEM 推導的 story 映射已在 parseAcSpecs 完成
+  // 規則: story 已知 → 只跑匹配的；story 未知（無映射、舊格式）→ 照常執行（向下相容）
+  if (args.story) {
+    const filtered = specs.filter(s => !s.story || s.story === args.story);
+    const calcCount = filtered.filter(s => !s.skip).length;
+    if (filtered.length === 0 || calcCount === 0) {
+      console.log(`\n@SKIP | ac-runner | ${args.story} 無 CALC AC，跳過\n`);
+      process.exit(0);
+    }
+    const derivedCount = filtered.filter(s => s.storyDerived).length;
+    const label = derivedCount > 0 ? ` (${derivedCount} 個從 STORY-ITEM 推導)` : '';
+    console.log(`\n📌 Story 過濾: ${args.story} — ${filtered.length}/${specs.length} AC${label}`);
+    specs = filtered;
+  }
+
+  console.log(`\n🧪 AC Runner v2.0`);
   console.log(`   Contract: ${path.relative(args.target, args.contract)}`);
   console.log(`   AC 數量: ${specs.length} 個\n`);
 

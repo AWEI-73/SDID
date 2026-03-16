@@ -9,32 +9,16 @@ import { TOOLS_DIR, resolvePath, runCli, runRunner } from '../lib/utils.mjs';
 
 const require = createRequire(import.meta.url);
 const stateMachine = require(path.join(TOOLS_DIR, '..', 'sdid-core', 'state-machine.cjs'));
-
-function ensureIterStructure(projectRoot, iterNum) {
-  stateMachine.ensureIterStructure(projectRoot, iterNum);
-}
-
-function inferBlueprintState(projectRoot, iterNum) {
-  const plannedStories = stateMachine.findPlannedStories(projectRoot, iterNum);
-  const completedStories = stateMachine.findCompletedStories(projectRoot, iterNum);
-  const draftPath = stateMachine.findDraft(projectRoot, iterNum);
-  const inferred = stateMachine.inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStories);
-  if (!inferred) {
-    return { phase: draftPath ? 'GATE' : 'NO_DRAFT', draftPath, plannedStories, completedStories };
-  }
-  return { ...inferred, draftPath, plannedStories, completedStories };
-}
+const orchestrator = require(path.join(TOOLS_DIR, '..', 'sdid-core', 'orchestrator.cjs'));
 
 export const schema = {
   title: 'SDID Loop (主入口)',
-  description: `🔁 唯一主流程入口 — 所有 SDID 開發流程必須從此工具開始，禁止直接呼叫其他 sdid-* 工具。自動偵測專案狀態並執行下一步，支援四條路線：
-  Blueprint: GATE → PLAN → BUILD (Phase 1-8) → VERIFY
-  Task-Pipe: POC → PLAN → BUILD → SCAN → VERIFY
-  POC-FIX:   micro-fix-gate → 修復循環
-  MICRO-FIX: micro-fix-gate → DONE
-每次呼叫會：(1) 偵測路線+當前階段 (2) 執行對應工具 (3) 回傳結果 + @TASK 或 @NEXT 指示。
+  description: `🔁 唯一主流程入口 — 所有 SDID 開發流程必須從此工具開始，禁止直接呼叫其他 sdid-* 工具。自動偵測專案狀態並執行下一步，支援兩條路線（文件驅動自動偵測）：
+  有 requirement_draft → Blueprint 路線: GATE → CYNEFIN → CONTRACT → PLAN → BUILD (Phase 1-4) → VERIFY
+  有 requirement_spec  → Task-Pipe 路線: POC → spec-to-plan → BUILD (Phase 1-4) → SCAN
+  POC-FIX / MICRO-FIX 路線自動偵測。
+每次呼叫會：(1) 偵測當前階段（由文件存在與否決定，不靠 route 參數） (2) 執行對應工具 (3) 回傳結果 + @TASK 或 @NEXT 指示。
 收到 @TASK 時請修改程式碼，修完後再次呼叫此工具。收到 @PASS 時直接再次呼叫。
-💡 route 參數: 新專案可指定 route="Task-Pipe" 強制走 POC→PLAN→BUILD→SCAN 流程，或 route="Blueprint" 走活藍圖流程。省略則自動偵測。
 ⛔ 嚴禁在 sdid-loop 之外自行呼叫 sdid-blueprint-gate、sdid-spec-gen、sdid-spec-gate、sdid-build、sdid-scan、sdid-micro-fix-gate、sdid-poc-scaffold。
 ⛔ 嚴禁讀取 sdid-tools/*.cjs、task-pipe/**/*.cjs、sdid-core/*.cjs 等框架腳本原始碼 — 不得透過讀腳本推斷驗證邏輯來針對性修改 draft 或 src 過關。只根據 @TASK/@BLOCKER 的錯誤訊息修復。`,
   inputSchema: {
@@ -42,11 +26,10 @@ export const schema = {
     iter: z.number().optional().describe('迭代編號（省略則自動偵測最新）'),
     story: z.string().optional().describe('指定 Story ID（BUILD 階段用，省略則自動偵測）'),
     forceStart: z.string().optional().describe('強制從指定階段開始（GATE/PLAN/BUILD-N/VERIFY/POC/SCAN）。SHRINK 已移為可選工具，可手動執行 node task-pipe/tools/shrink-tags.cjs。'),
-    route: z.enum(['Blueprint', 'Task-Pipe']).optional().describe('強制指定開發路線。Blueprint=活藍圖流程(GATE→PLAN→BUILD→VERIFY)；Task-Pipe=漸進式流程(POC→PLAN→BUILD→SCAN→VERIFY)。省略則自動偵測。'),
   },
 };
 
-export async function handler({ project, iter, story, forceStart, route }) {
+export async function handler({ project, iter, story, forceStart }) {
   const fs = require('fs');
   const projectRoot = resolvePath(project);
 
@@ -54,43 +37,31 @@ export async function handler({ project, iter, story, forceStart, route }) {
     return { content: [{ type: 'text', text: `ERROR: 找不到專案目錄: ${projectRoot}` }] };
   }
 
-  // Detect latest iteration
-  let iterNum = iter;
-  if (!iterNum) {
-    const iterDir = path.join(projectRoot, '.gems', 'iterations');
-    if (fs.existsSync(iterDir)) {
-      const iters = fs.readdirSync(iterDir)
-        .filter(d => /^iter-\d+$/.test(d))
-        .map(d => parseInt(d.replace('iter-', ''), 10))
-        .sort((a, b) => b - a);
-      iterNum = iters[0] || 1;
-    } else {
-      iterNum = 1;
-    }
-  }
-
-  ensureIterStructure(projectRoot, iterNum);
-
-  // Detect state
+  // Detect state via orchestrator (handles iter auto-detection + ensureIterStructure)
+  const iterOpt = iter ? `iter-${iter}` : undefined;
   let state;
   if (forceStart) {
+    // forceStart: 先取得 auto-detected state 以拿到 draftPath/plannedStories/completedStories
+    const baseState = orchestrator.detectProjectState(projectRoot, { iter: iterOpt, story: story || null });
     const buildMatch = forceStart.match(/^BUILD-?(\d+)?$/i);
     if (buildMatch) {
-      const inferred = inferBlueprintState(projectRoot, iterNum);
-      state = { phase: 'BUILD', step: parseInt(buildMatch[1] || '1'), story: story || inferred.plannedStories?.[0], draftPath: inferred.draftPath, plannedStories: inferred.plannedStories, completedStories: inferred.completedStories };
+      state = { ...baseState, phase: 'BUILD', step: parseInt(buildMatch[1] || '1'), story: story || baseState.plannedStories?.[0] };
     } else {
       const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'NEXT-ITER': 'NEXT_ITER', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX', 'CYNEFIN-CHECK': 'CYNEFIN_CHECK', 'CYNEFIN': 'CYNEFIN_CHECK', 'CONTRACT': 'CONTRACT' };
       const phase = phaseMap[forceStart.toUpperCase()];
       if (!phase) {
         return { content: [{ type: 'text', text: `ERROR: 無效的 forceStart: ${forceStart}\n有效值: GATE, PLAN, BUILD-N, VERIFY, POC, SCAN, NEXT-ITER, POC-FIX, MICRO-FIX, CONTRACT\n💡 SHRINK 已移為可選工具，請直接執行: node task-pipe/tools/shrink-tags.cjs --target=<project>` }] };
       }
-      const inferred = inferBlueprintState(projectRoot, iterNum);
-      state = { phase, draftPath: inferred.draftPath, plannedStories: inferred.plannedStories, completedStories: inferred.completedStories };
+      state = { ...baseState, phase };
     }
   } else {
-    state = inferBlueprintState(projectRoot, iterNum);
+    state = orchestrator.detectProjectState(projectRoot, { iter: iterOpt, story: story || null });
     if (story && state.phase === 'BUILD') state.story = story;
   }
+
+  const iterNum = parseInt((state.iteration || state.iter || 'iter-1').replace('iter-', ''), 10);
+  // 文件驅動路線偵測：有 draft → Blueprint，有 spec → Task-Pipe
+  const detectedRoute = state.route || stateMachine.detectRoute(projectRoot, `iter-${iterNum}`);
 
   const lines = [];
   lines.push('══════════════════════════════════════════════════');
@@ -99,23 +70,7 @@ export async function handler({ project, iter, story, forceStart, route }) {
   lines.push('');
   lines.push(`📁 專案: ${projectRoot}`);
   lines.push(`📍 迭代: iter-${iterNum}`);
-  const detectedRoute = stateMachine.detectRoute(projectRoot, `iter-${iterNum}`);
-  const effectiveRoute = route || detectedRoute;
-  lines.push(`📍 路線: ${effectiveRoute}${route && route !== detectedRoute ? ` (強制，偵測為 ${detectedRoute})` : ''}`);
-
-  // 如果明確指定 Task-Pipe，強制走 POC 路線
-  // 條件：沒有 requirement_spec_iter-N.md（POC Step 5 產物）時，強制回 POC
-  // 有 spec 代表 POC 已完成，可以繼續 PLAN/BUILD
-  if (route === 'Task-Pipe') {
-    const pocDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc');
-    const hasSpec = fs.existsSync(pocDir) &&
-      fs.readdirSync(pocDir).some(f => f.startsWith('requirement_spec_'));
-    if (!hasSpec) {
-      const wasAlreadyPoc = state.phase === 'POC';
-      state.phase = 'POC';
-      if (!wasAlreadyPoc) state.step = '1';
-    }
-  }
+  lines.push(`📍 路線: ${detectedRoute}`);
   lines.push(`📍 狀態: ${state.phase}${state.step ? ' Phase ' + state.step : ''}${state.story ? ' ' + state.story : ''}`);
 
   // ========== HUB: 注入現有程式碼 context ==========
@@ -254,19 +209,15 @@ export async function handler({ project, iter, story, forceStart, route }) {
   if (state.phase === 'COMPLETE') {
     lines.push('');
     lines.push('@PASS: iter-' + iterNum + ' 全部完成！');
-    lines.push(`<promise>${effectiveRoute === 'Blueprint' ? 'BLUEPRINT' : effectiveRoute.toUpperCase()}-COMPLETE</promise>`);
+    lines.push(`<promise>${state.draftPath ? 'BLUEPRINT' : 'GEMS'}-COMPLETE</promise>`);
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
 
-  // Task-Pipe 路線：BUILD 全部完成後 → SCAN（不經過 SHRINK，state machine 返回 VERIFY 時重導向）
-  if (effectiveRoute === 'Task-Pipe' && state.phase === 'VERIFY') {
-    const hasScanLog = (() => {
-      try {
-        const logsDir = require('path').join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
-        return require('fs').existsSync(logsDir) &&
-          require('fs').readdirSync(logsDir).some(f => f.startsWith('scan-pass-'));
-      } catch { return false; }
-    })();
+  // Task-Pipe（無 draft）：BUILD 完成後 → SCAN（不經 VERIFY）
+  if (!state.draftPath && state.phase === 'VERIFY') {
+    const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+    const hasScanLog = fs.existsSync(logsDir) &&
+      fs.readdirSync(logsDir).some(f => f.startsWith('scan-pass-'));
     if (!hasScanLog) {
       state.phase = 'SCAN';
       lines.push(`↪️  Task-Pipe: VERIFY → SCAN（尚未執行 SCAN）`);
@@ -285,16 +236,15 @@ export async function handler({ project, iter, story, forceStart, route }) {
       break;
     }
     case 'PLAN': {
-      if (effectiveRoute === 'Task-Pipe') {
-        // Task-Pipe 路線：spec 已有 5.5 函式規格表，直接機械轉換
-        lines.push(`🚀 執行: spec-to-plan.cjs (spec → plan 機械轉換，跳過 PLAN 步驟)`);
-        result = await runCli('../task-pipe/tools/spec-to-plan.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
-      } else {
-        // Blueprint 路線：機械轉換 draft/spec → plan
+      if (state.draftPath) {
+        // Blueprint：有 draft → draft-to-plan（含 contract 支援）
         lines.push(`🚀 執行: draft-to-plan.cjs`);
-        const dtpArgs = [`--iter=${iterNum}`, `--target=${projectRoot}`];
-        if (state.draftPath) dtpArgs.unshift(`--draft=${state.draftPath}`);
+        const dtpArgs = [`--draft=${state.draftPath}`, `--iter=${iterNum}`, `--target=${projectRoot}`];
         result = await runCli('blueprint/draft-to-plan.cjs', dtpArgs);
+      } else {
+        // Task-Pipe：無 draft，spec 已有函式規格表 → spec-to-plan 機械轉換
+        lines.push(`🚀 執行: spec-to-plan.cjs (spec → plan 機械轉換)`);
+        result = await runCli('../task-pipe/tools/spec-to-plan.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
       }
       break;
     }
@@ -313,8 +263,8 @@ export async function handler({ project, iter, story, forceStart, route }) {
       lines.push(`💡 若需壓縮 GEMS 標籤，請手動執行: node task-pipe/tools/shrink-tags.cjs --target=${projectRoot}`);
       lines.push(`💡 若需壓縮 draft/plan 文件，請手動執行: node sdid-tools/blueprint/shrink.cjs --draft=<draft> --target=${projectRoot} --iter=${iterNum}`);
       lines.push('');
-      // 根據路線決定下一步
-      state.phase = effectiveRoute === 'Task-Pipe' ? 'SCAN' : 'VERIFY';
+      // 根據文件存在與否決定下一步（無 draft → Task-Pipe → SCAN；有 draft → Blueprint → VERIFY）
+      state.phase = state.draftPath ? 'VERIFY' : 'SCAN';
       lines.push(`↪️  自動重導向至: ${state.phase}`);
       // fall through to next phase by re-invoking logic below
       if (state.phase === 'SCAN') {

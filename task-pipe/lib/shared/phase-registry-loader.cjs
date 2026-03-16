@@ -231,8 +231,8 @@ function getNextCommand(phase, step, story, level = 'M') {
 
     let cmd = `node task-pipe/runner.cjs --phase=${next.phase} --step=${next.step}`;
 
-    // BUILD 和部分 PLAN 步驟需要 --story
-    if (next.phase === 'BUILD' || (next.phase === 'PLAN' && next.step !== '1')) {
+    // BUILD 需要 --story
+    if (next.phase === 'BUILD') {
         if (story) {
             cmd += ` --story=${story}`;
         }
@@ -250,7 +250,7 @@ function getNextCommand(phase, step, story, level = 'M') {
  */
 function getRetryCommand(phase, step, story) {
     let cmd = `node task-pipe/runner.cjs --phase=${phase} --step=${step}`;
-    if (story && (phase === 'BUILD' || (phase === 'PLAN' && step !== '1'))) {
+    if (story && phase === 'BUILD') {
         cmd += ` --story=${story}`;
     }
     return cmd;

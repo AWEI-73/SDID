@@ -125,7 +125,8 @@ const ALLOWED_PREFIXES = ['sdid-tools/', 'task-pipe/'];
 
 function isAllowedCommand(cmd) {
   const withoutNode = cmd.trim().replace(/^node\s+/, '');
-  return ALLOWED_PREFIXES.some(prefix => withoutNode.startsWith(prefix));
+  const normalized = path.normalize(withoutNode);
+  return ALLOWED_PREFIXES.some(prefix => normalized.startsWith(prefix));
 }
 
 export const run = {

@@ -85,244 +85,80 @@
             }
         }
     },
-    "PLAN": {
-        "steps": [
-            "1",
-            "2",
-            "3",
-            "4",
-            "5"
-        ],
-        "prefix": "step",
-        "definitions": {
-            "1": {
-                "name": "Story Picker",
-                "file": "step-1.cjs",
-                "description": "選擇 Story",
-                "actions": [
-                    "Requirement confirmation",
-                    "Ambiguity elimination"
-                ],
-                "requires": [
-                    "requirement_spec"
-                ],
-                "produces": []
-            },
-            "2": {
-                "name": "Implementation Plan",
-                "file": "step-2.cjs",
-                "description": "規格注入",
-                "actions": [
-                    "Spec injection",
-                    "Read POC output"
-                ],
-                "requires": [],
-                "produces": [
-                    "implementation_plan"
-                ],
-                "checkFile": "plan/implementation_plan_{story}.md"
-            },
-            "3": {
-                "name": "Architecture Audit v3.0",
-                "file": "step-3.cjs",
-                "description": "架構審查 + 風險自動校驗 + P0/P1 分佈警告",
-                "actions": [
-                    "Architecture audit",
-                    "Constitution Audit",
-                    "Risk level auto-validation (v3.0)",
-                    "P0/P1 distribution warning (v3.0)",
-                    "Test strategy linkage check (v3.0)"
-                ],
-                "requires": [
-                    "implementation_plan"
-                ],
-                "produces": [],
-                "riskValidation": {
-                    "externalDepsRequiresMedium": true,
-                    "deleteOperationsRequiresHigh": true,
-                    "paymentRequiresHighAndE2E": true
-                }
-            },
-            "4": {
-                "name": "Tag Specification",
-                "file": "step-4.cjs",
-                "description": "標籤規格設計",
-                "actions": [
-                    "Tag spec design",
-                    "GEMS v2.1"
-                ],
-                "requires": [],
-                "produces": []
-            },
-            "5": {
-                "name": "Plan Verification",
-                "file": "step-5.cjs",
-                "description": "Plan 驗證",
-                "actions": [
-                    "Generate implementation plan"
-                ],
-                "requires": [],
-                "produces": []
-            }
-        }
-    },
     "BUILD": {
         "phases": [
             "1",
             "2",
             "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8"
+            "4"
         ],
         "prefix": "phase",
+        "schemaVersion": "v6",
         "definitions": {
             "1": {
-                "name": "開發腳本",
+                "name": "骨架映射層",
                 "file": "phase-1.cjs",
-                "description": "讀取 implementation plan，產出功能程式碼骨架",
+                "description": "讀取 implementation plan + contract.ts + ac.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3）",
                 "actions": [
                     "Read implementation plan",
-                    "Generate dev script",
+                    "Read contract.ts for type alignment",
+                    "Read ac.ts for AC ID mapping",
+                    "Generate skeleton with GEMS tags (all functions, P0-P3)",
                     "Write checkpoint"
                 ],
                 "requires": [
-                    "implementation_plan"
+                    "implementation_plan",
+                    "contract_ts"
                 ],
                 "produces": [
                     "source_code"
                 ]
             },
             "2": {
-                "name": "標籤驗收",
+                "name": "AC 驗收層",
                 "file": "phase-2.cjs",
-                "description": "驗證 GEMS 標籤覆蓋率與 P0/P1 合規",
+                "description": "呼叫 ac-runner 執行 ac.ts（或 contract.ts）的 @GEMS-AC，CALC AC 全 PASS 才過",
                 "actions": [
-                    "Scan GEMS tags",
-                    "Compare with Plan spec",
-                    "Check P0/P1 compliance"
+                    "Locate ac.ts or contract.ts",
+                    "Run ac-runner",
+                    "Relay ac-runner @TASK output on failure",
+                    "PASS only when all CALC AC pass (SKIP[CANVAS/INTEGRATION/EXTERNAL] excluded)"
                 ],
                 "requires": [
-                    "source_code"
+                    "source_code",
+                    "ac_spec"
                 ],
-                "produces": []
+                "produces": [
+                    "ac_results"
+                ]
             },
             "3": {
-                "name": "測試腳本",
+                "name": "整合層",
                 "file": "phase-3.cjs",
-                "description": "AC 驅動測試指引：從 contract 讀取 @GEMS-AC，按 GEMS-TEST 策略分組（jest-unit/jest-integ vs ac-runner/poc-html/skip）",
+                "description": "跨模組整合檢查：路由、模組匯出、SKIP[INTEGRATION] AC",
                 "actions": [
-                    "Load AC specs from contract_iter-N.ts",
-                    "Group functions by GEMS-TEST strategy",
-                    "Output AC-driven test guide with I/O",
-                    "Skip ac-runner/poc-html/skip functions"
+                    "Check route integration",
+                    "Verify module exports (index.ts facade)",
+                    "Run SKIP[INTEGRATION] AC via ac-runner if applicable",
+                    "Check dependency direction"
                 ],
                 "requires": [
-                    "source_code"
+                    "ac_results"
                 ],
-                "produces": [
-                    "test_files"
-                ]
-            },
-            "4": {
-                "name": "Test Gate v4.0",
-                "file": "phase-4.cjs",
-                "description": "驗證測試檔案存在、import 正確、AC coverage、測試類型符合 Priority；ac-runner/poc-html/skip 直接 skip",
-                "actions": [
-                    "Skip ac-runner/poc-html/skip strategy functions",
-                    "Check test file imports tested function (jest-unit/jest-integ)",
-                    "AC coverage check: scan it('AC-X.Y') pattern vs contract ACs",
-                    "Verify P0 has E2E test (*.e2e.test.ts or cypress)",
-                    "Verify P1 has Integration test (*.integration.test.ts)",
-                    "Detect fake integration tests (>50% mock)",
-                    "GEMS-TEST-FILE is hint only (not BLOCKER)"
-                ],
-                "requires": [
-                    "test_files"
-                ],
-                "produces": [],
-                "testTypeRules": {
-                    "P0": [
-                        "Unit",
-                        "Integration",
-                        "E2E"
-                    ],
-                    "P1": [
-                        "Unit",
-                        "Integration"
-                    ],
-                    "P2": [
-                        "Unit"
-                    ],
-                    "P3": []
-                }
-            },
-            "5": {
-                "name": "TDD 執行",
-                "file": "phase-5.cjs",
-                "description": "執行測試並產生 LOG",
-                "actions": [
-                    "Detect test environment",
-                    "Run npm test",
-                    "Verify 100% pass",
-                    "Save test log"
-                ],
-                "requires": [
-                    "test_files"
-                ],
-                "produces": [
-                    "test_results"
-                ]
-            },
-            "6": {
-                "name": "修改檔案測試",
-                "file": "phase-6.cjs",
-                "description": "驗證修改檔案的測試通過",
-                "actions": [
-                    "Confirm test pass"
-                ],
-                "requires": [
-                    "test_results"
-                ],
-                "produces": [],
-                "deprecated": true,
-                "deprecatedReason": "功能與 Phase 5 重複，可用 --pass 跳過",
-                "skipInLevels": [
-                    "S",
-                    "M"
-                ]
-            },
-            "7": {
-                "name": "整合檢查 v4.1",
-                "file": "phase-7.cjs",
-                "description": "檢查路由、UI Bind、模組匯出、依賴更新",
-                "actions": [
-                    "Check route integration (BLOCKER if unregistered)",
-                    "Validate @GEMS-UI-BIND consistency (Vanilla JS)",
-                    "Verify module exports",
-                    "Check dependency updates"
-                ],
-                "requires": [],
                 "produces": [],
                 "skipInLevels": [
                     "S"
-                ],
-                "criticalChecks": {
-                    "routeIntegration": "BLOCKER",
-                    "uiBind": "WARNING",
-                    "moduleExports": "WARNING"
-                }
+                ]
             },
-            "8": {
-                "name": "完成規格",
-                "file": "phase-8.cjs",
-                "description": "產出 Fillback 與 Suggestions",
+            "4": {
+                "name": "標籤品質+Fillback層",
+                "file": "phase-4.cjs",
+                "description": "GEMS 標籤品質複查（全覆蓋驗收）+ 產出 Fillback 與 Suggestions",
                 "actions": [
+                    "Scan GEMS tags quality (all P0-P3, GEMS-FLOW completeness, AC ID alignment)",
                     "Scan source to generate Fillback",
                     "Generate Suggestions JSON",
-                    "Clear checkpoints"
+                    "Update functions.json"
                 ],
                 "requires": [],
                 "produces": [
@@ -357,31 +193,8 @@
         }
     },
     "levelPhases": {
-        "S": [
-            "1",
-            "2",
-            "7",
-            "8"
-        ],
-        "M": [
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "7",
-            "8"
-        ],
-        "L": [
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8"
-        ]
+        "_deprecated": "S/M/L level 已廢棄，BUILD 固定跑 Phase 1-4，Phase 3 由 story type 決定是否跳過（Foundation X.0 自動跳過）",
+        "default": ["1", "2", "3", "4"]
     },
     "flowSequence": [
         {
@@ -423,22 +236,6 @@
         {
             "phase": "BUILD",
             "step": "4"
-        },
-        {
-            "phase": "BUILD",
-            "step": "5"
-        },
-        {
-            "phase": "BUILD",
-            "step": "6"
-        },
-        {
-            "phase": "BUILD",
-            "step": "7"
-        },
-        {
-            "phase": "BUILD",
-            "step": "8"
         },
         {
             "phase": "SCAN",

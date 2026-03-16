@@ -24,22 +24,18 @@ const TASK_PIPE_ROOT = path.resolve(__dirname, '../../..');
 const COMPLETE_SIGNAL = '<promise>GEMS-COMPLETE</promise>';
 const CONFIG_PATH = path.join(TASK_PIPE_ROOT, 'config.json');
 
-// Level-aware phase 跳轉
-const { getNextPhase: getLevelNextPhase, getPhasesForLevel } = require(path.join(TASK_PIPE_ROOT, 'lib', 'level-gate.cjs'));
+// v6: BUILD 固定跑 Phase 1-4，不再依賴 level gate
+const BUILD_PHASES = [1, 2, 3, 4];
 
 /**
- * 根據 level 計算下一個有效 BUILD phase
- * 如果 currentPhase 不在 level 的 phases 裡，往前找最近的已 pass phase 再算下一個
+ * 計算下一個 BUILD phase（固定 1-4）
+ * level 參數保留供 runner.cjs backward compat，不影響邏輯
  */
-function getNextBuildPhase(level, latestPassedPhase) {
-    const phases = getPhasesForLevel(level, CONFIG_PATH);
-    // 找到 latestPassedPhase 在 phases 中的位置（或之後最近的）
-    for (let i = 0; i < phases.length; i++) {
-        if (parseInt(phases[i], 10) > latestPassedPhase) {
-            return parseInt(phases[i], 10);
-        }
+function getNextBuildPhase(_level, latestPassedPhase) {
+    for (const phase of BUILD_PHASES) {
+        if (phase > latestPassedPhase) return phase;
     }
-    return null; // 已經是最後一個 phase
+    return null; // 已完成所有 phase
 }
 
 // ============================================

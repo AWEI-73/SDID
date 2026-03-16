@@ -41,14 +41,12 @@ if (process.platform === 'win32') {
 /**
  * 用法:
  *   node task-pipe/runner.cjs --phase=POC --step=1
- *   node task-pipe/runner.cjs --phase=PLAN --step=1
  *   node task-pipe/runner.cjs --phase=BUILD --step=1
  *   node task-pipe/runner.cjs --phase=SCAN
- * 
+ *
  * 選項:
- *   --phase=<POC|PLAN|BUILD|SCAN>  階段
- *   --step=<N>                      步驟編號
- *   --level=<S|M|L>                 檢查深度 (預設: M)
+ *   --phase=<POC|BUILD|SCAN>  階段
+ *   --step=<N>                 步驟編號
  *   --target=<path>                 目標路徑
  *   --config=<path>                 配置檔案 (預設: task-pipe/config.json)
  *   --dry-run                       預覽模式，不實際執行
@@ -59,8 +57,6 @@ if (process.platform === 'win32') {
 
 const fs = require('fs');
 const path = require('path');
-const { shouldExecutePhase, getLevelDescription, getNextPhase } = require('./lib/level-gate.cjs');
-const { ensureScaffold } = require('./lib/scaffold/index.cjs');
 
 // v3.1: Project Memory
 let projectMemory = null;
@@ -182,13 +178,6 @@ function getFallbackActions(phase, step) {
       '4': ['Create UI prototype', 'Generate xxxPOC.html'],
       '5': ['Generate requirement spec', 'Verify independent testability'],
     },
-    PLAN: {
-      '1': ['Requirement confirmation', 'Ambiguity elimination'],
-      '2': ['Spec injection', 'Read POC output'],
-      '3': ['Architecture audit', 'Constitution Audit'],
-      '4': ['Tag spec design', 'GEMS v2.1'],
-      '5': ['Generate implementation plan'],
-    }
   };
   return fallbacks[phase]?.[step] || ['Execute phase script'];
 }
@@ -205,7 +194,7 @@ function parseArgs() {
   return {
     phase: args.find(a => a.startsWith('--phase='))?.split('=')[1]?.toUpperCase() || null,
     step: args.find(a => a.startsWith('--step='))?.split('=')[1] || null,
-    level: args.find(a => a.startsWith('--level='))?.split('=')[1]?.toUpperCase() || 'M',
+    level: 'M',  // kept for backward compat but unused
     target: (() => {
       const raw = args.find(a => a.startsWith('--target='))?.split('=')[1] || process.cwd();
       return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
@@ -223,10 +212,7 @@ function parseArgs() {
     forceStartFrom: args.find(a => a.startsWith('--force-start='))?.split('=')[1] || null,
     forceAbandon: args.includes('--force-abandon'),
     diagnose: args.includes('--diagnose'),
-    // P5: Quick Mode
-    quick: args.includes('--quick'),
-    // Auto Mode: Phase 通過後自動串接下一個 Phase，直到 BLOCKER 或全部完成
-    auto: args.includes('--auto'),
+    // v3.0: 強制指令
   };
 }
 
@@ -242,14 +228,12 @@ ${c('用法:', 'cyan')}
 
 ${c('階段 (Phase):', 'cyan')}
   POC    - 概念驗證 (Step 1-5)
-  PLAN   - 規劃階段 (Step 1-5)
-  BUILD  - 開發階段 (Phase 1-8)
+  BUILD  - 開發階段 (Phase 1-4)
   SCAN   - 掃描階段
 
 ${c('選項:', 'cyan')}
-  --phase=<POC|PLAN|BUILD|SCAN>  指定階段 (必填)
-  --step=<N>                      指定步驟編號 (POC/PLAN 需要)
-  --level=<S|M|L>                 檢查深度 (預設: M)
+  --phase=<POC|BUILD|SCAN>  指定階段 (必填)
+  --step=<N>                 指定步驟編號 (POC 需要)
   --target=<path>                 目標路徑 (預設: 當前目錄)
   --iteration=<iter-X>            指定迭代 (預設: 自動偵測)
   --config=<path>                 配置檔案路徑
@@ -260,10 +244,9 @@ ${c('選項:', 'cyan')}
 
 ${c('強制指令 (v2.0):', 'yellow')}
   --force-next-iteration          強制跳到下一個迭代（標記當前為 ABANDONED）
-  --force-start=<PHASE-STEP>      強制從指定節點開始（如 PLAN-1, BUILD-4）
+  --force-start=<PHASE-STEP>      強制從指定節點開始（如 BUILD-4）
   --force-abandon                 標記當前迭代為 ABANDONED
   --diagnose                      診斷專案狀態
-  --quick                         Quick Mode: BUILD 只跑 Phase [1,2,5,7]
   --auto                          Auto Mode: @PASS 後自動串接下一個 Phase，@BLOCKER 停止等待修復
 
 ${c('範例:', 'cyan')}
@@ -275,9 +258,6 @@ ${c('範例:', 'cyan')}
 
   # iter-1 爛尾，跳到 iter-2
   node task-pipe/runner.cjs --force-next-iteration --target=./my-project
-
-  # 從 PLAN Step 1 開始（跳過 POC）
-  node task-pipe/runner.cjs --force-start=PLAN-1 --target=./my-project
 
   # 診斷專案狀態
   node task-pipe/runner.cjs --diagnose --target=./my-project
@@ -321,52 +301,15 @@ function getDefaultConfig() {
 function runPhase(phase, step, options, config) {
   const phaseLower = phase.toLowerCase();
 
-  // P5: Quick Mode — 只跑 Phase [1,2,5,7] 子集
-  const QUICK_MODE_PHASES = ['1', '2', '5', '7'];
-  if (phase === 'BUILD' && step && options.quick) {
-    if (!QUICK_MODE_PHASES.includes(String(step))) {
-      const nextQuickPhase = QUICK_MODE_PHASES.find(p => parseInt(p) > parseInt(step));
+  // BUILD Phase 3: Foundation Story（X.0）跳過整合層
+  // S/M/L level 已廢棄，改用語意判斷
+  if (phase === 'BUILD' && step === '3') {
+    const storyId = options.story || '';
+    const isFoundation = /^Story-\d+\.0$/.test(storyId);
+    if (isFoundation) {
       log('');
-      log(`⊘ SKIP phase ${step} (Quick Mode: only [${QUICK_MODE_PHASES.join(',')}])`, 'yellow');
-      if (nextQuickPhase) {
-        log(`  → node task-pipe/runner.cjs --phase=BUILD --step=${nextQuickPhase} --story=${options.story} --quick`, 'dim');
-      }
-      log('');
-
-      if (projectMemory) {
-        try {
-          projectMemory.recordEntry(options.target, {
-            phase, step, story: options.story,
-            iteration: options.iteration,
-            verdict: 'PASS', signal: '@SKIP',
-            summary: `Skipped phase ${step} (Quick Mode)`
-          });
-        } catch (e) { }
-      }
-      // 寫 pass log，讓 state-machine 的 log-based inference 能正確推進
-      try {
-        const logsDir = path.join(options.target, '.gems', 'iterations', options.iteration, 'logs');
-        if (fs.existsSync(logsDir)) {
-          const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-          const storyPart = options.story ? `-${options.story}` : '';
-          fs.writeFileSync(path.join(logsDir, `build-phase-${step}${storyPart}-pass-${ts}.log`), '@PASS (SKIP)\n', 'utf8');
-        }
-      } catch (e) { }
-      advanceState(options.target, options.iteration, phase, step, options.story);
-
-      process.exit(0);
-    }
-  }
-
-  // BUILD: 檢查 level gate
-  if (phase === 'BUILD' && step) {
-    if (!shouldExecutePhase(options.level, step, options.config)) {
-      const nextPhase = getNextPhase(options.level, step, options.config);
-      log('');
-      log(`⊘ SKIP phase ${step} (Level ${options.level})`, 'yellow');
-      if (nextPhase) {
-        log(`  → node task-pipe/runner.cjs --phase=BUILD --step=${nextPhase} --story=${options.story}`, 'dim');
-      }
+      log(`⊘ SKIP Phase 3 (Foundation Story ${storyId} — 整合層不適用)`, 'yellow');
+      log(`  → node task-pipe/runner.cjs --phase=BUILD --step=4 --story=${storyId}`, 'dim');
       log('');
 
       if (projectMemory) {
@@ -375,21 +318,18 @@ function runPhase(phase, step, options, config) {
             phase, step, story: options.story,
             iteration: options.iteration,
             verdict: 'PASS', signal: '@SKIP',
-            summary: `Skipped phase ${step} (Level ${options.level})`
+            summary: `Skipped Phase 3 (Foundation Story)`
           });
         } catch (e) { }
       }
-      // 寫 pass log，讓 state-machine 的 log-based inference 能正確推進
       try {
         const logsDir = path.join(options.target, '.gems', 'iterations', options.iteration, 'logs');
         if (fs.existsSync(logsDir)) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-          const storyPart = options.story ? `-${options.story}` : '';
-          fs.writeFileSync(path.join(logsDir, `build-phase-${step}${storyPart}-pass-${ts}.log`), '@PASS (SKIP)\n', 'utf8');
+          fs.writeFileSync(path.join(logsDir, `build-phase-3-${storyId}-pass-${ts}.log`), '@PASS (SKIP: Foundation Story)\n', 'utf8');
         }
       } catch (e) { }
       advanceState(options.target, options.iteration, phase, step, options.story);
-
       process.exit(0);
     }
   }
@@ -414,60 +354,20 @@ function runPhase(phase, step, options, config) {
     return;
   }
 
-  // v3.1: 啟動時印出 @MEMORY（斷點續傳）
+  // v3.1: @MEMORY 只存 log，不印終端（M24 精簡化）
   if (projectMemory) {
     try {
       const resumeText = projectMemory.getResumeContext(options.target);
       if (resumeText) {
-        log('');
-        log(resumeText, 'dim');
-        log('');
+        // 不再印到終端，只在 log 裡保留
       }
     } catch (e) { /* 忽略 */ }
   }
 
   log('');
   log(`RUN ${phase}${step ? ` step ${step}` : ''}`, 'cyan');
-  if (plainMode) {
-    log(`  Level: ${options.level}`, 'dim');
-  } else {
-    log(`  Level: ${options.level} - ${getLevelDescription(options.level, options.config)}`, 'dim');
-  }
   log(`  Target: ${options.target}`, 'dim');
   log('');
-
-  // ============================================
-  // 骨架產生器：在驗證前確保骨架存在
-  // ============================================
-  const scaffoldSteps = {
-    'POC-1': true,   // requirement_draft
-    'POC-3': true,   // contract  
-    'POC-4': true,   // poc_html
-    'POC-5': true,   // requirement_spec
-    'PLAN-2': true,  // implementation_plan
-    'PLAN-3': true,  // implementation_plan (驗證)
-    // BUILD-7 移除：改由 phase-7.cjs 動態產生（含正確統計）
-  };
-
-  const scaffoldKey = `${phase}-${step}`;
-  if (scaffoldSteps[scaffoldKey]) {
-    log(`  [scaffold] ${scaffoldKey}...`, 'dim');
-
-    const scaffoldResult = ensureScaffold(phase, step, {
-      target: options.target,
-      iteration: options.iteration,
-      story: options.story,
-      level: options.level
-    });
-
-    if (scaffoldResult.generated) {
-      log(`  ✓ Generated: ${path.basename(scaffoldResult.path)}`, 'green');
-    } else if (scaffoldResult.skipped && scaffoldResult.reason === 'File exists') {
-      log(`  ⊘ Skipped (exists)`, 'dim');
-    }
-
-    log('');
-  }
 
   try {
     const script = require(scriptPath);
@@ -540,13 +440,11 @@ function runPhase(phase, step, options, config) {
             `--phase=${next.phase}`,
             `--step=${next.step}`,
             `--target=${options.target}`,
-            `--level=${options.level}`,
             `--iteration=${options.iteration}`,
             '--auto',
           ];
           if (options.story) autoArgs.push(`--story=${options.story}`);
           if (options.plain) autoArgs.push('--plain');
-          if (options.quick) autoArgs.push('--quick');
           const result2 = spawnSync(process.execPath, autoArgs, { stdio: 'inherit' });
           process.exit(result2.status ?? 0);
         }
@@ -565,11 +463,9 @@ function runPhase(phase, step, options, config) {
         } catch (e) { /* 忽略 */ }
       }
 
-      if (result.verdict === 'BLOCKER') {
-        log('[ARCHITECTURE_REVIEW] 需要架構層級的審閱', 'yellow');
-      } else if (result.verdict === 'PENDING') {
+      if (result.verdict === 'PENDING') {
         log('[ITERATION_ADVICE] 完善中...', 'cyan');
-      } else {
+      } else if (result.verdict !== 'BLOCKER') {
         log('[READY] 準備就緒，請確認後繼續', 'cyan');
       }
 
@@ -577,15 +473,6 @@ function runPhase(phase, step, options, config) {
       // [NEW] 建築模式引導注入 (Architectural Guidance)
       // ============================================
       const outputStr = result.output || '';
-      const hasArchitecturalProposal = outputStr.includes('📐') || outputStr.includes('🏗️') || outputStr.includes('藍圖');
-
-      if (hasArchitecturalProposal && options.ai) {
-        log('');
-        log('[ARCHITECTURAL PROPOSAL] 這是一份建築工法提案', 'magenta');
-        log('  -> 請閱讀 Draft 中的族群與模組拆解', 'white');
-        log('  -> 補充模組依賴與路由規劃', 'white');
-        log('  -> 確認後將狀態改為 PASS', 'white');
-      }
     } else {
       log('⚠ WARN', 'yellow');
     }
@@ -659,7 +546,6 @@ function runDryRun(phase, step, options) {
   log(`[DRY-RUN] Preview Mode`, 'bold');
   log(separator(), 'magenta');
   log(`   Phase: ${phase}${step ? ` Step ${step}` : ''}`, 'dim');
-  log(`   Level: ${options.level} (${getLevelDescription(options.level, options.config)})`, 'dim');
   log(`   Target: ${options.target}`, 'dim');
   log(`   Story: ${options.story || '(not specified)'}`, 'dim');
   log(separator(), 'magenta');
@@ -823,14 +709,14 @@ function main() {
     process.exit(0);
   }
 
-  const validPhases = ['POC', 'PLAN', 'BUILD', 'SCAN'];
+  const validPhases = ['POC', 'BUILD', 'SCAN'];
   if (!validPhases.includes(options.phase)) {
     log(`✗ Invalid phase: ${options.phase}`, 'red');
     log(`  Valid: ${validPhases.join(', ')}`, 'yellow');
     process.exit(1);
   }
 
-  if (['POC', 'PLAN', 'BUILD'].includes(options.phase) && !options.step) {
+  if (['POC', 'BUILD'].includes(options.phase) && !options.step) {
     log(`✗ ${options.phase} requires --step parameter`, 'red');
     process.exit(1);
   }

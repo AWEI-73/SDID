@@ -1,335 +1,426 @@
-# SDID 系統架構書
-
-> 版本: v5.0 | 更新: 2026-03-04
-> 定位: SDID 框架完整架構說明，供人類閱讀與 AI session 導航
+﻿# SDID 系統架構文件
+> 版本: v6.1 | 更新: 2026-03-16
+> 定位: SDID 全系統的完整架構接線圖，供 AI session 快速定向
 
 ---
 
-## 一、核心概念
-
-SDID（Structured Iterative Development）是一套 **AI 協同開發框架**。
-
-核心主張：用腳本驅動的 Gate 機制，把 AI 的隨機輸出約束成可預測的結構化產出。
-每個 Phase 都有明確的輸入、輸出、驗收條件，AI 不需要記憶規格，只需讀腳本輸出執行。
+## 一句話定義
+SDID（Structured Iterative Development）是一套「AI 驅動開發協議」。
+腳本負責結構性強制（Gate 攔截），AI 負責語意判斷（修復執行），兩者互補不競爭。
 
 ```
-需求 → 路線選擇 → 設計/驗證 → Plan → BUILD 八關 → 驗收
-         │                                              │
-         └──── AI 讀腳本輸出 ──── 修復 ──── 重跑 ───────┘
+設計層（design/）→ Contract → Plan → BUILD 實作 → SCAN → VERIFY
+         ↑                                                  ↓
+         └──────────────── AI 修復循環 ←──── 腳本 Gate 攔截 ──┘
 ```
 
 ---
 
-## 二、四條路線
+## 核心架構（v6）
+v6 最大變更：引入 `design/` 目錄集中管理設計文件，統一多條路線。
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        路線路由                                      │
-│                                                                     │
-│  需求模糊 / 大型功能          → Blueprint Flow                       │
-│  特化模組 / 第三方串接        → POC-FIX                              │
-│  單函式微調 / 快速修復        → MICRO-FIX                            │
-│  漸進式設計 / 小型專案        → Task-Pipe Flow (備用)                │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        v6 核心架構                               │
+│                                                                 │
+│  .gems/design/blueprint.md（可選）                               │
+│    └── blueprint-gate v5                                        │
+│  .gems/design/draft_iter-N.md                                   │
+│    └── draft-gate v5                                            │
+│  .gems/iterations/iter-N/contract_iter-N.ts                     │
+│    └── contract-gate v5 + @CONTRACT-LOCK                        │
+│  spec-to-plan → BUILD Phase 1-4 → SCAN → VERIFY                │
+│                                                                 │
+│  POC-FIX: iter-N/poc-fix/（屬於 iter，按需建立）                  │
+│  MICRO-FIX: .gems/logs/（不屬於任何 iter）                        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 路線 A：Blueprint Flow（主線）
-
+### 四層設計模型
 ```
-Enhanced Draft (人寫)
-  │
-  ▼ blueprint-gate.cjs        ← 15 項機械驗收（AC/VSC/層次/預算）
-  │  @PASS → 繼續
-  │  @BLOCKER → 修 draft 重跑
-  │
-  ▼ draft-to-plan.cjs         ← 拆成 Story + implementation_plan
-  │  產出: plan/implementation_plan_Story-X.Y.md
-  │        骨架 .ts/.tsx（plan-to-scaffold.cjs）
-  │
-  ▼ BUILD Phase 1-8           ← 共用 task-pipe/runner.cjs
-  │  每個 Story 跑一輪
-  │
-  ▼ blueprint-shrink.cjs      ← 壓縮 draft → 錨點格式
-  │
-  ▼ blueprint-verify.cjs      ← 逐行核對 draft vs 源碼
-  │  @PASS → 進下一個 iter 或完成
-  │  @WARN → AC 未標記（補標後重跑）
-  │
-  ▼ blueprint-expand.cjs      ← 展開下一個 iter（如有）
-```
+Layer 0: Blueprint（可選，全局索引）
+  .gems/design/blueprint.md — 模組清單/迭代規劃/依賴關係/API 概覽
+    └── blueprint-gate v5（驗 blueprint.md 格式）
 
-識別標記：`.gems/iterations/iter-N/poc/requirement_draft_iter-N.md`
+Layer 1: Per-iter Draft（每個 iter 獨立設計）
+  .gems/design/draft_iter-N.md — 功能需求 + AC 定義
+    └── draft-gate v5
+    ├── @PASS → 推導 contract
+    └── @BLOCKER → 修復 draft 重試
 
-### 路線 B：POC-FIX
+Layer 2: Per-iter Contract（每個 iter 獨立，屬於 iter）
+  .gems/iterations/iter-N/contract_iter-N.ts — TypeScript interfaces + STORY-ITEM + AC
+    └── contract-gate v5 + @CONTRACT-LOCK 封版
+    └── spec-to-plan.cjs → contract @GEMS-STORIES → implementation_plan（機械轉換）
+    └── 產出: iter-N/plan/implementation_plan_Story-X.Y.md
+    └── BUILD Phase 1-4（task-pipe/runner.cjs）
+        └── 每個 Story 獨立執行
+    └── SCAN — 全專案掃描更新 functions.json
+    └── blueprint-verify.cjs — 比對 draft vs 實作
+       ├── @PASS → 完成（可進下一個 iter）
+       └── @WARN → AC 未覆蓋，需補充
 
-```
-Phase 1: SETUP        ← 建 poc/ 工作目錄，放原型檔案
-Phase 2: VERIFY       ← 反覆驗證調整（可多輪）
-Phase 3: CONSOLIDATE  ← 整合清除，產出 poc-consolidation-log.md
-Phase 4: BUILD+TEST   ← poc-to-scaffold.cjs 產骨架
-                         → 填入 POC 邏輯
-                         → micro-fix-gate.cjs --iter=N 驗收
+Layer 3: POC-FIX（屬於 iter，按需建立）
+  iter-N/poc-fix/ — 複雜業務邏輯探索工作區
+    └── consolidation-log.md
+    └── poc-to-scaffold.cjs 落地
+    └── micro-fix-gate.cjs --iter=N 驗收
+    └── log: iter-N/logs/pocfix-{active|pass}-{ts}.log
 ```
 
-識別標記：`.gems/iterations/iter-N/poc/poc-consolidation-log.md`
-
-適用：第三方 API 串接、客製化演算法、複雜資料處理等特化功能（非標準 CRUD）
-
-### 路線 C：MICRO-FIX
-
+### POC-FIX（屬於 iter）
 ```
-確認要改什麼（一句話）
-  → 直接修改檔案
-  → micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
-  → @PASS 完成 / @BLOCKER 修復重跑
+iter-N/poc-fix/ 工作區
+  ├── 複雜業務邏輯探索
+  ├── consolidation-log.md
+  ├── poc-to-scaffold.cjs 落地
+  ├── micro-fix-gate.cjs --iter=N 驗收
+  └── log: iter-N/logs/pocfix-{active|pass}-{ts}.log
 ```
 
-適用：單一檔案/函式的小修，不需要 story/plan/測試
+判斷依據：`iter-N/poc-fix/` 存在 → `iter-N/logs/pocfix-active-*.log`
 
-### 路線 D：Task-Pipe Flow（備用）
-
+### MICRO-FIX（不屬於任何 iter）
 ```
-POC Step 1-5 → PLAN Step 1-5 → BUILD Phase 1-8 → SCAN
+單一函式微調/補標籤/bug fix
+  ├── 不走完整 story/plan/設計流程
+  ├── micro-fix-gate.cjs --changed=<files> --target=<project>
+  ├── @PASS 完成 / @BLOCKER 修復重試
+  └── log: .gems/logs/microfix-{pass|error}-{ts}.log（全局 log）
 ```
-
-適用：漸進式設計、小型專案、需要 POC 先驗證 UI 的場景
 
 ---
 
-## 三、共用 BUILD 八關（Phase 1-8）
-
-所有路線（Blueprint/Task-Pipe）共用同一套 BUILD，透過 `task-pipe/runner.cjs` 執行。
-
+## 統一 BUILD 實作（Phase 1-4）
+所有路線共用 BUILD，由 `task-pipe/runner.cjs` 驅動：
 ```
 task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<project>
 ```
 
-| Phase | 名稱 | 職責 |
-|-------|------|------|
-| 1 | 骨架檢查 | 確認骨架檔存在、環境健在 |
-| 2 | 標籤驗收 | 掃 src，P0/P1 函式必須有 GEMS 標籤（The Enforcer）|
-| 3 | 測試腳本 | 輸出測試模板，AI 填充測試案例 |
-| 4 | Test Gate | 測試檔存在、import 被測函式正確 |
-| 5 | TDD 執行 | 跑測試，失敗 → @BLOCKER |
-| 6 | 整合測試 | 跨模組整合測試 |
-| 7 | 整合檢查 | 路由/模組匯出/依賴關係 |
-| 8 | Fillback | 產出 Fillback.md + iteration_suggestions.json，AC 覆蓋檢查 |
+| Phase | 名稱 | 驗收條件 |
+|-------|------|---------|
+| 1 | 骨架映射層 | 讀 implementation_plan + contract_iter-N.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3） |
+| 2 | AC 驗收層 | ac-runner v3.0：讀 cynefin-report.json → needsTest:true → 生成 vitest test → vitest run；needsTest:false → 直接執行模式；SKIP 跳過 |
+| 3 | 整合層 | 路由整合、barrel export、SKIP[INTEGRATION] AC，Level S 跳過 |
+| 4 | 標籤品質+Fillback層 | GEMS 標籤品質複查（P0-P3 全覆蓋），產出 Fillback + iteration_suggestions |
+
+> Level S 豁免 Phase 3
 
 ---
 
-## 四、腳本地圖
+## 工具清單
 
 ### sdid-tools/（Blueprint Flow 工具）
-
-| 腳本 | 功能 |
+| 工具 | 職責 |
 |------|------|
-| `blueprint-gate.cjs` | 藍圖品質驗收（15 項機械規則）|
-| `blueprint-verify.cjs` | 逐行核對 draft vs 源碼，AC 未標記 → @WARN |
-| `blueprint-shrink.cjs` | 壓縮 draft → 錨點格式 |
-| `blueprint-expand.cjs` | 展開下一個 iter |
-| `draft-to-plan.cjs` | Enhanced Draft → implementation_plan + 骨架 |
-| `plan-to-scaffold.cjs` | Plan → .ts/.tsx 骨架檔（type-aware）|
-| `poc-to-scaffold.cjs` | consolidation-log → .ts/.tsx 骨架檔（POC-FIX 用）|
-| `micro-fix-gate.cjs` | 輕量驗收（GEMS 標籤 + import 不斷鏈），寫 log |
-| `cynefin-log-writer.cjs` | 複雜度評估記錄 |
-| `state-guide.cjs` | AI session 入口，輸出「指令包」|
-| `lib/draft-parser-standalone.cjs` | Enhanced Draft 解析器 |
-| `lib/consolidation-parser.cjs` | poc-consolidation-log.md 解析器 |
+| `blueprint/v5/blueprint-gate.cjs` | Blueprint 全局設計文件格式驗證 |
+| `blueprint/v5/draft-gate.cjs` | Per-iter Draft 功能需求 + AC 定義驗證 |
+| `blueprint/v5/contract-gate.cjs` | Per-iter Contract v3 型別邊界 + @CONTRACT-LOCK 封版 |
+| `blueprint/verify.cjs` | 最終驗證 draft vs 實作，AC 未覆蓋 → @WARN |
+| `blueprint/contract-writer.cjs` | Contract 推導撰寫 + 驗證，@GEMS-AC 住在 contract_iter-N.ts 中 |
+| `plan-to-scaffold.cjs` | Plan → .ts/.tsx 骨架生成（type-aware） |
+| `poc-to-scaffold.cjs` | consolidation-log → .ts/.tsx 骨架生成（POC-FIX 落地） |
+| `poc-fix/micro-fix-gate.cjs` | 局部驗收，GEMS 標籤 + import 範圍，寫 log |
+| `cynefin-log-writer.cjs` | 語意域分析記錄；action 層級分析，輸出 actions[].needsTest 決策 |
+| `state-guide.cjs` | AI session 定向，輸出當前狀態 + 下一步指令 |
 
-### task-pipe/（BUILD 引擎）
-
-| 腳本 | 功能 |
+### task-pipe/（BUILD 執行引擎）
+| 工具 | 職責 |
 |------|------|
-| `runner.cjs` | 統一入口，根據 phase/step/story 呼叫對應腳本 |
-| `loop.cjs` | 狀態導航（已 deprecated，改用 MCP sdid-loop）|
-| `phases/build/phase-1~8.cjs` | BUILD 八關實作 |
-| `phases/poc/step-1~5.cjs` | Task-Pipe POC 步驟 |
-| `phases/plan/step-1~5.cjs` | Task-Pipe PLAN 步驟 |
+| `runner.cjs` | 主執行入口，依 phase/step/story 驅動各腳本 |
+| `phases/build/phase-1~4.cjs` | BUILD 各 Phase 實作腳本 |
 | `phases/scan/scan.cjs` | SCAN 全專案掃描 |
-| `lib/scan/gems-scanner-unified.cjs` | GEMS 標籤掃描（支援 shrink 格式 + acIds）|
-| `lib/plan/plan-validator.cjs` | Plan 格式驗證（Rule 10: P0/P1 缺 AC → WARNING）|
-| `lib/shared/log-output.cjs` | 統一輸出引擎（anchorPass/anchorError/emitTaskBlock）|
-| `lib/shared/state-manager-v3.cjs` | .state.json 讀寫，狀態機 |
-| `lib/shared/project-memory.cjs` | 歷史記憶（pitfall/hint）|
-| `tools/shrink-tags.cjs` | GEMS 標籤壓縮工具 |
-| `tools/health-report.cjs` | 專案健康報告 |
+| `tools/spec-to-plan.cjs` | contract/spec → implementation_plan（機械轉換） |
+| `lib/scan/gems-scanner-unified.cjs` | GEMS 標籤掃描主力 |
+| `lib/shared/log-output.cjs` | 統一 log 輸出（anchorPass/anchorError/emitTaskBlock） |
+| `lib/shared/state-manager-v3.cjs` | .state.json 讀寫管理 |
+| `lib/shared/project-memory.cjs` | 跨 iter 歷史記憶（pitfall/hint） |
+| `tools/shrink-tags.cjs` | GEMS 標籤壓縮工具（可選） |
 
-### sdid-core/（共用核心）
-
-| 腳本 | 功能 |
+### sdid-core/（狀態推斷引擎）
+| 工具 | 職責 |
 |------|------|
-| `state-machine.cjs` | 統一狀態推斷引擎（detectRoute/inferStateFromLogs/detectFullState）|
-| `architecture-contract.cjs` | 架構契約定義 |
+| `state-machine.cjs` | 統一狀態推斷（detectRoute/inferStateFromLogs/detectFullState） |
+| `architecture-contract.cjs` | 架構約束定義 |
 
-### sdid-tools/mcp-server/（MCP 介面）
-
-| Tool | 對應 CLI | 功能 |
-|------|----------|------|
-| `sdid-loop` | loop adapter | ★主入口：自動偵測狀態執行下一步 |
-| `sdid-state-guide` | state-guide.cjs | AI session 指令包 |
-| `sdid-blueprint-gate` | blueprint-gate.cjs | 藍圖驗收 |
-| `sdid-micro-fix-gate` | micro-fix-gate.cjs | 小修驗收（支援 --iter）|
-| `sdid-poc-scaffold` | poc-to-scaffold.cjs | POC-FIX 骨架遷移 |
-| `sdid-build` | runner.cjs | BUILD/POC/PLAN 執行 |
-| `sdid-scan` | scan.cjs | SCAN 執行 |
-| `sdid-run` | 通用 | 安全白名單 CLI 執行器 |
-| `sdid-spec-gen` | spec-gen.cjs | 字典生成（舊路線）|
-| `sdid-spec-gate` | spec-gate.cjs | 字典品質驗證（舊路線）|
-| `sdid-scanner` | gems-scanner-unified.cjs | GEMS 標籤掃描 |
-| `sdid-dict-sync` | dict-sync.cjs | 字典行號回寫（舊路線）|
+### sdid-tools/mcp-server/（MCP 入口）
+| Tool | 職責 |
+|------|------|
+| `sdid-loop` | 主執行入口，自動推斷狀態並驅動下一步 |
+| `sdid-state-guide` | AI session 定向 |
+| `sdid-micro-fix-gate` | 局部驗收 |
+| `sdid-poc-scaffold` | POC-FIX 骨架生成 |
+| `sdid-build` | BUILD/SCAN 執行 |
+| `sdid-scanner` | GEMS 標籤掃描 |
 
 ---
 
-## 五、狀態推斷機制
+## Artifact DAG（有向無環圖）
 
-`sdid-core/state-machine.cjs` 是唯一真相源，合併三套重疊邏輯：
+SDID 的 artifact/data flow 是嚴格的 DAG，execution 層的 gate retry 是 self-loop（不影響 DAG 性質）。
 
+### 單 iter Artifact DAG
+節點 = artifact，邊 = A 的產出是 B 的輸入
 ```
-優先順序：
+                    ┌─────────────────────────────────────────────────────┐
+                    │              iter-N  Artifact DAG                   │
+                    │                                                     │
+  [blueprint.md]───┐                                                     │
+  (可選，全局)      │                                                     │
+                   ▼                                                     │
+  [draft_iter-N.md]──────────────────────────────────────────────────┐  │
+  design/          │                                                  │  │
+        │          │  ┌──────────────────────────────────────────┐   │  │
+        │          │  │  contract_iter-N.ts  (iter-N/)           │   │  │
+        │          └─►│  @GEMS-CONTRACT (entities)               │   │  │
+        │             │  @GEMS-API                               │   │  │
+        │             │  @GEMS-STORY-ITEM (plan 錨點)            │   │  │
+        │             │  @GEMS-AC (住在 contract 中)             │   │  │
+        │             └──────────────────────────────────────────┘   │  │
+        │                          │                                  │  │
+        │             ┌────────────┘                                  │  │
+        │             │            │                                  │  │
+        │             ▼            ▼                                  │  │
+        │  [impl_plan_Story-1.0.md]  [impl_plan_Story-2.0.md]        │  │
+        │  [impl_plan_Story-N.0.md]  (銝西方向，Story 各自獨立)       │  │
+        │  iter-N/plan/             │                                 │  │
+        │             │             │                                 │  │
+        │             ▼             ▼                                 │  │
+        │  [src/ 骨架]◄─────────────┘  [contract_iter-N.ts] Phase 2  │  │
+        │  (Phase 1 產出)               驗收                          │  │
+        │             │                │                              │  │
+        │             ▼                ▼ CALC AC PASS                 │  │
+        │  [src/ 完整實作]   [Fillback_Story-X.Y.md]                  │  │
+        │  (Phase 2-4)       [iteration_suggestions.json]             │  │
+        │             │      iter-N/build/                            │  │
+        │             │                                               │  │
+        │             ▼                                               │  │
+        │  [functions.json]  (SCAN 產出，跨 Story 彙整)               │  │
+        │  .gems/docs/                                                │  │
+        │             │                                               │  │
+        │             ▼                                               │  │
+        │  [gate-verify-pass.log]◄────────────────────────────────────┘  │
+        │  iter-N/logs/      (VERIFY 比對 draft + functions.json)        │
+        │             │                                                   │
+        │             ▼                                                   │
+        │         [COMPLETE]                                              │
+        └─────────────────────────────────────────────────────────────────┘
+```
+
+### 跨 iter DAG（多 iter 演進）
+VERIFY 完成後，iteration_suggestions 觸發下一個 iter 的 draft 作為起點：
+```
+iter-1:  draft-1 → contract-1 → plan-1 → BUILD-1 → SCAN-1 → VERIFY-1
+                                                                  │
+                                              (iteration_suggestions 觸發)
+                                                                  │
+iter-2:                              draft-2 → contract-2 → plan-2 → BUILD-2 → ...
+```
+
+每個 iter 是獨立的 DAG，cycle 不存在。
+
+### Gate Retry（Execution 層 self-loop）
+每個 gate 的 retry 是 execution model，不影響 data flow 的 DAG 性質：
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Gate Retry Pattern（每個 gate 節點的執行模型）                │
+│                                                              │
+│  artifact ──►[gate] ──@PASS──► 下一個 artifact              │
+│                  │                                           │
+│              @BLOCKER                                        │
+│                  │                                           │
+│                  ▼                                           │
+│            AI 修復 artifact ──►[gate] (retry)               │
+│                                                              │
+│  retry 上限（strategy drift）:                               │
+│    P0: 10 次 | P1: 8 次 | P2: 5 次 | P3: 3 次              │
+│  超過上限 → STRATEGY_SHIFT → PLAN_ROLLBACK                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### DAG 節點表
+
+| Artifact | 產出者 | 消費者 | Terminal? |
+|----------|--------|--------|-----------|
+| `design/blueprint.md` | AI（5 輪對話） | blueprint-gate, draft-gate | 否 |
+| `design/draft_iter-N.md` | AI（對話/迭代） | draft-gate, VERIFY | 否 |
+| `iter-N/contract_iter-N.ts` | AI（從 draft 推導） | contract-gate, spec-to-plan, ac-runner | 否 |
+| `iter-N/plan/impl_plan_Story-X.Y.md` | spec-to-plan | BUILD Phase 1 | 否 |
+| `src/` 骨架 | BUILD Phase 1 | BUILD Phase 2-4 | 否 |
+| `iter-N/build/Fillback_Story-X.Y.md` | BUILD Phase 4 | VERIFY（參考） | 否 |
+| `.gems/docs/functions.json` | SCAN | VERIFY, sdid-loop HUB | 否 |
+| `iter-N/logs/gate-verify-pass-*.log` | VERIFY | state-machine（COMPLETE 判斷） | **是** |
+| `.gems/logs/microfix-pass-*.log` | micro-fix-gate | state-machine | **是（MICRO-FIX）** |
+| `iter-N/logs/pocfix-pass-*.log` | micro-fix-gate --iter | state-machine | **是（POC-FIX）** |
+
+---
+
+## 狀態推斷機制
+`sdid-core/state-machine.cjs` 四層推斷：
+```
+優先順序:
   1. .state.json（state-manager-v3 ledger）
   2. last_step_result.json
   3. log-based inference（inferStateFromLogs）
-  4. draft 存在 → GATE
+  4. draft 存在 → 推斷 GATE
 ```
 
-路線偵測（`detectRoute`）：
+路線偵測（`detectRoute`）:
 
-| 標記文件 | 路線 |
-|---------|------|
-| `poc/poc-consolidation-log.md` | POC-FIX |
-| `poc/requirement_draft_iter-N.md` | Blueprint |
-| `requirement-spec.md` | Task-Pipe |
-| 無 | Unknown |
+| 條件 | 路線 |
+|------|------|
+| `.gems/design/` 存在 + `blueprint.md` | Blueprint |
+| `.gems/design/` 存在 + `draft_iter-N.md` | Blueprint |
+| `iter-N/poc/poc-consolidation-log.md`（v5 legacy） | POC-FIX |
+| `iter-N/poc/requirement_spec_*`（v5 legacy） | Task-Pipe |
+| `iter-N/poc/requirement_draft_*`（v5 legacy） | Blueprint |
 
-Log 前綴與狀態對應（`inferStateFromLogs`）：
+Log 前綴推斷（`inferStateFromLogs`）:
 
 | Log 前綴 | 推斷狀態 |
 |---------|---------|
-| `gate-verify-pass-` | NEXT_ITER 或 COMPLETE |
-| `gate-shrink-pass-` | VERIFY 或 BUILD 下一個 Story |
-| `build-phase-8-Story-X.Y-pass-` | SHRINK 或 BUILD 下一個 Story |
+| `gate-verify-pass-` | COMPLETE |
+| `build-phase-4-Story-X.Y-pass-` | BUILD 最後一個 Story → VERIFY |
 | `gate-plan-pass-` | BUILD Phase 1 |
-| `gate-check-pass-` | PLAN |
-| `gate-check-error-` | GATE（重試）|
-| `gate-microfix-pass-` | POC-FIX/MICRO-FIX 完成記錄 |
+| `gate-check-pass-` | CYNEFIN_CHECK 或 CONTRACT 或 PLAN |
+| `cynefin-check-pass-` | CONTRACT |
+| `contract-pass-` / `contract-gate-pass-` | PLAN |
+| `draft-gate-pass-` | CONTRACT |
+| `blueprint-gate-pass-` | DRAFT |
+| `pocfix-active-` | POC-FIX 進行中 |
+| `pocfix-pass-` | POC-FIX 完成（進下一步） |
+| `gate-check-error-` | GATE（有錯誤） |
 
 ---
 
-## 六、AC 閉環資料流
-
-AC（驗收條件）從 Draft 一路穿透到源碼標記，全程機械追蹤：
-
+## AC 追蹤鏈
 ```
-Enhanced Draft
-  AC-9.2: Given/When/Then 完整描述
-  │
-  ▼ draft-parser-standalone.cjs
-  解出 action.ac = "AC-9.2"
-  │
-  ▼ draft-to-plan.cjs
-  Plan 裡插入: // AC-9.2
-  │
-  ▼ plan-to-scaffold.cjs
-  骨架檔帶: // AC-9.2（在 GEMS 標籤後、[STEP] 前）
-  │
-  ▼ AI 實作
-  源碼保留: // AC-9.2
-  │
-  ▼ gems-scanner-unified.cjs
-  fn.acIds = ["AC-9.2"]（機械識別）
-  │
-  ├── phase-8.cjs Check 2
-  │   Plan AC vs 源碼 acIds 比對 → AC_NOT_TAGGED (WARNING)
-  │                              → AC_UNCOVERED (WARNING)
-  │
-  └── blueprint-verify.cjs checkACCoverage()
-      Plan AC vs 源碼 acIds 比對
-      全標記 → @PASS
-      有未標記 → @WARN（TACTICAL_FIX）
+draft_iter-N.md
+  AC-9.2: Given/When/Then
+    │
+    ├── draft-gate + contract-gate 驗證
+    │
+    contract_iter-N.ts 中的 @GEMS-AC 定義
+    │  （v6: @GEMS-AC 住在 contract 中）
+    │
+    ├── spec-to-plan
+    │
+    Plan 中標記 // AC-9.2
+    │
+    ├── BUILD Phase 1（骨架對應）
+    │
+    實作函式帶 // AC-9.2
+    │
+    ├── BUILD Phase 2（ac-runner v3.0）
+    │   讀 cynefin-report.json actions[].needsTest
+    │   needsTest:true → 生成 iter-N/ac-tests/ac-iter-N.test.ts → vitest run
+    │   needsTest:false → 直接執行 CALC AC（向後相容）
+    │
+    ├── BUILD Phase 4 / SCAN
+    │   fn.acIds = ["AC-9.2"]（函式索引記錄）
+    │
+    └── blueprint-verify.cjs
+        Plan AC vs 實作 acIds 比對 → @PASS / @WARN
 ```
 
 ---
 
-## 七、資料目錄結構
-
+## 目錄結構（v6）
 ```
 {project}/
-├── src/                          ← 實際程式碼
-├── .gems/
-│   ├── iterations/
-│   │   └── iter-N/
-│   │       ├── .state.json       ← 流程狀態（state-manager-v3）
-│   │       ├── poc/
-│   │       │   ├── requirement_draft_iter-N.md  ← Blueprint 識別標記
-│   │       │   └── poc-consolidation-log.md     ← POC-FIX 識別標記
-│   │       ├── plan/
-│   │       │   └── implementation_plan_Story-X.Y.md
-│   │       ├── build/
-│   │       │   ├── Fillback_Story-X.Y.md
-│   │       │   └── iteration_suggestions_Story-X.Y.json
-│   │       └── logs/
-│   │           ├── gate-check-{pass|error}-{ts}.log
-│   │           ├── gate-plan-{pass|error}-{ts}.log
-│   │           ├── build-phase-N-Story-X.Y-{pass|error}-{ts}.log
-│   │           ├── gate-shrink-{pass|error}-{ts}.log
-│   │           ├── gate-verify-{pass|error}-{ts}.log
-│   │           └── gate-microfix-{pass|error}-{ts}.log  ← POC-FIX/MICRO-FIX
-│   ├── docs/
-│   │   ├── functions.json        ← gems-scanner-unified 輸出
-│   │   ├── blueprint-verify.json ← blueprint-verify 報告
-│   │   └── BLUEPRINT_VERIFY.md
-│   └── project-memory.json       ← 歷史記憶（pitfall/hint）
+├── src/                          # 實際程式碼
+└── .gems/
+    ├── design/                   # 設計文件集中（v6 新增）
+    │   ├── blueprint.md          # 可選，全局設計索引
+    │   ├── draft_iter-1.md       # Per-iter Draft（功能需求 + AC 定義）
+    │   ├── draft_iter-2.md
+    │   └── poc_iter-N.html       # 可選，UI 原型
+    ├── logs/                     # MICRO-FIX 全局 log（不屬於任何 iter）
+    │   ├── microfix-pass-{ts}.log
+    │   └── microfix-error-{ts}.log
+    ├── iterations/
+    │   └── iter-N/
+    │       ├── .state.json       # 執行狀態（state-manager-v3）
+    │       ├── contract_iter-N.ts  # Contract（iter 核心 artifact）
+    │       ├── poc-fix/          # POC-FIX 工作區（按需建立）
+    │       │   └── consolidation-log.md
+    │       ├── plan/
+    │       │   └── implementation_plan_Story-X.Y.md
+    │       ├── ac-tests/             # ac-runner v3.0 生成（needsTest:true）
+    │       │   └── ac-iter-N.test.ts
+    │       ├── build/
+    │       │   ├── Fillback_Story-X.Y.md
+    │       │   └── iteration_suggestions_Story-X.Y.json
+    │       └── logs/
+    │           ├── blueprint-gate-{pass|error}-{ts}.log
+    │           ├── draft-gate-{pass|error}-{ts}.log
+    │           ├── contract-gate-{pass|error}-{ts}.log
+    │           ├── cynefin-check-{pass|fail}-{ts}.log
+    │           ├── cynefin-report-{ts}.json  # action-level needsTest 供 ac-runner 讀取
+    │           ├── pocfix-active-{ts}.log
+    │           ├── pocfix-pass-{ts}.log
+    │           ├── build-phase-N-Story-X.Y-{pass|error}-{ts}.log
+    │           ├── scan-scan-{pass|error}-{ts}.log
+    │           └── gate-verify-{pass|error}-{ts}.log
+    ├── docs/
+    │   ├── functions.json        # gems-scanner-unified 彙整
+    │   └── blueprint-verify.json
+    └── project-memory.json       # 跨 iter 歷史記憶（pitfall/hint）
 ```
+
+> `poc/` 目錄不再建立，v5 legacy 專案保留相容
 
 ---
 
-## 八、MCP Loop 自動偵測流程
+## MCP Loop 狀態機流程
 
-`sdid-loop` MCP tool 是主入口，每次呼叫自動：
+`sdid-loop` MCP tool 自動驅動，每次呼叫：
 
-1. 偵測最新 iter
+1. 偵測當前 iter
 2. `detectRoute()` 判斷路線
-3. `inferBlueprintState()` 推斷當前 phase
+3. `inferStateFromLogs()` 推斷當前 phase
 4. 執行對應工具
-5. 回傳輸出 + @TASK / @PASS / @BLOCKER 指示
+5. 輸出 log + @TASK / @PASS / @BLOCKER 指令
 
 ```
 sdid-loop(project=<path>)
-  │
-  ├── phase=GATE     → blueprint-gate.cjs
-  ├── phase=PLAN     → draft-to-plan.cjs
-  ├── phase=BUILD    → runner.cjs --phase=BUILD --step=N
-  ├── phase=SHRINK   → blueprint-shrink.cjs
-  ├── phase=VERIFY   → blueprint-verify.cjs
-  ├── phase=NEXT_ITER → blueprint-expand.cjs
-  ├── phase=POC-FIX  → micro-fix-gate.cjs（forceStart 進入）
-  └── phase=MICRO-FIX → micro-fix-gate.cjs（forceStart 進入）
+  ├── phase=NO_DRAFT  → 引導使用者建立 design/draft_iter-N.md
+  ├── phase=GATE
+  │     ├── contract_iter-N.ts 存在 → contract-gate v5
+  │     ├── design/draft_iter-N.md 存在 → draft-gate v5
+  │     └── design/blueprint.md 存在 → blueprint-gate v5
+  ├── phase=CONTRACT  → 輸出 @TASK 讓 AI 推導 contract（存到 iter-N/）
+  ├── phase=PLAN      → spec-to-plan.cjs
+  ├── phase=BUILD     → runner.cjs --phase=BUILD --step=N
+  ├── phase=SCAN      → runner.cjs --phase=SCAN
+  ├── phase=VERIFY    → blueprint-verify.cjs（讀 design/draft_iter-N.md）
+  ├── phase=POC-FIX   → micro-fix-gate.cjs --iter=N
+  └── phase=MICRO-FIX → micro-fix-gate.cjs（不帶 --iter）
 ```
 
 ---
 
-## 九、快速指令參考
-
+## 常用指令參考
 ```bash
-# Blueprint Flow
-node sdid-tools/blueprint/gate.cjs --draft=<path> --target=<project> --iter=N
-node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+# 主流程（v6）
+node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=.gems/design/blueprint.md --target=<project>
+node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-N.md --target=<project>
+node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-N/contract_iter-N.ts --target=<project> --iter=N
+node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=N
+node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-N
 node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=<project>
-node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=N --target=<project>
-node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> --iter=N
+node task-pipe/runner.cjs --phase=SCAN --target=<project>
+node sdid-tools/blueprint/verify.cjs --draft=.gems/design/draft_iter-N.md --target=<project> --iter=N
 
-# POC-FIX Phase 4
+# POC-FIX
 node sdid-tools/poc-to-scaffold.cjs --log=<consolidation-log.md> --target=<project>
-node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
+node sdid-tools/poc-fix/micro-fix-gate.cjs --target=<project> --iter=N
 
 # MICRO-FIX
-node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<project> --iter=N
+node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<project>
 
-# 骨架工具
-node sdid-tools/plan-to-scaffold.cjs --plan=<plan.md> --target=<project> --dry-run
+# 輔助工具
 node task-pipe/tools/shrink-tags.cjs --target=<project> --dry-run
-
-# 狀態查詢
 node sdid-tools/state-guide.cjs --project=<project>
 node task-pipe/tools/project-status.cjs --target=<project>
 
@@ -339,22 +430,21 @@ node sdid-monitor/server.cjs   # http://localhost:3737
 
 ---
 
-## 十、Skill 路由（AI 進入點）
+## Skill 路由（AI 入口）
 
-`.agent/skills/sdid/SKILL.md` 是 AI 的路由器，根據使用者意圖決定走哪條路線：
-
-| 條件 | 模式 | 動作 |
-|------|------|------|
-| 「小修」「fix」「改一下」 | MICRO-FIX | 直接改 → micro-fix-gate |
-| 第三方串接、客製化演算法 | POC-FIX | 讀 poc-fix.md 四階段 |
-| 有 draft，無 plan | BUILD-AUTO | sdid-loop 自動偵測 |
-| 有 implementation_plan | BUILD-AUTO | sdid-loop 自動偵測 |
-| 需求模糊，無專案 | DESIGN-BLUEPRINT | 5 輪對話收斂需求 |
-| 需求明確，無專案 | DESIGN-TASKPIPE | sdid-loop 自動走 Task-Pipe |
+`.agent/skills/sdid/SKILL.md` 是 AI 的路由 hub：
+| 觸發詞 | 路線 | 行動 |
+|--------|------|------|
+| 「修一下」「單一函式」 | MICRO-FIX | 直接跑 micro-fix-gate（不帶 --iter） |
+| 「POC 探索」「複雜業務」「第三方串接」 | POC-FIX | iter-N/poc-fix/ 工作區 |
+| 「有 draft」「有 contract」 | GATE | sdid-loop 自動推斷 |
+| 「有 contract」「有 plan」 | CONTRACT/PLAN | sdid-loop 自動推斷 |
+| 「有 implementation_plan」 | BUILD | sdid-loop 自動推斷 |
+| 「全新專案」「沒有任何文件」 | NO_DRAFT | 引導建立 design/draft_iter-1.md |
 
 ---
 
-## 十一、GEMS 標籤格式
+## GEMS 標籤格式
 
 ```typescript
 /**
@@ -363,14 +453,13 @@ node sdid-monitor/server.cjs   # http://localhost:3737
  * GEMS-DEPS: [Type.Name (說明)]
  * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH
  */
-// AC-X.Y                    ← 驗收條件 ID（在標籤後、[STEP] 前）
-// [STEP] Step1              ← P0/P1 強制，P2/P3 可選
+// AC-X.Y                    // 驗收條件 ID（在標籤後、[STEP] 前，P0/P1 必填）
+// [STEP] Step1              // P0/P1 強制，P2/P3 可選
 // [STEP] Step2
 export function functionName(...) { ... }
 ```
 
-Shrink 格式（`shrink-tags.cjs` 壓縮後）：
-
+Shrink 後格式（shrink-tags.cjs 壓縮）：
 ```typescript
 // GEMS: functionName | P1 | FLOW: Step1→Step2
 // AC-X.Y

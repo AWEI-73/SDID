@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>計算歷史管理 POC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 600; color: #f1f5f9; margin-bottom: 0.25rem; }
+    .subtitle { font-size: 0.85rem; color: #64748b; margin-bottom: 2rem; }
+
+    .layout { display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem; max-width: 900px; margin: 0 auto; }
+
+    /* Calculator */
+    .calc-panel {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 1.5rem;
+    }
+    .display {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      text-align: right;
+    }
+    .display .expr { font-size: 0.8rem; color: #475569; min-height: 1.2em; }
+    .display .result { font-size: 2rem; font-weight: 500; color: #f1f5f9; }
+    .keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+    .key {
+      padding: 0.9rem;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.1s, transform 0.1s;
+    }
+    .key:active { opacity: 0.7; transform: scale(0.96); }
+    .key.num   { background: #334155; color: #e2e8f0; }
+    .key.op    { background: #1d4ed8; color: #fff; }
+    .key.eq    { background: #6366f1; color: #fff; grid-column: span 2; }
+    .key.clear { background: #7f1d1d; color: #fca5a5; }
+    .key.del   { background: #374151; color: #e2e8f0; }
+
+    /* History panel */
+    .history-panel {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-header h2 { font-size: 0.95rem; font-weight: 600; color: #94a3b8; }
+    .btn-clear-all {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.75rem;
+      background: transparent;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #64748b;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-clear-all:hover { border-color: #ef4444; color: #ef4444; }
+    .history-list { display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; max-height: 400px; }
+    .history-item {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 0.6rem 0.9rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .history-item:hover { background: #1e3a5f; }
+    .history-item .expr { font-size: 0.8rem; color: #64748b; }
+    .history-item .val  { font-size: 1rem; font-weight: 500; color: #a5b4fc; }
+    .history-item .del-btn {
+      background: none;
+      border: none;
+      color: #475569;
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 0 0.25rem;
+    }
+    .history-item .del-btn:hover { color: #ef4444; }
+    .empty-state { text-align: center; color: #334155; font-size: 0.85rem; padding: 2rem 0; }
+  </style>
+  <!--
+  @GEMS-DESIGN-BRIEF:
+  - Purpose: 驗證計算機核心運算 + 歷史記錄 CRUD 流程
+  - Aesthetic: Modern Dark / Indigo accent
+  - Typography: Outfit (Google Fonts)
+  - ColorPalette: #6366f1 (Primary), #1e293b (Surface), #0f172a (Background)
+
+  @GEMS-VERIFIED:
+  - [x] calculate
+  - [x] appendHistory
+  - [x] deleteHistory
+  - [x] clearAllHistory
+  - [x] renderHistory
+  - [ ] editHistory (未實作)
+  - [ ] exportHistory (未實作)
+
+  @GEMS-FIELD-COVERAGE:
+  - id: frontend
+  - expression: frontend
+  - result: frontend
+  - createdAt: frontend
+  - note: api-only
+  -->
+</head>
+<body>
+
+<h1>🧮 計算歷史管理</h1>
+<p class="subtitle">POC — 驗證計算核心 + 歷史 CRUD</p>
+
+<div class="layout">
+  <!-- Calculator -->
+  <div class="calc-panel">
+    <div class="display">
+      <div class="expr" id="expr"></div>
+      <div class="result" id="result">0</div>
+    </div>
+    <div class="keypad">
+      <button class="key clear" onclick="clearCalc()">C</button>
+      <button class="key del"   onclick="deleteLast()">⌫</button>
+      <button class="key op"    onclick="appendOp('%')">%</button>
+      <button class="key op"    onclick="appendOp('/')">÷</button>
+
+      <button class="key num" onclick="appendNum('7')">7</button>
+      <button class="key num" onclick="appendNum('8')">8</button>
+      <button class="key num" onclick="appendNum('9')">9</button>
+      <button class="key op"  onclick="appendOp('*')">×</button>
+
+      <button class="key num" onclick="appendNum('4')">4</button>
+      <button class="key num" onclick="appendNum('5')">5</button>
+      <button class="key num" onclick="appendNum('6')">6</button>
+      <button class="key op"  onclick="appendOp('-')">−</button>
+
+      <button class="key num" onclick="appendNum('1')">1</button>
+      <button class="key num" onclick="appendNum('2')">2</button>
+      <button class="key num" onclick="appendNum('3')">3</button>
+      <button class="key op"  onclick="appendOp('+')">+</button>
+
+      <button class="key num" onclick="appendNum('0')" style="grid-column:span 2">0</button>
+      <button class="key num" onclick="appendNum('.')">.</button>
+      <button class="key eq"  onclick="calculate()">＝</button>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="history-panel">
+    <div class="history-header">
+      <h2>歷史記錄</h2>
+      <button class="btn-clear-all" onclick="clearAllHistory()">全部清除</button>
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="empty-state">尚無記錄</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Mock 資料 (符合 HistoryEntry contract) ──────────────────────────────────
+const MOCK_DATA = [
+  { id: 'h1', expression: '12 + 34', result: '46',  createdAt: '2026-03-10T10:00:00Z' },
+  { id: 'h2', expression: '100 / 4', result: '25',  createdAt: '2026-03-10T10:01:00Z' },
+  { id: 'h3', expression: '7 * 8',   result: '56',  createdAt: '2026-03-10T10:02:00Z' },
+];
+
+let history = [...MOCK_DATA];
+let expr = '';
+
+// ── calculate ───────────────────────────────────────────────────────────────
+function calculate() {
+  if (!expr) return;
+  try {
+    // eslint-disable-next-line no-new-func
+    const val = Function('"use strict"; return (' + expr + ')')();
+    const entry = {
+      id: 'h' + Date.now(),
+      expression: expr.replace(/\*/g, '×').replace(/\//g, '÷'),
+      result: String(val),
+      createdAt: new Date().toISOString()
+    };
+    document.getElementById('result').textContent = val;
+    document.getElementById('expr').textContent = entry.expression + ' =';
+    appendHistory(entry);
+    expr = '';
+  } catch {
+    document.getElementById('result').textContent = 'Error';
+    expr = '';
+  }
+}
+
+// ── appendHistory ────────────────────────────────────────────────────────────
+function appendHistory(entry) {
+  history.unshift(entry);
+  renderHistory();
+}
+
+// ── deleteHistory ────────────────────────────────────────────────────────────
+function deleteHistory(id) {
+  history = history.filter(h => h.id !== id);
+  renderHistory();
+}
+
+// ── clearAllHistory ──────────────────────────────────────────────────────────
+function clearAllHistory() {
+  history = [];
+  renderHistory();
+}
+
+// ── renderHistory ────────────────────────────────────────────────────────────
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  if (history.length === 0) {
+    list.innerHTML = '<div class="empty-state">尚無記錄</div>';
+    return;
+  }
+  list.innerHTML = history.map(h => `
+    <div class="history-item" onclick="recallHistory('${h.result}')">
+      <div>
+        <div class="expr">${h.expression}</div>
+        <div class="val">= ${h.result}</div>
+      </div>
+      <button class="del-btn" onclick="event.stopPropagation(); deleteHistory('${h.id}')">✕</button>
+    </div>
+  `).join('');
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function appendNum(n) {
+  expr += n;
+  document.getElementById('result').textContent = expr;
+  document.getElementById('expr').textContent = '';
+}
+function appendOp(op) {
+  if (!expr) return;
+  expr += op;
+  document.getElementById('result').textContent = expr;
+}
+function deleteLast() {
+  expr = expr.slice(0, -1);
+  document.getElementById('result').textContent = expr || '0';
+}
+function clearCalc() {
+  expr = '';
+  document.getElementById('result').textContent = '0';
+  document.getElementById('expr').textContent = '';
+}
+function recallHistory(val) {
+  expr = val;
+  document.getElementById('result').textContent = val;
+}
+
+// ── init ─────────────────────────────────────────────────────────────────────
+renderHistory();
+</script>
+</body>
+</html>

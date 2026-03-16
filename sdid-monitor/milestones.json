@@ -1,0 +1,17 @@
+{
+  "milestones": [
+    { "id": "M11", "label": "M11 — MODIFY 函式提示：loop.mjs HUB 注入加 ⚠️ evolution=MODIFY 警示", "status": "done" },
+    { "id": "M12", "label": "M12 — iter 函式快照保存：SCAN 後存 functions-snapshot.json 到 iter 目錄供跨 iter diff", "status": "done" },
+    { "id": "M14", "label": "M14 — Skill 串接模式研究：研究 Superpowers 等 skill 驅動模式，找出順暢串接的關鍵因素", "status": "done" },
+    { "id": "M15", "label": "M15 — Gate Output Pointer：Gate output 改 pointer（read log）不是 content，@TASK 不塞 context，stub 照抄防護 + gold template 引導", "status": "done" },
+    { "id": "M18", "label": "M18 — AC 簡化/TDD 替代：Contract absorbs Spec，plan-generator 直讀 contract，spec 層消除", "status": "done" },
+    { "id": "M22", "label": "M22 — Terminal State：每個模式加明確 terminal state，解決 HUB 卡住問題", "status": "done" },
+    { "id": "M24", "label": "M24 — Log Output 精簡化：終端機極簡化到 hub→log 就好，統一規範但內容精準化", "status": "done", "priority": 1 },
+    { "id": "M26", "label": "M26 — CYNEFIN 提前觸發：Blueprint Round 1 前加輕量 quick-scan，Chaotic domain 提早發現不浪費 5 輪對話", "status": "done", "priority": 1 },
+    { "id": "M25", "label": "M25 — Adversarial Reviewer：BUILD 完成後，獨立 subagent 對照 CONTRACT.ts 型別邊界 vs 實作，抓腳本 gate 抓不到的語意飄移", "status": "done", "priority": 2 },
+    { "id": "M17", "label": "M17 — GEMS Tags 正確模型：Spec 放完整 tags 防飄移（AI 開發時自然對齊），新增/漏掉的用 AST 找洞 → AI 補 GEMS-FLOW（人看的）+ 頂層行，[STEP] 執行鷹架用完不補", "status": "done", "priority": 2 },
+    { "id": "M23", "label": "M23 — Per-step Subagent：每個 step 用獨立 subagent 執行，context 隔離，依複雜度選模型（機械任務用便宜模型）", "status": "done", "priority": 3 },
+    { "id": "M16", "label": "M16 — 骨架映射強化：程式碼映射 + API 簽名對齊、context window 最小化避免後段壓縮", "status": "done", "priority": 3 },
+    { "id": "M27", "label": "M27 — DESIGN 評分拋棄式 Gate：DESIGN 階段（Blueprint→Contract）改為 generation loop，gate 給分 < 80 輸出 @REGEN-HINT 讓 AI 重生成整個 draft，品質問題（TAG/FLOW/ACC/BUDGET）降為 WARN 進 SCORE 機制，不再卡 patch loop", "status": "done" }
+  ]
+}

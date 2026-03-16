@@ -45,6 +45,35 @@
  *   - @GEMS-API 必須有回傳型別
  */
 
+// ─── Stories（contract 內建 Story 清單，plan-generator 直讀） ──
+
+// @GEMS-STORIES
+// Story-0.0 | 專案骨架 + 核心型別 | Foundation
+// Story-1.0 | 組織管理 CRUD | CRUD
+// Story-2.0 | 碳排資料登錄 | CRUD + CALC
+// Story-3.0 | 儀表板統計 | READ + CALC
+
+// ─── Story Items（每個 Story 的動作清單） ─────────────────────
+
+// @GEMS-STORY-ITEM: Story-0.0
+// - 建立專案骨架與目錄結構 | CREATE | P0
+// - 定義核心型別 (Organization, EmissionRecord) | CREATE | P0
+// - 設定路由框架 | CREATE | P1
+
+// @GEMS-STORY-ITEM: Story-1.0
+// - 組織列表頁面 | CREATE | P1
+// - 新增組織功能 | CREATE | P1
+// - 編輯組織功能 | MODIFY | P1
+
+// @GEMS-STORY-ITEM: Story-2.0
+// - 碳排資料輸入表單 | CREATE | P1
+// - 排放係數查詢 | READ | P1
+// - CO2e 自動計算 | CALC | P0
+
+// @GEMS-STORY-ITEM: Story-3.0
+// - Scope 分類統計 | READ + CALC | P1
+// - 月趨勢圖表 | READ | P2
+
 // ─── Enums ───────────────────────────────────────────────────
 
 // @GEMS-ENUM: EmissionScope
@@ -132,6 +161,8 @@ export interface IDashboardService {
 
 | 標籤 | 用途 | 必填 | Gate 規則 |
 |------|------|------|-----------|
+| `@GEMS-STORIES` | Story 清單（plan-generator 直讀） | ✅ | 至少一個 Story，格式 Story-N.N |
+| `@GEMS-STORY-ITEM: Story-X.Y` | Story 動作清單 | ✅ | 每個 Story 必須有對應 ITEM 區塊 |
 | `@GEMS-CONTRACT: Name` | Entity 定義（後端邊界） | ✅ | 必須有對應 @GEMS-TABLE |
 | `@GEMS-TABLE: tbl_xxx` | DB 表名 | ✅ | 必須在 @GEMS-CONTRACT 下方 |
 | `@GEMS-STORY: Story-X.Y` | 對應哪個 Story | ✅ | 格式 Story-N.N |

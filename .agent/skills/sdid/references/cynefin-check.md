@@ -43,11 +43,20 @@
 
 | 欄位 | 說明 |
 |------|------|
-| name | 動作的技術名稱（techName） |
+| name | 動作的技術名稱（techName，對應 @GEMS-STORY-ITEM 第一欄） |
 | story | 所屬 Story |
 | domain | Clear/Complicated/Complex |
-| hiddenSteps | 這個 action 的隱含步驟 |
-| needsTest | domain=Complicated/Complex 或 hiddenSteps.length>=2 |
+| hiddenSteps | 這個 action 的隱含步驟（陣列） |
+| needsTest | **腳本自動計算**：domain=Complicated/Complex 或 hiddenSteps.length>=2 → true |
+
+**needsTest 判斷規則**（cynefin-log-writer.cjs 自動計算，AI 也可手動填入覆蓋）：
+- `domain === 'Complicated'` 或 `domain === 'Complex'` → `needsTest: true`
+- `hiddenSteps.length >= 2` → `needsTest: true`
+- 其他 → `needsTest: false`
+
+**needsTest 的影響**：
+- `needsTest: true` → ac-runner v3.0 為此 AC 生成 vitest test 檔（支援 @GEMS-AC-SETUP 前置步驟）
+- `needsTest: false` → ac-runner 走舊的直接執行模式（向後相容）
 
 將 actions[] 填入 JSON report，供 cynefin-log-writer.cjs 寫入 cynefin-report.json，再由 ac-runner v3.0 讀取決定哪些 AC 走 vitest 模式。
 

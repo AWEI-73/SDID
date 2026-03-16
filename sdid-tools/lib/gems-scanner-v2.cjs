@@ -115,13 +115,24 @@ function parseComment(commentText) {
 // ─────────────────────────────────────────────────────────────
 
 function loadTypescript(projectRoot) {
+  // 策略 1: target 專案的 typescript
   try {
     const tsPath = require.resolve('typescript', { paths: [projectRoot] });
     return require(tsPath);
-  } catch {
-    console.error(`✗ 找不到 typescript，請確認 ${projectRoot} 已安裝 typescript`);
-    process.exit(2);
+  } catch { /* 繼續 */ }
+
+  // 策略 2: sdid-tools 自己的 typescript（往上找）
+  let searchDir = __dirname;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const tsPath = require.resolve('typescript', { paths: [searchDir] });
+      return require(tsPath);
+    } catch { /* 繼續 */ }
+    searchDir = path.resolve(searchDir, '..');
   }
+
+  // 找不到 → 回傳 null，讓呼叫端 fallback 到 regex scanner（不 exit）
+  return null;
 }
 
 function isFunctionNode(ts, node) {
@@ -363,6 +374,10 @@ function resolveGemsId(func, dictIndex, usedGemsIds) {
 
 function scanV2(srcDir, projectRoot) {
   const ts = loadTypescript(projectRoot);
+  if (!ts) {
+    // TypeScript 不可用 → 回傳空結果，讓 unified scanner fallback 到 regex
+    return { version: '2.0', functions: [], untagged: [], stats: { tagged: 0 }, _tsUnavailable: true };
+  }
   const dictIndex = loadDictIndex(projectRoot);
   const files = scanDirectory(srcDir);
 

@@ -39,13 +39,8 @@
 
 // ─── Stories ─────────────────────────────────────────────────
 
-// @GEMS-STORIES
-// Story-{N}.0 | {Story 描述} | {Story 類型: Foundation/CRUD/CALC/UI}
-
-// ─── Story Items（v3 擴充：技術名稱 + FLOW + DEPS）────────────
-
-// @GEMS-STORY-ITEM: Story-{N}.0
-// - {業務描述} | {TYPE} | P{0-3} | {techName} | {FLOW: STEP1→STEP2→RETURN} | {DEPS: [dep1, dep2]}
+// @GEMS-STORY: Story-{N}.0 | {moduleName} | {Story 描述} | {Story 類型: Foundation/CRUD/CALC/UI}
+// @GEMS-STORY-ITEM: {techName} | {TYPE} | P{0-3} | {FLOW: STEP1→STEP2→RETURN} | {DEPS: [dep1]} | AC-{N}.0
 
 // ─── Enums ───────────────────────────────────────────────────
 
@@ -83,11 +78,11 @@
 //
 // [CALC] 純計算函式 — needsTest:false → ac-runner 直接執行
 //   適用：無 side effect、無前置狀態依賴的純邏輯函式
-//   定位：骨架確認 + happy path 不爆
 //
 // [CALC+SETUP] 有狀態流程 — needsTest:true → ac-runner 生成 vitest test
 //   適用：需前置資料，但可用 production function 本地建立
-//   SETUP 步驟在 vitest beforeEach 內執行
+//   SETUP 步驟在 vitest test 內執行（先 addTransaction 再 getTransactions）
+//   判斷依據：CYNEFIN domain=Complicated/Complex 或 hiddenSteps >= 2
 //
 // [SKIP] 無法自動驗收 — 開發者自行負責
 //   適用：UI 互動、需要外部 API/DB（無法本地跑）
@@ -106,8 +101,8 @@
 // @GEMS-AC-INPUT: [{testInput}]
 // @GEMS-AC-EXPECT: (result) => result.id && result.id.length > 0
 
-// [CALC] 有狀態流程（透過 SETUP 建立前置資料）
-// @GEMS-AC: AC-{N}.1
+// [CALC+SETUP] 有狀態流程（CYNEFIN needsTest:true → vitest orchestrator）
+// @GEMS-AC: AC-{N}.2
 // @GEMS-AC-FN: {functionName}
 // @GEMS-AC-MODULE: modules/{Module}/services/{file-name}
 // @GEMS-AC-SETUP: [{"fn":"{setupFn}","module":"{setupModule}","args":[{setupArgs}]}]
@@ -115,5 +110,5 @@
 // @GEMS-AC-EXPECT: (result) => {booleanExpression}
 
 // [SKIP] 無法自動驗收
-// @GEMS-AC: AC-{N}.2
+// @GEMS-AC: AC-{N}.3
 // @GEMS-AC-SKIP: {跳過原因：UI 互動 / 需要外部 API-DB 無法本地跑}

@@ -23,13 +23,74 @@ function tryJson(fp) {
 }
 
 /**
- * 找到 iter-N/poc/ 下的 requirement_draft_*.md
+ * 找到 design/ 下的 draft_iter-N.md（v6 新結構）
+ * v6: 所有設計文件集中在 {project}/.gems/design/
+ * @returns {string|null} 絕對路徑
+ */
+function findDraftV6(projectRoot, iterNum) {
+  const designDir = path.join(projectRoot, '.gems', 'design');
+  if (!fs.existsSync(designDir)) return null;
+  const candidate = path.join(designDir, `draft_iter-${iterNum}.md`);
+  if (fs.existsSync(candidate)) return candidate;
+  return null;
+}
+
+/**
+ * 找到 design/ 下的 blueprint.md（v6，可選）
+ * @returns {string|null} 絕對路徑
+ */
+function findBlueprint(projectRoot) {
+  const bp = path.join(projectRoot, '.gems', 'design', 'blueprint.md');
+  return fs.existsSync(bp) ? bp : null;
+}
+
+/**
+ * 找到 iter-N/ 下的 contract_iter-N.ts（v6：contract 屬於 iter）
+ * @returns {string|null} 絕對路徑
+ */
+function findContractV6(projectRoot, iterNum) {
+  const candidate = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, `contract_iter-${iterNum}.ts`);
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * 找到 design/ 下的 poc_iter-N.html（v6，可選）
+ * @returns {string|null} 絕對路徑
+ */
+function findPocHtml(projectRoot, iterNum) {
+  const candidate = path.join(projectRoot, '.gems', 'design', `poc_iter-${iterNum}.html`);
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * 找到 iter-N/poc-fix/ 下的 consolidation-log.md（poc-fix 工作區）
+ * @returns {string|null} 絕對路徑
+ */
+function findPocFixLog(projectRoot, iterNum) {
+  const candidate = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc-fix', 'consolidation-log.md');
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * 找到 iter-N/poc-fix/ 目錄（poc-fix 工作區存在）
+ * @returns {boolean}
+ */
+function hasPocFixDir(projectRoot, iterNum) {
+  return fs.existsSync(path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc-fix'));
+}
+
+/**
+ * 找到 draft（v6 優先，fallback 到 v5 legacy）
  * @returns {string|null} 絕對路徑
  */
 function findDraft(projectRoot, iterNum) {
+  // v6: design/draft_iter-N.md
+  const v6 = findDraftV6(projectRoot, iterNum);
+  if (v6) return v6;
+  // v5 legacy fallback: iter-N/poc/draft_iter-N.md 或 requirement_draft_iter-N.md
   const pocDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc');
   if (fs.existsSync(pocDir)) {
-    const drafts = fs.readdirSync(pocDir).filter(f => f.startsWith('requirement_draft_'));
+    const drafts = fs.readdirSync(pocDir).filter(f => f.startsWith('draft_iter-') || f.startsWith('requirement_draft_'));
     if (drafts.length) return path.join(pocDir, drafts[0]);
   }
   // fallback: 根目錄任意 requirement_draft*.md → 自動搬到正確路徑
@@ -37,10 +98,11 @@ function findDraft(projectRoot, iterNum) {
     ? fs.readdirSync(projectRoot).filter(f => f.startsWith('requirement_draft') && f.endsWith('.md'))
     : [];
   if (rootFiles.length) {
-    const canonical = path.join(pocDir, `requirement_draft_iter-${iterNum}.md`);
-    if (!fs.existsSync(pocDir)) fs.mkdirSync(pocDir, { recursive: true });
+    const designDir = path.join(projectRoot, '.gems', 'design');
+    const canonical = path.join(designDir, `draft_iter-${iterNum}.md`);
+    if (!fs.existsSync(designDir)) fs.mkdirSync(designDir, { recursive: true });
     fs.copyFileSync(path.join(projectRoot, rootFiles[0]), canonical);
-    console.warn(`[findDraft] 自動搬移 ${rootFiles[0]} → .gems/iterations/iter-${iterNum}/poc/requirement_draft_iter-${iterNum}.md`);
+    console.warn(`[findDraft] 自動搬移 ${rootFiles[0]} → .gems/design/draft_iter-${iterNum}.md`);
     return canonical;
   }
   return null;
@@ -96,12 +158,17 @@ function detectActiveIter(projectRoot) {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * 偵測指定迭代走哪條路線（per-iter 判斷，不跨迭代污染）
+ * 偵測指定迭代走哪條路線（per-iter 判斷）
  *
- * 規則：只看 active iter 的 poc/ 目錄
- *   - poc-consolidation-log.md → POC-FIX
- *   - requirement_spec_*       → Task-Pipe
- *   - requirement_draft_*      → Blueprint
+ * v6 規則（優先）：
+ *   .gems/design/ 存在 → v6 流程
+ *     blueprint.md 存在 → Blueprint（有全局索引）
+ *     draft_iter-N.md 存在 → Draft-only（無 blueprint）
+ *
+ * v5 legacy fallback：
+ *   poc-consolidation-log.md → POC-FIX
+ *   requirement_spec_*       → Task-Pipe
+ *   requirement_draft_*      → Blueprint
  *
  * @param {string} projectRoot
  * @param {string} [iter] - 如 'iter-2'，省略則自動偵測 active iter
@@ -111,23 +178,29 @@ function detectRoute(projectRoot, iter) {
   const activeIter = iter || detectActiveIter(projectRoot);
   const iterNum = parseInt(activeIter.replace('iter-', ''), 10);
 
-  // POC-FIX：consolidation log 存在
+  // v6: design/ 存在 → 新流程
+  const designDir = path.join(projectRoot, '.gems', 'design');
+  if (fs.existsSync(designDir)) {
+    // blueprint.md 存在 → Blueprint（有全局索引，可批次設計多 iter）
+    if (fs.existsSync(path.join(designDir, 'blueprint.md'))) return 'Blueprint';
+    // draft_iter-N.md 存在 → Draft-only（無 blueprint，直接從 draft 開始）
+    if (fs.existsSync(path.join(designDir, `draft_iter-${iterNum}.md`))) return 'Blueprint';
+    return 'Unknown';
+  }
+
+  // v5 legacy fallback
   const pocDir0 = path.join(projectRoot, '.gems', 'iterations', activeIter, 'poc');
   if (fs.existsSync(path.join(pocDir0, 'poc-consolidation-log.md'))) return 'POC-FIX';
   if (fs.existsSync(path.join(projectRoot, '.gems', 'poc-consolidation-log.md'))) return 'POC-FIX';
 
-  // 往前掃所有 iter（含當前），找到第一個有 poc 文件的 iter 來判斷路線
   for (let i = iterNum; i >= 1; i--) {
     const pocDir = path.join(projectRoot, '.gems', 'iterations', `iter-${i}`, 'poc');
     if (!fs.existsSync(pocDir)) continue;
     const files = fs.readdirSync(pocDir);
-    // Task-Pipe：有 spec（POC Step 5 產物）
     if (files.some(f => f.startsWith('requirement_spec_'))) return 'Task-Pipe';
-    // Blueprint：有 draft 但沒有 spec
-    if (files.some(f => f.startsWith('requirement_draft_'))) return 'Blueprint';
+    if (files.some(f => f.startsWith('requirement_draft_') || f.startsWith('draft_iter-'))) return 'Blueprint';
   }
 
-  // 舊路徑相容
   if (fs.existsSync(path.join(projectRoot, 'requirement-spec.md'))) return 'Task-Pipe';
   if (fs.existsSync(path.join(projectRoot, 'requirement-draft.md'))) return 'Blueprint';
 
@@ -162,7 +235,24 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
   const logs = fs.readdirSync(logsDir).sort();
   const has = (prefix) => logs.some(f => f.startsWith(prefix));
 
-  // POC-FIX / MICRO-FIX 完成判斷
+  // POC-FIX 進行中 / 完成判斷（v6: pocfix- 前綴）
+  if (has('pocfix-active-')) {
+    return { phase: 'POC-FIX', step: null, story: null };
+  }
+  if (has('pocfix-pass-')) {
+    // poc-fix 完成，回主流程（繼續 BUILD 或 CONTRACT）
+    const hasSubsequentBuild = logs.some(f => f.startsWith('build-phase-'));
+    if (!hasSubsequentBuild) {
+      // poc-fix 完成但還沒進 BUILD → 回到 CONTRACT 或 BUILD 起點
+      const hasContract = has('contract-gate-pass-') || has('contract-pass-');
+      const hasPlan = has('gate-plan-pass-');
+      if (hasPlan) return { phase: 'BUILD', step: '1', story: plannedStories[0] || null };
+      if (hasContract) return { phase: 'PLAN', step: null, story: null };
+      return { phase: 'CONTRACT', step: null, story: null };
+    }
+  }
+
+  // POC-FIX / MICRO-FIX 完成判斷（v5 legacy）
   if (has('gate-microfix-pass-')) {
     // 如果之後沒有更高優先的 log（如 build-phase），視為完成
     const hasSubsequentBuild = logs.some(f => f.startsWith('build-phase-'));
@@ -223,20 +313,14 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
   }
 
   if (has('gate-verify-pass-')) {
-    // Blueprint Flow: verify pass → 檢查 iterationPlan 是否還有 [STUB] 的 iter
-    // 如果有，回傳 COMPLETE（loop 的 COMPLETE 處理會讀 iterationPlan 並輸出 expand 指令）
-    // 如果沒有，也回傳 COMPLETE（loop 會輸出真正完成訊號）
     return { phase: 'COMPLETE', step: null, story: null };
   }
 
-  // Blueprint Flow: gate-expand-pass 存在 → expand 完成，下一步是重新 GATE
-  // （gate-expand-pass 由 blueprint-expand.cjs 存在新 iter 的 logs/）
+  // gate-expand-pass 向後相容（舊專案可能有此 log）
   if (has('gate-expand-pass-')) {
     if (!has('gate-check-pass-')) {
       return { phase: 'GATE', step: null, story: null };
     }
-    // expand 後已有 gate-check-pass，繼續正常流程（cynefin → contract → plan → build）
-    // 讓下面的 gate-check-pass 邏輯接手
   }
 
   if (has('gate-shrink-pass-')) {
@@ -258,7 +342,7 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
     }
   }
   if (maxPhase > 0) {
-    if (maxPhase >= 8) {
+    if (maxPhase >= 4) {
       const next = plannedStories.find(s => !completedStories.includes(s));
       return next
         ? { phase: 'BUILD', step: '1', story: next }
@@ -280,7 +364,8 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
       return { phase: 'CONTRACT', step: null, story: null };
     }
     // contract.ts 比最新 contract-pass log 新 → contract 已變動，需重新 gate
-    const contractFile = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc', `contract_iter-${iterNum}.ts`);
+    // v6: contract 在 iter-N/ 下
+    const contractFile = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, `contract_iter-${iterNum}.ts`);
     if (fs.existsSync(contractFile)) {
       const contractMtime = fs.statSync(contractFile).mtimeMs;
       const passLogs = logs.filter(f => f.startsWith('contract-pass-')).sort();
@@ -292,6 +377,7 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
         }
       }
     }
+    // contract-pass 後直接進 PLAN（SPEC 層已消除，contract 是單一規格來源）
     return { phase: 'PLAN', step: null, story: null };
   }
 
@@ -324,6 +410,9 @@ function detectFullState(projectRoot, iter, storyOpt) {
   const iterNum = parseInt(iter.replace('iter-', ''), 10);
   const route = detectRoute(projectRoot, iter);
   const draftPath = findDraft(projectRoot, iterNum);
+  const blueprintPath = findBlueprint(projectRoot);
+  const contractPath = findContractV6(projectRoot, iterNum);
+  const pocHtmlPath = findPocHtml(projectRoot, iterNum);
   const plannedStories = findPlannedStories(projectRoot, iterNum);
   const completedStories = findCompletedStories(projectRoot, iterNum);
   const lastStep = tryJson(path.join(projectRoot, '.gems', 'last_step_result.json'));
@@ -356,11 +445,9 @@ function detectFullState(projectRoot, iter, storyOpt) {
         if (ns) { phase = 'BUILD'; step = '1'; story = ns; }
         else { phase = 'VERIFY'; step = null; }
       }
+      // NEXT_ITER 已 deprecated（expand 不再使用），直接視為 COMPLETE
       if (phase === 'NEXT_ITER') {
-        const nd = findDraft(projectRoot, iterNum + 1);
-        return nd
-          ? { phase: 'NEXT_ITER', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, nextIter: `iter-${iterNum + 1}`, reason: 'next iter' }
-          : { phase: 'COMPLETE', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, reason: 'all done' };
+        phase = 'COMPLETE'; step = null;
       }
     }
   }
@@ -390,6 +477,7 @@ function detectFullState(projectRoot, iter, storyOpt) {
 
   return {
     phase, step, story, route, iter, draftPath,
+    blueprintPath, contractPath, pocHtmlPath,
     plannedStories, completedStories, projectRoot,
     reason: phase ? `${sm ? 'ledger' : 'fallback'}: ${phase}${step ? '-' + step : ''}` : 'no state',
   };
@@ -401,10 +489,15 @@ function detectFullState(projectRoot, iter, storyOpt) {
 
 function ensureIterStructure(projectRoot, iterNum) {
   const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
-  for (const d of ['poc', 'plan', 'build', 'logs']) {
+  // v6: poc/ 不再建立（設計文件集中在 .gems/design/）
+  // poc-fix/ 按需建立，不預建
+  for (const d of ['plan', 'build', 'logs']) {
     const dp = path.join(iterPath, d);
     if (!fs.existsSync(dp)) fs.mkdirSync(dp, { recursive: true });
   }
+  // 確保 design/ 目錄存在（v6 設計文件集中地）
+  const designDir = path.join(projectRoot, '.gems', 'design');
+  if (!fs.existsSync(designDir)) fs.mkdirSync(designDir, { recursive: true });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -412,35 +505,37 @@ function ensureIterStructure(projectRoot, iterNum) {
 // ─────────────────────────────────────────────────────────────
 
 function buildNextCommand(st) {
-  const { phase, step, story, iter, draftPath, projectRoot, route } = st;
+  const { phase, step, story, iter, draftPath, contractPath, projectRoot, route } = st;
   const iterNum = parseInt((iter || 'iter-1').replace('iter-', ''), 10);
   const da = draftPath ? `--draft=${draftPath}` : null;
   const ta = projectRoot ? `--target=${projectRoot}` : '--target=<project>';
   if (!phase) return '(unknown)';
   switch (phase) {
-    case 'GATE':       return `node sdid-tools/blueprint/gate.cjs ${da || '--draft=<draft>'} ${ta} --iter=${iterNum}`;
-    case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
-    case 'CONTRACT': {
-      const contractPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'poc', `contract_iter-${iterNum}.ts`);
-      return `node sdid-tools/blueprint/contract-writer.cjs --contract=${contractPath} ${ta} --iter=${iterNum}`;
+    case 'GATE':
+    case 'DRAFT_GATE': {
+      // v6: draft 在 design/，blueprint 可選
+      const bp = findBlueprint(projectRoot);
+      const draft = draftPath || `<project>/.gems/design/draft_iter-${iterNum}.md`;
+      return bp
+        ? `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=${draft} --blueprint=${bp} --target=${projectRoot}`
+        : `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=${draft} --target=${projectRoot}`;
     }
+    case 'BLUEPRINT_GATE':
+      return `node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=${findBlueprint(projectRoot) || '<blueprint>'} --target=${projectRoot}`;
+    case 'CONTRACT': {
+      const cp = contractPath || `<project>/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
+      return `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${cp} --target=${projectRoot} --iter=${iterNum}`;
+    }
+    case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
     case 'PLAN': {
-      if (route === 'Task-Pipe') {
-        return `node task-pipe/tools/spec-to-plan.cjs --target=${ta.replace('--target=', '')} --iteration=${iter || `iter-${iterNum}`}`;
-      }
-      const draftArg = da ? `${da} ` : '';
-      return `node sdid-tools/blueprint/draft-to-plan.cjs ${draftArg}--iter=${iterNum} ${ta}`;
+      return `node task-pipe/tools/spec-to-plan.cjs --target=${ta.replace('--target=', '')} --iteration=${iter || `iter-${iterNum}`}`;
     }
     case 'BUILD':      return story
       ? `node task-pipe/runner.cjs --phase=BUILD --step=${step || 1} --story=${story} ${ta} --iteration=${iter}`
       : `node task-pipe/runner.cjs --phase=BUILD --step=${step || 1} ${ta} --iteration=${iter}`;
-    case 'SHRINK':     return `node sdid-tools/blueprint/shrink.cjs ${da || '--draft=<draft>'} --iter=${iterNum} ${ta}`;
+    case 'POC-FIX':    return `node sdid-tools/poc-fix/micro-fix-gate.cjs --target=${projectRoot} --iter=${iterNum}`;
     case 'SCAN':       return `node task-pipe/runner.cjs --phase=SCAN ${ta} --iteration=${iter}`;
     case 'VERIFY':     return `node sdid-tools/blueprint/verify.cjs ${da || '--draft=<draft>'} ${ta} --iter=${iterNum}`;
-    case 'NEXT_ITER': {
-      const ni = st.nextIter || `iter-${iterNum + 1}`;
-      return `node sdid-tools/blueprint/expand.cjs ${da || '--draft=<draft>'} --iter=${parseInt(ni.replace('iter-', ''), 10)} ${ta}`;
-    }
     case 'COMPLETE':   return 'done';
     case 'POC':        return `node task-pipe/runner.cjs --phase=POC --step=${step || 1} ${ta} --iteration=${iter}`;
     default:           return `node task-pipe/runner.cjs --phase=${phase} --step=${step || 1} ${ta} --iteration=${iter}`;
@@ -451,6 +546,12 @@ module.exports = {
   // helpers
   tryJson,
   findDraft,
+  findDraftV6,
+  findBlueprint,
+  findContractV6,
+  findPocHtml,
+  findPocFixLog,
+  hasPocFixDir,
   findPlannedStories,
   findCompletedStories,
   detectActiveIter,

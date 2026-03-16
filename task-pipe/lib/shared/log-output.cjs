@@ -95,6 +95,17 @@ function ensureLogsDir(logsDir) {
 }
 
 /**
+ * 印出 @READ 指標，附帶 Windows PowerShell 讀取提示
+ * @param {string} logPath - log 相對路徑
+ * @param {string} hint - ↳ 包含 說明
+ */
+function printReadPointer(logPath, hint) {
+    console.log(`@READ: ${logPath}`);
+    console.log(`  ↳ 包含: ${hint}`);
+    console.log(`  ↳ Windows: Get-Content "${logPath}" -Encoding UTF8`);
+}
+
+/**
  * 產生 log 檔案名稱
  * @param {string} phase - 階段 (poc, plan, build, scan)
  * @param {string} step - 步驟 (step-1, phase-1, etc.)
@@ -133,6 +144,7 @@ function saveLog(options) {
     const fileName = getLogFileName(phase, step, type, story);
     const filePath = path.join(logsDir, fileName);
 
+    // 寫入 UTF-8，不加 BOM（避免影響其他工具讀取）
     fs.writeFileSync(filePath, content, 'utf8');
 
     // 回傳相對路徑
@@ -189,8 +201,7 @@ function outputError(options) {
             type: 'error',
             content: details
         });
-        console.log(`@READ: ${logPath}`);
-        console.log(`  ↳ 包含: 錯誤詳情`);
+        printReadPointer(logPath, '錯誤詳情 + GATE_SPEC + 修復建議');
     } else if (details && !projectRoot) {
         console.log('');
         console.log(details);
@@ -387,7 +398,7 @@ function anchorOutput(sections, options = {}) {
         console.log('');
     }
 
-    // @ARCHITECTURE_REVIEW 或 @ITERATION_ADVICE - 正向引導
+    // @ARCHITECTURE_REVIEW 或 @ITERATION_ADVICE - 正向引導（移到 log，終端只留一行）
     if (error) {
         let tag = error.type || 'ITERATION_ADVICE';
         let icon = '💡';
@@ -402,12 +413,15 @@ function anchorOutput(sections, options = {}) {
         }
 
         const attemptInfo = error.attempt ? ` (${error.attempt}/${error.maxAttempts || 3})` : '';
-        console.log(`${icon} @${tag}${attemptInfo}`);
-        console.log(error.summary);
-        if (error.detail) {
-            console.log(`架構延伸資料: ${error.detail}`);
-        }
+        // 終端只印一行摘要
+        console.log(`${icon} @${tag}${attemptInfo}: ${error.summary}`);
         console.log('');
+
+        // 詳細內容存到 log sections（由下方存檔邏輯處理）
+        if (!sections._reviewDetail) sections._reviewDetail = [];
+        sections._reviewDetail.push(`@${tag}${attemptInfo}`);
+        sections._reviewDetail.push(error.summary);
+        if (error.detail) sections._reviewDetail.push(`架構延伸資料: ${error.detail}`);
     }
 
     // @OUTPUT - 結論 + 下一步
@@ -463,6 +477,11 @@ function anchorOutput(sections, options = {}) {
                 const tag = error.type || 'TACTICAL_FIX';
                 const attemptInfo = error.attempt ? ` (${error.attempt}/${error.maxAttempts || 3})` : '';
                 logLines.push(`@${tag}${attemptInfo}\n${error.summary}`);
+                if (error.detail) logLines.push(`架構延伸資料: ${error.detail}`);
+            }
+            // _reviewDetail 由終端精簡化邏輯填入，完整內容存 log
+            if (sections._reviewDetail && sections._reviewDetail.length > 0) {
+                logLines.push(sections._reviewDetail.join('\n'));
             }
             if (output) logLines.push(`@OUTPUT\n${output}`);
 
@@ -594,42 +613,16 @@ function anchorError(type, summary, nextCommand, options = {}) {
 
     console.log(`@${type}${attemptInfo} | ${summary}`);
     
-    // v3.1: @HINT — 歷史錯誤提示
-    if (projectMemory && projectRoot && phase && step) {
-        try {
-            const hint = projectMemory.getHistoricalHint(projectRoot, phase, step, story);
-            if (hint.hint) {
-                console.log(`@HINT: ${hint.hint} (${hint.count} 次)`);
-            }
-        } catch (e) { /* 忽略 */ }
-    }
-    
-    // v2.0: 輸出策略漂移資訊
-    if (strategyInfo) {
-        const levelEmoji = { 1: '🔧', 2: '🔄', 3: '⚠️' };
-        console.log(`@STRATEGY_DRIFT | Level ${strategyInfo.level}/3 | ${levelEmoji[strategyInfo.level] || ''} ${strategyInfo.name}`);
-        
-        if (strategyInfo.level === 1) {
-            console.log('  策略: 局部修補 - 在原檔案修復');
-        } else if (strategyInfo.level === 2) {
-            console.log('  策略: 換個方式 - 重新實作或拆分函式');
-        } else if (strategyInfo.level === 3) {
-            console.log('  策略: 架構質疑 - 考慮回退到 PLAN 階段');
-            // 回溯建議
-            if (backtrackRouter) {
-                const backtrack = backtrackRouter.analyzeAndRoute([{ message: summary, type }]);
-                if (backtrack.needsBacktrack && backtrack.target) {
-                    console.log(`  @BACKTRACK_HINT: 建議回溯到 ${backtrack.target.phase}-${backtrack.target.step}`);
-                }
-            }
-        }
-        
+    // M24: @HINT、@STRATEGY_DRIFT、@TAINT_ANALYSIS、@INCREMENTAL_HINT 全部移到 log
+    // 終端只保留一行 strategy level 摘要（level 3 才顯示，因為需要人工介入）
+    if (strategyInfo && strategyInfo.level >= 3) {
+        console.log(`@STRATEGY_DRIFT | Level ${strategyInfo.level}/3 | ⚠️ 架構質疑 — 考慮回退 PLAN`);
         if (strategyInfo.isOverLimit) {
             console.log('  ⛔ 已達重試上限，需要人工介入');
         }
     }
     
-    // v2.0: 染色分析 - 分析修改檔案的影響範圍
+    // 染色分析：只在 log 裡記錄，不印終端
     let impactInfo = null;
     if (taintAnalyzer && projectRoot && changedFiles && changedFiles.length > 0) {
         try {
@@ -637,25 +630,9 @@ function anchorError(type, summary, nextCommand, options = {}) {
             if (fs.existsSync(functionsJson)) {
                 const graph = taintAnalyzer.buildDependencyGraph(functionsJson);
                 const impact = taintAnalyzer.analyzeImpact(graph, changedFiles, { maxDepth: 2 });
-                
-                if (impact.stats.indirectAffected > 0) {
-                    impactInfo = impact;
-                    console.log(`@TAINT_ANALYSIS | 修改 ${impact.stats.directChanges} 個函式 → 影響 ${impact.stats.indirectAffected} 個依賴者`);
-                    console.log(`  受影響檔案: ${impact.affectedFiles.slice(0, 3).join(', ')}${impact.affectedFiles.length > 3 ? '...' : ''}`);
-                }
+                if (impact.stats.indirectAffected > 0) impactInfo = impact;
             }
-        } catch (e) {
-            // 忽略染色分析錯誤
-        }
-    }
-    
-    // v2.0: 增量驗證建議 - 告訴 AI 要驗證哪些檔案
-    if (incrementalValidator && impactInfo && impactInfo.affectedFiles.length > 0) {
-        const currentPhase = parseInt((step || '1').replace(/\D/g, '')) || 1;
-        console.log(`@INCREMENTAL_HINT | 建議驗證範圍:`);
-        if (currentPhase >= 2) console.log('  - 標籤驗證: 檢查受影響檔案的 GEMS 標籤');
-        if (currentPhase >= 5) console.log('  - 測試驗證: 跑受影響檔案的測試');
-        if (currentPhase >= 7) console.log('  - 整合驗證: 檢查 import/export 是否正常');
+        } catch (e) { /* 忽略 */ }
     }
     
     console.log(`NEXT: ${nextCommand}`);
@@ -722,8 +699,7 @@ function anchorError(type, summary, nextCommand, options = {}) {
             });
 
             // v3.0: 使用 @READ 強制 AI 讀取 log
-            console.log(`@READ: ${logPath}`);
-            console.log(`  ↳ 包含: 錯誤詳情 + 策略建議 + 修復指引`);
+            printReadPointer(logPath, '錯誤詳情 + 策略建議 + 修復指引');
         } catch (err) {
             // 存檔失敗，忽略
         }
@@ -790,8 +766,7 @@ function anchorErrorSpec(spec, options = {}) {
 
     // @READ 指標 — 強制 AI 讀 log 取得 GATE_SPEC + EXAMPLE
     if (logPath) {
-        console.log(`@READ: ${logPath}`);
-        console.log(`  ↳ 包含: GATE_SPEC 檢查項 + 修復範例 + 缺失明細`);
+        printReadPointer(logPath, 'GATE_SPEC 檢查項 + 修復範例 + 缺失明細');
     }
     console.log(`NEXT: ${nextCmd}`);
     console.log(getGuardLine(targetFile));
@@ -856,8 +831,7 @@ function anchorTemplatePending(spec, options = {}) {
 
     // @READ 指標 — 強制 AI 讀 log 取得完整模板
     if (logPath) {
-        console.log(`@READ: ${logPath}`);
-        console.log(`  ↳ 包含: 完整模板 + GATE_SPEC 檢查項`);
+        printReadPointer(logPath, '完整模板 + GATE_SPEC 檢查項');
     }
     console.log(`NEXT: ${nextCmd}`);
     console.log(getGuardLine(targetFile));
@@ -994,10 +968,13 @@ function emitTaskBlock(spec, options = {}) {
  * @param {object} [options] - 存檔選項 { projectRoot, iteration, phase, step, story }
  */
 function emitPass(spec, options = {}) {
-    const { scope, summary, nextCmd, progress, nextHint } = spec;
+    const { scope, summary, nextCmd, progress, nextHint, acSummary } = spec;
     const { projectRoot, iteration, phase, step, story } = options;
 
     console.log(`@PASS | ${scope} | ${summary}`);
+    if (acSummary) {
+        console.log(`AC: ${acSummary}`);
+    }
     if (progress) {
         console.log(`PROGRESS: ${progress}`);
     }
@@ -1062,7 +1039,7 @@ function emitPass(spec, options = {}) {
  */
 function emitFix(spec, options = {}) {
     const { scope, summary, targetFile, missing = [], nextCmd,
-            example, gateSpec, attempt, maxAttempts, tasks } = spec;
+            example, gateSpec, attempt, maxAttempts, tasks, acSpec } = spec;
     const { projectRoot, iteration, phase, step, story } = options;
 
     const attemptInfo = attempt ? ` (${attempt}/${maxAttempts || 3})` : '';
@@ -1084,15 +1061,21 @@ function emitFix(spec, options = {}) {
         } catch (e) { /* 忽略 */ }
     }
 
-    // tasks 模式（多任務）
+    // tasks 模式（多任務）(有 projectRoot 時細節存 log，終端只印計數，防止 context 污染)
     if (tasks && tasks.length > 0) {
-        tasks.forEach((t, i) => {
-            console.log(`@TASK-${i + 1}`);
-            console.log(`  ACTION: ${t.action}`);
-            console.log(`  FILE: ${t.file}`);
-            if (t.expected) console.log(`  EXPECTED: ${t.expected}`);
-        });
-        console.log('');
+        if (!projectRoot) {
+            // 無 log 可存時才直接印出（fallback）
+            tasks.forEach((t, i) => {
+                console.log(`@TASK-${i + 1}`);
+                console.log(`  ACTION: ${t.action}`);
+                console.log(`  FILE: ${t.file}`);
+                if (t.expected) console.log(`  EXPECTED: ${t.expected}`);
+            });
+            console.log('');
+        } else {
+            // 有 log 時只顯示計數，細節見 @READ log
+            console.log(`@TASK: ${tasks.length} 個修復項目 → 讀 @READ log 取得詳細清單`);
+        }
     }
 
     // === 存 log（完整細節） ===
@@ -1132,6 +1115,7 @@ function emitFix(spec, options = {}) {
                     if (t.expected) logLines.push(`  EXPECTED: ${t.expected}`);
                     if (t.reference) logLines.push(`  REFERENCE: ${t.reference}`);
                     if (t.gemsSpec) logLines.push(`  GEMS_SPEC: ${t.gemsSpec}`);
+                    if (t.acSpec) logLines.push(`  AC_SPEC: ${t.acSpec}`);
                 });
             }
 
@@ -1154,8 +1138,7 @@ function emitFix(spec, options = {}) {
 
     // @READ 指標
     if (logPath) {
-        console.log(`@READ: ${logPath}`);
-        console.log(`  ↳ 包含: MISSING 明細 + 修復範例 + GATE_SPEC`);
+        printReadPointer(logPath, 'MISSING 明細 + 修復範例 + GATE_SPEC');
     }
     console.log(`NEXT: ${nextCmd}`);
 
@@ -1252,8 +1235,7 @@ function emitFill(spec, options = {}) {
     }
 
     if (logPath) {
-        console.log(`@READ: ${logPath}`);
-        console.log(`  ↳ 包含: 完整模板 + GATE_SPEC 檢查項`);
+        printReadPointer(logPath, '完整模板 + GATE_SPEC 檢查項');
     }
     console.log(`NEXT: ${nextCmd}`);
     console.log(getGuardLine(targetFile));
@@ -1288,16 +1270,22 @@ function emitBlock(spec, options = {}) {
         console.log(`@STRATEGY_DRIFT Level: ${attempt}/${maxAttempts || 'N/A'}`);
     }
 
-    // @TASK 輸出
+    // @TASK 輸出 (有 projectRoot 時細節存 log，終端只印計數，防止 context 污染)
     if (tasks && tasks.length > 0) {
-        console.log('');
-        tasks.forEach((t, i) => {
-            console.log(`@TASK ${i + 1}:`);
-            if (t.action) console.log(`  ACTION: ${t.action}`);
-            if (t.file) console.log(`  FILE: ${t.file}`);
-            if (t.expected) console.log(`  EXPECTED: ${t.expected}`);
-            if (t.reference) console.log(`  REFERENCE: ${t.reference}`);
-        });
+        if (!projectRoot) {
+            // 無 log 可存時才直接印出（fallback）
+            console.log('');
+            tasks.forEach((t, i) => {
+                console.log(`@TASK ${i + 1}:`);
+                if (t.action) console.log(`  ACTION: ${t.action}`);
+                if (t.file) console.log(`  FILE: ${t.file}`);
+                if (t.expected) console.log(`  EXPECTED: ${t.expected}`);
+                if (t.reference) console.log(`  REFERENCE: ${t.reference}`);
+            });
+        } else {
+            // 有 log 時只顯示計數，細節見 @READ log
+            console.log(`@TASK: ${tasks.length} 個修復項目 → 讀 @READ log 取得詳細清單`);
+        }
     }
 
     // @FORBIDDEN 輸出
@@ -1377,8 +1365,7 @@ function emitBlock(spec, options = {}) {
     }
 
     if (logPath) {
-        console.log(`@READ: ${logPath}`);
-        console.log(`  ↳ 包含: 錯誤詳情 + GATE_SPEC + 修復建議`);
+        printReadPointer(logPath, '錯誤詳情 + GATE_SPEC + 修復建議');
     }
     console.log(`NEXT: ${nextCmd}`);
     console.log(getGuardLine());

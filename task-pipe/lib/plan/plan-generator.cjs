@@ -1,38 +1,55 @@
 #!/usr/bin/env node
 /**
- * Plan Generator v1.0 - 從 requirement_spec 自動產生 implementation_plan
+ * Plan Generator v2.0 - 從 contract @GEMS-STORIES 自動產生 implementation_plan
  * 
- * 結合 spec-parser 的結構化資料和 draft-to-plan 的 GEMS 標籤推導邏輯，
- * 產出可直接通過 BUILD Phase 2 標籤驗收的 implementation_plan。
+ * contract 是單一規格來源（Single Source of Truth）。
+ * plan-generator 只讀 contract 的 @GEMS-STORY / @GEMS-STORY-ITEM，
+ * 機械轉換為 implementation_plan_Story-X.Y.md。
  * 
  * 用法:
- *   const { generatePlansFromSpec } = require('./plan-generator.cjs');
- *   const result = generatePlansFromSpec(specPath, iterNum, target);
+ *   const { generatePlansFromContract } = require('./plan-generator.cjs');
+ *   const result = generatePlansFromContract(contractPath, iterNum, target);
  */
 const fs = require('fs');
 const path = require('path');
-const { parseSpec } = require('./spec-parser.cjs');
+
+// contract-writer 提供 parseContract + loadContract
+let contractWriter;
+try {
+  contractWriter = require(path.join(__dirname, '..', '..', '..', 'sdid-tools', 'blueprint', 'contract-writer.cjs'));
+} catch {
+  // fallback: 相對路徑可能因 cwd 不同而失敗
+  contractWriter = null;
+}
 
 /**
- * 從 requirement_spec 產生所有 Story 的 implementation_plan
- * @param {string} specPath - requirement_spec 檔案路徑
+ * 從 contract 產生所有 Story 的 implementation_plan
+ * @param {string} contractPath - contract_iter-N.ts 檔案路徑
  * @param {number} iterNum - 迭代編號
  * @param {string} target - 專案根目錄
- * @param {object} options - { dryRun, contractPath }
+ * @param {object} options - { dryRun }
  * @returns {object} { generated: [{ storyId, module, file, functionCount }], errors: [] }
  */
-function generatePlansFromSpec(specPath, iterNum, target, options = {}) {
+function generatePlansFromContract(contractPath, iterNum, target, options = {}) {
   const { dryRun = false } = options;
   const result = { generated: [], errors: [] };
 
-  const spec = parseSpec(specPath);
-  if (spec.error) {
-    result.errors.push(spec.error);
+  if (!fs.existsSync(contractPath)) {
+    result.errors.push(`contract 檔案不存在: ${contractPath}`);
     return result;
   }
 
-  if (spec.stories.length === 0) {
-    result.errors.push('requirement_spec 中未找到 Story 定義');
+  const content = fs.readFileSync(contractPath, 'utf8');
+  let parsed;
+  if (contractWriter) {
+    parsed = contractWriter.parseContract(content);
+  } else {
+    result.errors.push('無法載入 contract-writer.cjs — parseContract 不可用');
+    return result;
+  }
+
+  if (!parsed.stories || parsed.stories.length === 0) {
+    result.errors.push('contract 中未找到 @GEMS-STORY 定義');
     return result;
   }
 
@@ -41,8 +58,8 @@ function generatePlansFromSpec(specPath, iterNum, target, options = {}) {
     fs.mkdirSync(planDir, { recursive: true });
   }
 
-  for (const story of spec.stories) {
-    const planContent = generatePlanForStory(story, iterNum, spec);
+  for (const story of parsed.stories) {
+    const planContent = generatePlanForStory(story, iterNum, parsed);
     const planFile = path.join(planDir, `implementation_plan_${story.id}.md`);
 
     if (!dryRun) {
@@ -51,98 +68,134 @@ function generatePlansFromSpec(specPath, iterNum, target, options = {}) {
 
     result.generated.push({
       storyId: story.id,
-      module: story.moduleName,
+      module: story.module,
       file: path.relative(target, planFile),
-      functionCount: story.functions.length,
+      functionCount: story.items.length,
     });
+  }
+
+  // 產出 ac.ts（從 contract 的 @GEMS-AC 區塊分離，如果 contract-writer 還沒做的話）
+  const acTsPath = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, 'poc', 'ac.ts');
+  if (!fs.existsSync(acTsPath)) {
+    // ac.ts 由 contract-writer @PASS 時自動分離，這裡不重複
+    result.acGenerated = null;
   }
 
   return result;
 }
 
+// 向後相容：舊的 generatePlansFromSpec 轉接到 generatePlansFromContract
+function generatePlansFromSpec(specPath, iterNum, target, options = {}) {
+  // 嘗試找 contract 檔案
+  // v6: contract 在 iter-N/ 下；v5 legacy fallback: iter-N/poc/
+  const contractPathV6 = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, `contract_iter-${iterNum}.ts`);
+  const contractPathV5 = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, 'poc', `contract_iter-${iterNum}.ts`);
+  const contractPath = fs.existsSync(contractPathV6) ? contractPathV6
+    : fs.existsSync(contractPathV5) ? contractPathV5 : null;
+  if (contractPath && fs.existsSync(contractPath)) {
+    return generatePlansFromContract(contractPath, iterNum, target, options);
+  }
+  // 真的沒有 contract → 報錯
+  const expectedPath = contractPathV6;
+  return { generated: [], errors: [`找不到 contract: ${expectedPath}（請先完成 CONTRACT 階段）`] };
+}
+
 /**
  * 為單一 Story 產生 implementation_plan Markdown
+ * @param {object} story - { id, module, title, type, items: [{ name, type, priority, flow, deps, ac }] }
+ * @param {number} iterNum
+ * @param {object} parsed - parseContract 的完整結果
  */
-function generatePlanForStory(story, iterNum, spec) {
+function generatePlanForStory(story, iterNum, parsed) {
   const today = new Date().toISOString().split('T')[0];
   const storyId = story.id;
+  const isFoundation = story.type === 'INFRA' || /shared|config|infrastructure/i.test(story.module);
 
   // 工作項目表
-  const workItems = story.functions.map((fn, i) =>
-    `| ${i + 1} | ${fn.name} | FEATURE | ${fn.priority} | ✅ 明確 | - |`
+  const workItems = story.items.map((item, i) =>
+    `| ${i + 1} | ${item.name} | ${item.type} | ${item.priority} | ✅ 明確 | - |`
   ).join('\n');
 
   // Item 詳細規格
-  const itemSpecs = story.functions.map((fn, i) => {
-    const stepAnchors = fn.flow
-      ? fn.flow.split('→').map(s => `// [STEP] ${s.trim()}`).join('\n')
+  const itemSpecs = story.items.map((item, i) => {
+    const stepAnchors = item.flow
+      ? item.flow.split('→').map(s => `// [STEP] ${s.trim()}`).join('\n')
       : '';
 
-    return `### Item ${i + 1}: ${fn.name}
+    const depsStr = item.deps === '無' ? '無' : item.deps;
+    const depsRisk = depsStr === '無' ? 'LOW' : (depsStr.split(',').length >= 3 ? 'HIGH' : 'MEDIUM');
+    const filePath = inferFilePath(item.name, item.type, story.module);
 
-**Type**: FEATURE | **Priority**: ${fn.priority}
+    return `### Item ${i + 1}: ${item.name}
+
+**Type**: ${item.type} | **Priority**: ${item.priority}
 
 \`\`\`typescript
-// @GEMS-FUNCTION: ${fn.name}
+// @GEMS-FUNCTION: ${item.name}
 /**
- * GEMS: ${fn.name} | ${fn.priority} | ○○ | (args)→Result | ${storyId} | ${fn.description || fn.name}
- * GEMS-FLOW: ${fn.flow || 'TODO'}
- * GEMS-DEPS: ${fn.deps || '無'}
- * GEMS-DEPS-RISK: ${fn.depsRisk || 'LOW'}
- * GEMS-TEST: ${fn.testStrategy}
- * GEMS-TEST-FILE: ${fn.testFile}
+ * GEMS: ${item.name} | ${item.priority} | ○○ | (args)→Result | ${storyId} | ${item.name}
+ * GEMS-FLOW: ${item.flow}
+ * GEMS-DEPS: ${depsStr}
+ * GEMS-DEPS-RISK: ${depsRisk}
  */
+${item.ac && item.ac !== '無' && item.ac !== 'SKIP' ? `// ${item.ac}` : ''}
 ${stepAnchors}
 \`\`\`
 
 **檔案**:
 | 檔案 | 動作 | 說明 |
 |------|------|------|
-| \`${fn.filePath}\` | New | ${fn.description || fn.name} |`;
+| \`${filePath}\` | New | ${item.name} |`;
   }).join('\n\n---\n\n');
 
   // Integration 規範
-  const p0p1 = story.functions.filter(f => f.priority === 'P0' || f.priority === 'P1');
+  const p0p1 = story.items.filter(f => f.priority === 'P0' || f.priority === 'P1');
   const integrationSpec = p0p1.length > 0
     ? p0p1.map(f => `- ${f.name}: 禁止 mock 依賴，使用真實實例`).join('\n')
     : '- 本 Story 無 P0/P1 函式，無需 Integration 測試';
 
   // 範圍清單
-  const scopeNames = story.functions.map(f => f.name).join(', ');
+  const scopeNames = story.items.map(f => f.name).join(', ');
 
-  // 契約注入（基礎 Story 定義契約，功能 Story 引用契約）
+  // 契約注入
   let contractSection = '';
-  if (spec.contracts.length > 0) {
-    const contract = spec.contracts[0];
-    if (story.isFoundation) {
-      const fields = contract.fields.map(f =>
-        `  ${f.name}: ${f.type};  // ${f.description}`
-      ).join('\n');
-      contractSection = `
----
-
-## 6. 規格注入
-
-\`\`\`typescript
-// @GEMS-CONTRACT: ${contract.entityName}
-interface ${contract.entityName} {
+  if (parsed.entities.length > 0) {
+    const storyEntities = parsed.entities.filter(e => e.story === storyId);
+    if (storyEntities.length > 0) {
+      const entityBlocks = storyEntities.map(entity => {
+        const fields = entity.fields.map(f =>
+          `  ${f.name}: ${f.tsType};  // ${f.dbType}`
+        ).join('\n');
+        return `\`\`\`typescript
+// @GEMS-CONTRACT: ${entity.name}
+interface ${entity.name} {
 ${fields}
 }
 \`\`\``;
-    } else {
-      // 功能模組引用 Story-X.0 定義的契約
+      }).join('\n\n');
       contractSection = `
 ---
 
 ## 6. 規格注入
 
-> 引用 Story-${story.id.match(/\d+/)[0]}.0 定義的核心型別
+${entityBlocks}`;
+    } else {
+      // 功能模組引用基礎 Story 定義的契約
+      const baseEntities = parsed.entities.filter(e => !e.story || /Story-\d+\.0/.test(e.story));
+      if (baseEntities.length > 0) {
+        const refs = baseEntities.map(e => e.name).join(', ');
+        contractSection = `
+---
+
+## 6. 規格注入
+
+> 引用基礎 Story 定義的核心型別
 
 \`\`\`typescript
-// @GEMS-CONTRACT-REF: ${contract.entityName}
-// 本模組使用 shared/types 匯出的 ${contract.entityName} interface
-import type { ${contract.entityName} } from '../../shared/types/core-types';
+// @GEMS-CONTRACT-REF: ${refs}
+import type { ${refs} } from '../../shared/types/core-types';
 \`\`\``;
+      }
     }
   }
 
@@ -151,8 +204,8 @@ import type { ${contract.entityName} } from '../../shared/types/core-types';
 **迭代**: iter-${iterNum}
 **Story ID**: ${storyId}
 **日期**: ${today}
-**目標模組**: ${story.moduleName}
-**來源**: spec-parser 自動生成 (plan-generator v1.0)
+**目標模組**: ${story.module}
+**來源**: contract-parser 自動生成 (plan-generator v2.0)
 
 > Status: READY FOR BUILD
 
@@ -170,9 +223,9 @@ import type { ${contract.entityName} } from '../../shared/types/core-types';
 
 ## 2. 模組資訊
 
-- **Story 類型**: ${story.isFoundation ? '[x] Story-X.0' : '[ ] Story-X.0'} | ${story.isFoundation ? '[ ] 功能模組' : '[x] 功能模組'}
-- **模組名稱**: ${story.moduleName}
-- **模組類型**: ${story.isFoundation ? 'infrastructure' : 'feature'}
+- **Story 類型**: ${isFoundation ? '[x] Story-X.0' : '[ ] Story-X.0'} | ${isFoundation ? '[ ] 功能模組' : '[x] 功能模組'}
+- **模組名稱**: ${story.module}
+- **模組類型**: ${isFoundation ? 'infrastructure' : 'feature'}
 - **是否新模組**: ✅ 是
 
 ---
@@ -203,14 +256,38 @@ ${contractSection}
 | 檢查項目 | 結果 |
 |----------|------|
 | 模組化結構 | ✅ |
-| 依賴方向 | ✅ ${story.moduleName} → shared |
-| 複雜度 | ✅ ${story.functions.length} 個動作 |
+| 依賴方向 | ✅ ${story.module} → shared |
+| 複雜度 | ✅ ${story.items.length} 個動作 |
 
 ---
 
 **產出日期**: ${today}
-**生成方式**: plan-generator v1.0 (從 requirement_spec 機械轉換)
+**生成方式**: plan-generator v2.0 (從 contract @GEMS-STORIES 機械轉換)
 `;
 }
 
-module.exports = { generatePlansFromSpec, generatePlanForStory };
+/**
+ * 推導檔案路徑（從 contract story item）
+ */
+function inferFilePath(name, type, moduleName) {
+  const kebab = name
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase();
+
+  const isShared = moduleName === 'shared';
+  const base = isShared ? 'src/shared' : `src/modules/${moduleName}`;
+
+  switch (type) {
+    case 'CONST': return `${base}/${isShared ? 'types/' : ''}${kebab}.ts`;
+    case 'LIB': return `${base}/${isShared ? 'storage/' : 'lib/'}${kebab}.ts`;
+    case 'SVC': return `${base}/services/${kebab}.ts`;
+    case 'API': return `${base}/api/${kebab}.ts`;
+    case 'HOOK': return `${base}/hooks/${kebab}.ts`;
+    case 'UI': return `${base}/components/${kebab}.tsx`;
+    case 'ROUTE': return `${base}/pages/${kebab}.tsx`;
+    default: return `${base}/${kebab}.ts`;
+  }
+}
+
+module.exports = { generatePlansFromContract, generatePlansFromSpec, generatePlanForStory };

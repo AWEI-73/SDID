@@ -54,6 +54,7 @@ function parseContract(content) {
     apis: [],       // @GEMS-API
     enums: [],      // @GEMS-ENUM
     seeds: [],      // @GEMS-SEED
+    stories: [],    // @GEMS-STORY + @GEMS-STORY-ITEM
     raw: content,
   };
 
@@ -159,6 +160,42 @@ function parseContract(content) {
     });
   }
 
+  // 解析 @GEMS-STORY + @GEMS-STORY-ITEM blocks
+  // 格式:
+  //   // @GEMS-STORY: Story-1.0 | shared | 基礎建設 | INFRA
+  //   // @GEMS-STORY-ITEM: CoreTypes | CONST | P0 | DEFINE→FREEZE→EXPORT | 無 | AC-0.0
+  //   // @GEMS-STORY-ITEM: AppRouter | ROUTE | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [Internal.CoreTypes] | AC-0.2
+  const storyLines = content.split('\n');
+  let currentStory = null;
+  for (const line of storyLines) {
+    const t = line.trim();
+    const storyMatch = t.match(/^\/\/\s*@GEMS-STORY:\s*(\S+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*(\S+)/);
+    if (storyMatch) {
+      if (currentStory) result.stories.push(currentStory);
+      currentStory = {
+        id: storyMatch[1].trim(),
+        module: storyMatch[2].trim(),
+        title: storyMatch[3].trim(),
+        type: storyMatch[4].trim(),
+        items: [],
+      };
+      continue;
+    }
+    const itemMatch = t.match(/^\/\/\s*@GEMS-STORY-ITEM:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*(\S+)/);
+    if (itemMatch && currentStory) {
+      currentStory.items.push({
+        name: itemMatch[1].trim(),
+        type: itemMatch[2].trim(),
+        priority: itemMatch[3].trim(),
+        flow: itemMatch[4].trim(),
+        deps: itemMatch[5].trim(),
+        ac: itemMatch[6].trim(),
+      });
+      continue;
+    }
+  }
+  if (currentStory) result.stories.push(currentStory);
+
   return result;
 }
 
@@ -191,7 +228,7 @@ function parseMethods(body) {
       name: m[1],
       params: m[2].trim(),
       returnType: m[3].trim(),
-      hasReturnType: m[3].trim() !== '' && m[3].trim() !== 'void',
+      hasReturnType: m[3].trim() !== '',
     });
   }
   return methods;
@@ -222,25 +259,25 @@ function runGate(parsed, content, draftActions) {
       message: '沒有任何 @GEMS-CONTRACT 標籤 — 至少需要一個 Entity 定義',
       fix: '在 interface 上方加 // @GEMS-CONTRACT: EntityName',
     });
-    return { blockers, warnings }; // 後續驗證無意義
+    return { blockers, warnings, acStats: { calc: 0, skip: 0 } }; // 後續驗證無意義
   }
 
   for (const entity of parsed.entities) {
-    // CONTRACT-002: 缺 @GEMS-TABLE
+    // CONTRACT-002: 缺 @GEMS-TABLE（optional — 不是所有專案都有 DB）
     if (!entity.table) {
       const isLikelyViewType = /Props$|Return$|State$|Config$|Options$|Params$|Args$|Result$/i.test(entity.name);
-      blockers.push({
+      warnings.push({
         code: 'CONTRACT-002',
         message: `@GEMS-CONTRACT: ${entity.name} 缺少 @GEMS-TABLE`,
         fix: isLikelyViewType
           ? `"${entity.name}" 看起來是 UI Props / Hook 回傳型別，不應使用 @GEMS-CONTRACT（沒有 DB table）。請改用 // @GEMS-VIEW: ${entity.name} 或直接移除標籤。只有真正的 DB Entity 才用 @GEMS-CONTRACT。`
-          : `在 @GEMS-CONTRACT: ${entity.name} 下方加 // @GEMS-TABLE: tbl_xxx`,
+          : `在 @GEMS-CONTRACT: ${entity.name} 下方加 // @GEMS-TABLE: tbl_xxx（若無 DB 可忽略此 warning）`,
       });
     }
 
-    // CONTRACT-004: 缺 id 欄位
+    // CONTRACT-004: 缺 id 欄位（只對有 @GEMS-TABLE 的 entity 強制，DTO 不需要 id）
     const hasId = entity.fields.some(f => f.name === 'id');
-    if (!hasId) {
+    if (!hasId && entity.table) {
       blockers.push({
         code: 'CONTRACT-004',
         message: `@GEMS-CONTRACT: ${entity.name} 缺少 id 欄位`,
@@ -248,13 +285,13 @@ function runGate(parsed, content, draftActions) {
       });
     }
 
-    // CONTRACT-003: 欄位缺 DB 型別註解
+    // CONTRACT-003: 欄位缺 DB 型別註解（只對有 @GEMS-TABLE 的 entity 強制，DTO 不需要 DB 型別）
     const missingAnnotation = entity.fields.filter(f => !f.hasDbAnnotation && f.name !== 'id');
-    if (missingAnnotation.length > 0) {
+    if (missingAnnotation.length > 0 && entity.table) {
       blockers.push({
         code: 'CONTRACT-003',
         message: `@GEMS-CONTRACT: ${entity.name} 欄位缺少 DB 型別註解: ${missingAnnotation.map(f => f.name).join(', ')}`,
-        fix: `每個欄位後加 // VARCHAR(100), NOT NULL 等 DB 型別`,
+        fix: `每個欄位後加同行內聯註解，例如:\n  amount: number; // DECIMAL(10,2)\n  title: string;  // VARCHAR(255), NOT NULL\n  status: string; // ENUM('ACTIVE','DONE')\n注意：必須是同行尾端的 // 註解，不是 JSDoc /** */`,
       });
     }
 
@@ -354,11 +391,114 @@ function runGate(parsed, content, draftActions) {
     }
   }
 
-  return { blockers, warnings };
+  // CONTRACT-STORY: @GEMS-STORY / @GEMS-STORY-ITEM 驗證
+  if (parsed.stories.length > 0) {
+    for (const story of parsed.stories) {
+      // STORY-001: Story ID 格式
+      if (!/^Story-\d+\.\d+$/.test(story.id)) {
+        blockers.push({
+          code: 'STORY-001',
+          message: `@GEMS-STORY: ${story.id} ID 格式不正確，應為 Story-X.Y`,
+          fix: `修正為 Story-X.Y 格式（如 Story-1.0）`,
+        });
+      }
+      // STORY-002: Story 必須有 items
+      if (story.items.length === 0) {
+        blockers.push({
+          code: 'STORY-002',
+          message: `@GEMS-STORY: ${story.id} 沒有任何 @GEMS-STORY-ITEM`,
+          fix: `在 @GEMS-STORY 下方加 @GEMS-STORY-ITEM 行`,
+        });
+      }
+      // STORY-003: 每個 item 的 6 欄位驗證
+      for (const item of story.items) {
+        if (!/^P[0-3]$/.test(item.priority)) {
+          blockers.push({
+            code: 'STORY-003',
+            message: `@GEMS-STORY-ITEM: ${item.name} (${story.id}) priority 不正確: "${item.priority}"`,
+            fix: `priority 必須是 P0/P1/P2/P3`,
+          });
+        }
+        const validTypes = ['CONST', 'LIB', 'API', 'SVC', 'HOOK', 'UI', 'ROUTE'];
+        if (!validTypes.includes(item.type)) {
+          warnings.push({
+            code: 'STORY-W01',
+            message: `@GEMS-STORY-ITEM: ${item.name} (${story.id}) type "${item.type}" 不在標準列表 [${validTypes.join(',')}]`,
+            fix: `確認 type 是否正確`,
+          });
+        }
+        if (!item.flow || item.flow === 'TODO') {
+          blockers.push({
+            code: 'STORY-004',
+            message: `@GEMS-STORY-ITEM: ${item.name} (${story.id}) 缺少 flow`,
+            fix: `填入業務流向，如 VALIDATE→PERSIST→RETURN`,
+          });
+        }
+      }
+      // STORY-005: item AC 引用必須在 contract 的 @GEMS-AC 區塊中存在
+      const acIds = new Set(parseAcBlocksFromContent(content).map(a => a.id));
+      for (const item of story.items) {
+        if (item.ac && item.ac !== '無' && item.ac !== 'SKIP' && !acIds.has(item.ac)) {
+          warnings.push({
+            code: 'STORY-W02',
+            message: `@GEMS-STORY-ITEM: ${item.name} (${story.id}) 引用 AC "${item.ac}" 但 contract 中找不到對應 @GEMS-AC 區塊`,
+            fix: `在 contract 底部補上 // @GEMS-AC: ${item.ac} 區塊，或改為 SKIP`,
+          });
+        }
+      }
+    }
+  }
+
+  // CONTRACT-AC: 掃描 @GEMS-AC 區塊格式（非 SKIP 的 AC 必須有四個欄位）
+  const acBlocks = parseAcBlocksFromContent(content);
+  const acCalc = acBlocks.filter(a => !a.skip);
+  const acSkip = acBlocks.filter(a => a.skip);
+  for (const ac of acCalc) {
+    const missing = [];
+    if (!ac.fn)     missing.push('@GEMS-AC-FN');
+    if (!ac.module) missing.push('@GEMS-AC-MODULE');
+    if (!ac.hasInput)  missing.push('@GEMS-AC-INPUT');
+    if (!ac.hasExpect && !ac.hasExpectThrow) missing.push('@GEMS-AC-EXPECT');
+    if (missing.length > 0) {
+      warnings.push({
+        code: 'CONTRACT-AC01',
+        message: `${ac.id} 缺少欄位: ${missing.join(', ')}`,
+        fix: `補齊 ${missing.join(' / ')} 後 ac-runner 才能機械驗收`,
+      });
+    }
+  }
+
+  return { blockers, warnings, acStats: { calc: acCalc.length, skip: acSkip.length } };
 }
 
-// ─────────────────────────────────────────────────────────────
-// Log 產生
+/**
+ * 從 contract/ac.ts 內容解析 @GEMS-AC 區塊（輕量版，供 runGate 使用）
+ */
+function parseAcBlocksFromContent(content) {
+  const blocks = [];
+  const lines = content.split('\n');
+  let current = null;
+  for (const line of lines) {
+    const t = line.trim();
+    const acMatch = t.match(/^\/\/\s*@GEMS-AC:\s*(AC-[\d.a-z]+)/i);
+    if (acMatch) {
+      if (current) blocks.push(current);
+      current = { id: acMatch[1], fn: null, module: null, hasInput: false, hasExpect: false, hasExpectThrow: false, skip: null };
+      continue;
+    }
+    if (!current) continue;
+    if (t.match(/^\/\/\s*@GEMS-AC-FN:/))     { current.fn = true; continue; }
+    if (t.match(/^\/\/\s*@GEMS-AC-MODULE:/))  { current.module = true; continue; }
+    if (t.match(/^\/\/\s*@GEMS-AC-INPUT:/))   { current.hasInput = true; continue; }
+    if (t.match(/^\/\/\s*@GEMS-AC-EXPECT:/))  { current.hasExpect = true; continue; }
+    if (t.match(/^\/\/\s*@GEMS-AC-EXPECT-THROW:/)) { current.hasExpectThrow = true; continue; }
+    if (t.match(/^\/\/\s*@GEMS-AC-SKIP:/))    { current.skip = true; continue; }
+    if (t && !t.startsWith('//')) { if (current) { blocks.push(current); current = null; } }
+  }
+  if (current) blocks.push(current);
+  return blocks;
+}
+
 // ─────────────────────────────────────────────────────────────
 
 function buildLogContent(parsed, gateResult, iterNum, contractPath) {
@@ -378,6 +518,9 @@ function buildLogContent(parsed, gateResult, iterNum, contractPath) {
   lines.push(`APIs:     ${parsed.apis.map(a => a.name).join(', ') || '無'}`);
   lines.push(`Enums:    ${parsed.enums.map(e => e.name).join(', ') || '無'}`);
   lines.push(`Seeds:    ${(parsed.seeds || []).map(s => s.constName + '(' + (s.data ? s.data.length : '?') + ' rows)').join(', ') || '無'}`);
+  if (parsed.stories && parsed.stories.length > 0) {
+    lines.push(`Stories:  ${parsed.stories.map(s => `${s.id}(${s.items.length} items)`).join(', ')}`);
+  }
   lines.push('');
 
   if (gateResult.blockers.length > 0) {
@@ -432,12 +575,16 @@ Blueprint Contract Writer v1.0
 
 Gate 規則:
   CONTRACT-001  沒有 @GEMS-CONTRACT 標籤
-  CONTRACT-002  @GEMS-CONTRACT 缺 @GEMS-TABLE
+  CONTRACT-002  @GEMS-CONTRACT 缺 @GEMS-TABLE (warning)
   CONTRACT-003  欄位缺 DB 型別註解
   CONTRACT-004  Entity 缺 id 欄位
   CONTRACT-005  使用 any/unknown
   CONTRACT-006  @GEMS-API 方法缺回傳型別
   CONTRACT-007  @GEMS-CONTRACT 缺 @GEMS-STORY
+  STORY-001     @GEMS-STORY ID 格式不正確
+  STORY-002     @GEMS-STORY 沒有 STORY-ITEM
+  STORY-003     @GEMS-STORY-ITEM priority 不正確
+  STORY-004     @GEMS-STORY-ITEM 缺少 flow
 
 輸出:
   @PASS    — contract-pass-*.log 存檔，draft-to-plan 可讀取
@@ -496,18 +643,77 @@ Gate 規則:
   const relContract = path.relative(args.target, args.contract);
 
   if (pass) {
+    // 寫入 @CONTRACT-LOCK 標頭（如果還沒有）
+    if (!content.includes('@CONTRACT-LOCK')) {
+      const today = new Date().toISOString().slice(0, 10);
+      const lockHeader = [
+        `// @CONTRACT-LOCK: ${today} | Gate: iter-${args.iter}`,
+        `//`,
+        `// ─── 以下契約已通過 Gate，修改需加 [SPEC-FIX] 標記 ──────────────────────────`,
+        ``,
+      ].join('\n');
+      fs.writeFileSync(args.contract, lockHeader + content, 'utf8');
+    }
+
+    // 自動分離 ac.ts（如果 contract.ts 有 @GEMS-AC 區塊且 ac.ts 不存在）
+    const pocDir = path.dirname(args.contract);
+    const acTsPath = path.join(pocDir, 'ac.ts');
+    const acBlocks = gateResult.acStats || { calc: 0, skip: 0 };
+    const totalAc = acBlocks.calc + acBlocks.skip;
+    if (totalAc > 0 && !fs.existsSync(acTsPath)) {
+      // 提取 contract.ts 中的 @GEMS-AC 區塊
+      const acLines = [];
+      const contentLines = (content.includes('@CONTRACT-LOCK') ? content : content).split('\n');
+      let inAcBlock = false;
+      for (const line of contentLines) {
+        const t = line.trim();
+        if (t.match(/^\/\/\s*@GEMS-AC:/)) { inAcBlock = true; }
+        if (inAcBlock) {
+          acLines.push(line);
+          // 遇到非 // 的非空行結束 block
+          if (t && !t.startsWith('//')) { inAcBlock = false; }
+        }
+      }
+      if (acLines.length > 0) {
+        const acContent = [
+          `// ac.ts — iter-${args.iter} AC 規格（由 contract-writer 自動分離）`,
+          `// @CONTRACT-LOCK: ${new Date().toISOString().slice(0, 10)} | Gate: iter-${args.iter}`,
+          `// 修改需加 [SPEC-FIX] 標記`,
+          ``,
+          ...acLines,
+        ].join('\n');
+        fs.writeFileSync(acTsPath, acContent, 'utf8');
+        console.log(`  ✅ ac.ts 已自動分離: ${path.relative(args.target, acTsPath)}`);
+      }
+    }
+
+    const acStats = gateResult.acStats || { calc: 0, skip: 0 };
+    const acSummary = acStats.calc + acStats.skip > 0
+      ? ` | AC: ${acStats.calc} CALC / ${acStats.skip} SKIP`
+      : ' | AC: 無（進 BUILD 後 Phase 2 會 SKIP）';
+    const storySummary = parsed.stories.length > 0
+      ? ` | Stories: ${parsed.stories.length} (${parsed.stories.reduce((s, st) => s + st.items.length, 0)} items)`
+      : '';
+
     console.log('');
-    console.log(`@PASS | contract-writer | ${parsed.entities.length} Entity, ${parsed.apis.length} API, ${parsed.views.length} View, ${(parsed.seeds || []).length} Seed`);
+    console.log(`@PASS | contract-writer | ${parsed.entities.length} Entity, ${parsed.apis.length} API, ${parsed.views.length} View, ${(parsed.seeds || []).length} Seed${storySummary}${acSummary}`);
     if (gateResult.warnings.length > 0) {
       console.log(`  ⚠ ${gateResult.warnings.length} 個 WARNING（不阻擋）`);
       for (const w of gateResult.warnings) {
         console.log(`    [${w.code}] ${w.message}`);
+        if (w.fix) console.log(`           修復: ${w.fix}`);
       }
     }
     console.log(`  Contract: ${relContract}`);
     console.log(`  Log: ${relLog}`);
     console.log('');
-    console.log(`NEXT: node sdid-tools/blueprint/draft-to-plan.cjs --draft=<draft> --iter=${args.iter} --target=${path.relative(process.cwd(), args.target) || '.'}`);
+    if (acStats.calc + acStats.skip === 0) {
+      console.log('📖 REFERENCE: task-pipe/templates/examples/ac-golden.ts');
+      console.log('   （建議在 contract.ts 補 @GEMS-AC 區塊，含 CALC/SKIP/THROW/FIELD 範例）');
+      console.log('');
+    }
+    console.log('💡 進入 BUILD 後 AC 鎖定，若需修改規格請在 AC 上方加 // [SPEC-FIX] YYYY-MM-DD: <原因>');
+    console.log(`NEXT: 再次呼叫 sdid-loop 繼續流程（contract → plan-generator 機械轉換 → BUILD）`);
     process.exit(0);
   } else {
     console.log('');
@@ -525,6 +731,19 @@ Gate 規則:
     console.log('');
     console.log('修復後重跑:');
     console.log(`  node sdid-tools/blueprint/contract-writer.cjs --contract=${relContract} --target=${path.relative(process.cwd(), args.target) || '.'} --iter=${args.iter}`);
+    console.log('');
+    console.log('📋 AC 填寫範例（純計算函式，放在 contract.ts 底部）:');
+    console.log('  // @GEMS-AC: AC-1.0');
+    console.log('  // @GEMS-AC-FN: yourFunctionName');
+    console.log('  // @GEMS-AC-MODULE: modules/YourModule/lib/your-function');
+    console.log('  // @GEMS-AC-INPUT: [arg1, arg2]');
+    console.log('  // @GEMS-AC-EXPECT: expectedReturnValue');
+    console.log('  // 若有外部依賴（API/DB/UI）改用:');
+    console.log('  // @GEMS-AC: AC-2.0');
+    console.log('  // @GEMS-AC-SKIP: Google Sheets API 依賴 | 靠 jest mock 驗');
+    console.log('');
+    console.log('📖 REFERENCE: task-pipe/templates/examples/ac-golden.ts');
+    console.log('   （含 CALC/SKIP/THROW/FIELD 完整範例與填寫決策樹）');
     console.log('═══════════════════════════════════════════════════════════');
     process.exit(1);
   }

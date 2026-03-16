@@ -22,7 +22,7 @@
 | Phase | 名稱 | 內容 |
 |-------|------|------|
 | 1 | 骨架映射層 | 讀 implementation_plan + contract.ts + ac.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3） |
-| 2 | AC 驗收層 | ac-runner 讀 cynefin-report.json → needsTest:true 的 AC 生成 vitest test → vitest run；needsTest:false 的 CALC AC 走舊的直接執行模式；SKIP AC 跳過 |
+| 2 | AC 驗收層 | ac-runner 讀 cynefin-report.json 的 actions[]：needsTest:true → 生成 vitest test 到 `.gems/iterations/iter-N/ac-tests/` 並執行；needsTest:false → 直接執行（v2.0 相容模式）；SKIP AC 跳過；cynefin-report.json 不存在 → 全部走直接執行 fallback |
 | 3 | 整合層 | 路由整合、barrel export、SKIP[INTEGRATION] AC（Level S 跳過） |
 | 4 | 標籤品質+Fillback層 | GEMS 標籤品質複查（全覆蓋）+ 產出 Fillback + iteration_suggestions |
 

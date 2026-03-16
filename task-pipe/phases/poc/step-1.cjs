@@ -807,40 +807,7 @@ Draft: ${relativeDraftPath}
 - 必須釐清：使用者角色、核心目標、資料結構
 - 邏輯預檢：生命週期、邊界條件、依賴方向`);
 
-  // ============================================
-  // 蘇格拉底邏輯預檢（如果基本檢查通過）
-  // ============================================
-  if (issues.length === 0) {
-    try {
-      const { generateQuestions, formatQuestionsForCLI } = require('../../lib/bluemouse-adapter-v2.cjs');
-
-      // 提取需求內容
-      const requirementMatch = draft.match(/## 用戶原始需求[\s\S]*?(?=---)/);
-      const goalMatch = draft.match(/##+ 一句話目標\s*\n+([^\n#]+)/);
-
-      let requirement = '';
-      if (requirementMatch) {
-        requirement = requirementMatch[0].replace(/## 用戶原始需求\s*\n*>\s*/g, '').trim();
-      }
-      if (goalMatch) {
-        requirement += ' ' + goalMatch[1].trim();
-      }
-
-      if (requirement.length > 20) {
-        console.log('\n[蘇格拉底邏輯預檢] 正在生成關鍵決策問題...\n');
-
-        const result = generateQuestions(requirement, 'zh-TW');
-
-        if (result.questions && result.questions.length > 0) {
-          console.log(formatQuestionsForCLI(result));
-          console.log('請將答案補充到 requirement_draft 中，然後重新執行此步驟。\n');
-        }
-      }
-    } catch (err) {
-      // 蘇格拉底問題生成失敗不影響主流程
-      console.log(`[蘇格拉底邏輯預檢] 跳過: ${err.message}\n`);
-    }
-  }
+  // bluemouse-adapter 已移除（檔案不存在，dead code）
 
   if (issues.length) {
     // TACTICAL_FIX 機制：追蹤失敗次數

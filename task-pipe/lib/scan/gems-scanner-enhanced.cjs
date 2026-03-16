@@ -107,7 +107,14 @@ function detectComponentEndLine(lines, startLine) {
 // ==============================================
 
 /**
+ * 偵測函式上方的 GEMS 標籤所在的註解區塊
+ * @param {string[]} lines - 檔案所有行
+ * @param {number} funcLine - 函式所在行 (1-based)
+ * @returns {{ comment: string, startLine: number, endLine: number }|null}
+ */
+function findGEMSComment(lines, funcLine) {
   let commentStartLine = null;
+  let commentEndLine = null;
   let inMultiLineComment = false;
 
   for (let i = funcLine - 2; i >= Math.max(0, funcLine - 100); i--) {
@@ -494,13 +501,30 @@ if (require.main === module) {
   }
 }
 
+/**
+ * Find AC-X.Y anchor lines between GEMS tag end and function declaration.
+ * @param {string[]} lines - file lines (0-indexed array)
+ * @param {number} gemsEndLine - line number of closing tag end (1-based)
+ * @param {number} funcLine - line number of function declaration (1-based)
+ * @returns {string[]} AC IDs, e.g. ['AC-1.0', 'AC-1.1']
+ */
+function findACLines(lines, gemsEndLine, funcLine) {
+  const acIds = [];
+  for (let i = gemsEndLine; i < funcLine - 1 && i < lines.length; i++) {
+    const trimmed = (lines[i] || '').trim();
+    const m = trimmed.match(/^\/\/\s*(AC-[\d.]+)/);
+    if (m) acIds.push(m[1]);
+  }
+  return acIds;
+}
+
 module.exports = {
   scanGemsTagsEnhanced,
   findSourceFiles,
   detectFunctionEndLine,
   detectArrowFunctionEndLine,
   findGEMSComment,
-  findACLines,
   generateReadCommand,
-  generateFunctionIndex
+  generateFunctionIndex,
+  findACLines
 };

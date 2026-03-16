@@ -174,7 +174,7 @@ assert('outputError', t6,
 // ============================================
 // Test 7: emitTaskBlock (僅 task-pipe)
 // ============================================
-if (!isSDID && logOutput.emitTaskBlock) {
+if (logOutput.emitTaskBlock) {
   startCapture();
   logOutput.emitTaskBlock({
     tasks: [

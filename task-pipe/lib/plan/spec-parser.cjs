@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 /**
+ * @deprecated — SPEC 層已消除，contract @GEMS-STORIES 取代 spec 的 Story 拆分功能。
+ * plan-generator v2.0 直接讀 contract，不再需要 spec-parser。
+ * 此檔案保留供 Task-Pipe 路線向後相容（有 requirement_spec 時仍可用）。
+ *
  * Spec Parser v1.0 - 從 requirement_spec 提取結構化資料
  * 
  * 解析 requirement_spec_iter-X.md，提取：
@@ -247,6 +251,29 @@ function extractFunctionsFromStory(block, storyId, moduleName, isFoundation) {
 }
 
 /**
+ * 判斷函式是否為純計算（可作為 CALC AC 候選）
+ * 條件：type=LIB 且 flow 不含 API/DB/DOM/FETCH/STORE 關鍵字
+ */
+function isCalcCandidate(fn) {
+  const type = (fn.type || '').toUpperCase();
+  const flow = (fn.flow || '').toUpperCase();
+  const name = (fn.name || '').toLowerCase();
+  // CONST 型別（型別定義）不是計算函式
+  if (type === 'CONST' || type === 'UI' || type === 'HOOK' || type === 'ROUTE') return false;
+  // flow 含外部依賴關鍵字 → 不是純計算
+  const externalKeywords = ['API', 'DB', 'DOM', 'FETCH', 'STORE', 'PERSIST', 'SAVE', 'HTTP', 'SOCKET', 'CACHE', 'STORAGE'];
+  if (externalKeywords.some(k => flow.includes(k))) return false;
+  // 名稱含外部依賴暗示
+  const externalNameHints = ['fetch', 'save', 'store', 'persist', 'load', 'write', 'read', 'send', 'post', 'get', 'delete', 'update', 'create', 'remove'];
+  // create/update/delete 通常有 side effect，但 compute/calc/format/parse 是純計算
+  const calcHints = ['calc', 'compute', 'format', 'parse', 'validate', 'transform', 'convert', 'build', 'generate', 'extract', 'filter', 'sort', 'map', 'reduce', 'aggregate', 'normalize'];
+  if (calcHints.some(h => name.includes(h))) return true;
+  // LIB type 且無外部依賴 → 候選
+  if (type === 'LIB') return true;
+  return false;
+}
+
+/**
  * 豐富函式資訊（推導 priority, flow, deps, type）
  */
 function enrichFunction(fn, index, totalCount, storyId, moduleName, isFoundation) {
@@ -277,7 +304,7 @@ function enrichFunction(fn, index, totalCount, storyId, moduleName, isFoundation
   // 推導 file path
   const filePath = inferFilePath(fn.name, type, moduleName);
 
-  return {
+  const enriched = {
     ...fn,
     type,
     priority,
@@ -289,6 +316,8 @@ function enrichFunction(fn, index, totalCount, storyId, moduleName, isFoundation
     filePath,
     storyId,
   };
+  enriched.isCalcCandidate = isCalcCandidate(enriched);
+  return enriched;
 }
 
 /**
@@ -529,4 +558,4 @@ function isCommonWord(name) {
   return common.has(name.toLowerCase());
 }
 
-module.exports = { parseSpec };
+module.exports = { parseSpec, isCalcCandidate };

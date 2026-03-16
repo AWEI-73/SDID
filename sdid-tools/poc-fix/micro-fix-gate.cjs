@@ -41,18 +41,36 @@ function parseArgs() {
 }
 
 // ============================================
-// Log 寫入（寫到 .gems/iterations/iter-X/logs/）
+// Log 寫入（micro-fix 不屬於任何 iter，寫到 .gems/logs/）
 // ============================================
-function writeGateLog(projectRoot, iterNum, status, summary) {
-  if (!projectRoot || !iterNum) return;
-  const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
-  if (!fs.existsSync(logsDir)) {
-    try { fs.mkdirSync(logsDir, { recursive: true }); } catch { return; }
-  }
+
+/**
+ * 寫入 gate log，回傳相對路徑（供 @READ 指標使用）
+ * micro-fix log 存在 .gems/logs/（全局，不屬於任何 iter）
+ * 若 .gems/ 不存在則靜默跳過（非 SDID 專案）
+ * @returns {string|null} 相對路徑，失敗時回傳 null
+ */
+function writeGateLog(projectRoot, _iterNum, status, content, changedFiles) {
+  if (!projectRoot) return null;
+  const gemsDir = path.join(projectRoot, '.gems');
+  if (!fs.existsSync(gemsDir)) return null; // 非 SDID 專案，靜默跳過
+  const logsDir = path.join(gemsDir, 'logs');
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `gate-microfix-${status}-${ts}.log`;
-  const content = `[micro-fix-gate] ${status.toUpperCase()}\n${summary}\nTimestamp: ${new Date().toISOString()}\n`;
-  try { fs.writeFileSync(path.join(logsDir, filename), content, 'utf8'); } catch { /* silent */ }
+  const filename = `microfix-${status}-${ts}.log`;
+  const filePath = path.join(logsDir, filename);
+  const header = [
+    `mode: MICRO-FIX`,
+    `changed: ${(changedFiles || []).join(', ') || '(auto-scan)'}`,
+    `result: ${status.toUpperCase()}`,
+    `ts: ${new Date().toISOString()}`,
+    `---`,
+    '',
+  ].join('\n');
+  try {
+    fs.mkdirSync(logsDir, { recursive: true });
+    fs.writeFileSync(filePath, header + content, 'utf8');
+    return path.relative(projectRoot, filePath);
+  } catch { return null; }
 }
 
 // ============================================
@@ -276,56 +294,65 @@ Micro-Fix Gate v1.0 — 輕量驗證器
     console.log(`@PASS | micro-fix-gate | ${filesToCheck.length} 個檔案全部通過`);
     console.log(`  ✓ GEMS 標籤: OK`);
     console.log(`  ✓ Import 整合: OK`);
-    writeGateLog(projectRoot, args.iter, 'pass', `${filesToCheck.length} 個檔案全部通過`);
+    writeGateLog(projectRoot, args.iter, 'pass', `${filesToCheck.length} 個檔案全部通過`, args.changed);
     process.exit(0);
   }
 
-  // 有問題 → 輸出 BLOCKER
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('@BLOCKER | micro-fix-gate | 發現問題，請修復後重跑');
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('');
-
-  if (tagIssues.length > 0) {
-    console.log(`❌ GEMS 標籤缺失 (${tagIssues.length} 個檔案):`);
-    for (const issue of tagIssues) {
-      console.log(`   ${issue.file}`);
-      for (const fn of issue.missing) {
-        console.log(`     └─ ${fn}() 缺少 GEMS 標籤`);
-      }
-    }
-    console.log('');
-    console.log('  修復範例:');
-    console.log('  /**');
-    console.log('   * GEMS: functionName | P2 | ○ | (args)→Result | 描述');
-    console.log('   * GEMS-FLOW: Step1→Step2→Step3');
-    console.log('   */');
-    console.log('');
-  }
-
-  if (importIssues.length > 0) {
-    console.log(`❌ Import 斷鏈 (${importIssues.length} 個檔案):`);
-    for (const issue of importIssues) {
-      console.log(`   ${issue.file}`);
-      for (const b of issue.broken) {
-        console.log(`     └─ import '${b.import}' → 找不到 ${b.expected}`);
-      }
-    }
-    console.log('');
-  }
-
-  console.log('重跑指令:');
+  // 有問題 → 收集詳細錯誤 + 存 log + 印 @READ 指標（M15: Gate Output Pointer）
   const changedArg = args.changed.length > 0 ? ` --changed=${args.changed.join(',')}` : '';
   const targetArg = args.target ? ` --target=${path.relative(process.cwd(), args.target) || '.'}` : '';
   const iterArg = args.iter ? ` --iter=${args.iter}` : '';
-  console.log(`  node sdid-tools/poc-fix/micro-fix-gate.cjs${changedArg}${targetArg}${iterArg}`);
-  console.log('═══════════════════════════════════════════════════════════');
+  const nextCmd = `node sdid-tools/poc-fix/micro-fix-gate.cjs${changedArg}${targetArg}${iterArg}`;
 
   const blockerSummary = [
-    tagIssues.length > 0 ? `標籤缺失 ${tagIssues.length} 檔` : '',
-    importIssues.length > 0 ? `Import 斷鏈 ${importIssues.length} 檔` : '',
+    tagIssues.length > 0 ? `GEMS標籤缺失 ${tagIssues.length} 檔` : '',
+    importIssues.length > 0 ? `Import斷鏈 ${importIssues.length} 檔` : '',
   ].filter(Boolean).join(', ');
-  writeGateLog(projectRoot, args.iter, 'error', blockerSummary);
+
+  // 組合詳細內容（存 log）
+  const detailLines = [`@BLOCKER | micro-fix-gate | ${blockerSummary}`, ''];
+  if (tagIssues.length > 0) {
+    detailLines.push(`❌ GEMS 標籤缺失 (${tagIssues.length} 個檔案):`);
+    for (const issue of tagIssues) {
+      detailLines.push(`   ${issue.file}`);
+      for (const fn of issue.missing) {
+        detailLines.push(`     └─ ${fn}() 缺少 GEMS 標籤`);
+      }
+    }
+    detailLines.push('');
+    detailLines.push('  修復範例:');
+    detailLines.push('  /**');
+    detailLines.push('   * GEMS: functionName | P2 | ○ | (args)→Result | 描述');
+    detailLines.push('   * GEMS-FLOW: Step1→Step2→Step3');
+    detailLines.push('   */');
+  }
+  if (importIssues.length > 0) {
+    detailLines.push('');
+    detailLines.push(`❌ Import 斷鏈 (${importIssues.length} 個檔案):`);
+    for (const issue of importIssues) {
+      detailLines.push(`   ${issue.file}`);
+      for (const b of issue.broken) {
+        detailLines.push(`     └─ import '${b.import}' → 找不到 ${b.expected}`);
+      }
+    }
+  }
+  detailLines.push('');
+  detailLines.push(`NEXT: ${nextCmd}`);
+
+  // 存 log（詳情），回傳相對路徑
+  const logPath = writeGateLog(projectRoot, args.iter, 'error', detailLines.join('\n'), args.changed);
+
+  // 精簡終端輸出
+  console.log(`@BLOCKER | micro-fix-gate | ${blockerSummary}`);
+  if (logPath) {
+    console.log(`@READ: ${logPath}`);
+    console.log(`  ↳ 包含: GEMS標籤缺失明細 + Import斷鏈明細 + 修復範例`);
+  } else {
+    // fallback：無 log 可存時才直接印出詳情（跳過第一行 @BLOCKER 避免重複）
+    console.log('');
+    detailLines.slice(1).forEach(l => console.log(l));
+  }
+  console.log(`NEXT: ${nextCmd}`);
 
   process.exit(1);
 }

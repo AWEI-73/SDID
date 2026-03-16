@@ -208,7 +208,11 @@ ${issuesContent}
                 iteration: parseInt(iteration.replace('iter-', '')),
                 phase: 'poc',
                 step: 'step-5',
-                info: { 'File': specFile, 'Next': '機械轉換 spec → plan，跳過 PLAN 步驟' }
+                info: {
+                  'File': specFile,
+                  'Next': '機械轉換 spec → plan + ac.ts 骨架，跳過 PLAN 步驟',
+                  'AC 提示': 'spec-to-plan 會自動產出 ac.ts 骨架（純計算函式），請填入 INPUT/EXPECT 後 Phase 2 才能機械驗收'
+                }
             });
 
         return { verdict: 'PASS', qualityScore: qualityResult.score };

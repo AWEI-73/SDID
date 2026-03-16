@@ -96,7 +96,13 @@ function scanGemsTags(srcDir) {
       const beforeFunc = content.substring(Math.max(0, match.index - 2000), match.index);
 
       // 嘗試多行註解 /** */
-      let commentMatch = beforeFunc.match(/\/\*\*[\s\S]*?\*\/\s*$/);
+      // v2.1 fix: 允許 */ 後面有 // [STEP] / // AC-X.Y 等單行行，不要求 */ 在 beforeFunc 結尾
+      let commentMatch = beforeFunc.match(/\/\*\*[\s\S]*?\*\//);
+      // 取最後一個 /** */ 區塊（避免抓到更早的無關註解）
+      const allCommentMatches = [...beforeFunc.matchAll(/\/\*\*[\s\S]*?\*\//g)];
+      if (allCommentMatches.length > 0) {
+        commentMatch = allCommentMatches[allCommentMatches.length - 1];
+      }
       let comment = commentMatch ? commentMatch[0] : '';
 
       // 如果沒有多行註解，嘗試連續單行註解 //

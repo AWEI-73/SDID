@@ -13,14 +13,14 @@ inclusion: always
 
 - 路線 A（Blueprint）：大藍圖設計 → Enhanced Draft → Gate → Plan → BUILD
 - 路線 B（Task-Pipe）：POC 漸進式設計 → requirement_spec → Plan → BUILD
-- 兩條路在 implementation_plan 匯流，共用 BUILD Phase 1-8
+- 兩條路在 implementation_plan 匯流，共用 BUILD Phase 1-4（v6）
 
 舊的 sdid-loop、blueprint-loop、blueprint-architect skill 已 deprecated，不要使用。
 
 ## 🔄 流程選項
 
 ```
-選項 A (Blueprint Flow，推薦): Gem 對話 → Gate → draft-to-plan → BUILD → Shrink → Verify
+選項 A (Blueprint Flow，推薦): Gem 對話 → Gate → Cynefin → Contract → Plan → BUILD → SCAN → Verify
 選項 B (Task-Pipe Flow): POC → PLAN → BUILD → SCAN
 選項 C (無 POC): PLAN (自產需求規格) → BUILD → SCAN
 ```
@@ -29,7 +29,7 @@ inclusion: always
 
 | 類型 | 關鍵字 |
 |------|--------|
-| Blueprint | 藍圖、blueprint、gate、draft-to-plan、shrink、expand、verify |
+| Blueprint | 藍圖、blueprint、gate、contract、cynefin、verify |
 | POC | POC、原型、prototype、概念驗證、契約設計 |
 | PLAN | 規劃、plan、需求、設計、implementation plan |
 | BUILD | 開發、build、coding、實作、測試、修正 |
@@ -70,7 +70,7 @@ node task-pipe/runner.cjs --phase=SCAN --target=.
 
 ### 流程概覽
 ```
-Gem 對話 → Gate → draft-to-plan → BUILD (Phase 1-8) → Shrink → [Expand → Gate → ...] → Verify
+Gem 對話 → Gate → Cynefin → Contract → Plan → BUILD (Phase 1-4) → SCAN → Verify
 ```
 
 ### 指令格式
@@ -78,19 +78,22 @@ Gem 對話 → Gate → draft-to-plan → BUILD (Phase 1-8) → Shrink → [Expa
 # 1. Gate 門控
 node sdid-tools/blueprint/gate.cjs --draft=<path> --target=<project> [--iter=N]
 
-# 2. 藍圖→Plan
-node sdid-tools/blueprint/draft-to-plan.cjs --draft=<path> --iter=N --target=<project>
+# 2. Cynefin 語意域分析（AI 手動執行）
+node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=N
 
-# 3. BUILD (與 Task-Pipe 共用)
-node task-pipe/runner.cjs --phase=BUILD --step=1~8 --story=Story-X.Y --target=<project>
+# 3. Contract 驗證
+node sdid-tools/blueprint/contract-writer.cjs --contract=<path> --target=<project> --iter=N
 
-# 4. 收縮
-node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=N --target=<project>
+# 4. Contract → Plan（機械轉換）
+node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-N
 
-# 5. 展開 (進入下一個 iter)
-node sdid-tools/blueprint/expand.cjs --draft=<path> --iter=N --target=<project>
+# 5. BUILD (與 Task-Pipe 共用)
+node task-pipe/runner.cjs --phase=BUILD --step=1~4 --story=Story-X.Y --target=<project>
 
-# 6. 驗證
+# 6. SCAN
+node task-pipe/runner.cjs --phase=SCAN --target=<project>
+
+# 7. 驗證
 node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> --iter=N
 ```
 
@@ -101,11 +104,10 @@ node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> --iter=N
 | 工具 | log 前綴 | 範例 |
 |------|---------|------|
 | blueprint-gate | `gate-check-` | `gate-check-error-2026-02-13T04-03-33.log` |
-| draft-to-plan | `gate-plan-` | `gate-plan-pass-2026-02-13T04-03-34.log` |
-| blueprint-shrink | `gate-shrink-` | `gate-shrink-pass-2026-02-13T04-03-35.log` |
-| blueprint-expand | `gate-expand-` | `gate-expand-pass-2026-02-13T04-03-35.log` |
+| contract-writer | `contract-` | `contract-pass-2026-02-13T04-03-33.log` |
+| spec-to-plan | `gate-plan-` | `gate-plan-pass-2026-02-13T04-03-34.log` |
 | blueprint-verify | `gate-verify-` | `gate-verify-pass-2026-02-13T04-03-36.log` |
-| BUILD Phase 1-8 | `build-phase-` | `build-phase-2-Story-1.0-error-...log` |
+| BUILD Phase 1-4 | `build-phase-` | `build-phase-2-Story-1.0-error-...log` |
 
 ### Blueprint Flow 錯誤處理
 
@@ -119,18 +121,7 @@ node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> --iter=N
    - 讀取終端輸出的「下一步」指令
    - 執行下一步
 
-### ⚠️ Blueprint Flow BUILD 輸出銜接規則
-
-BUILD Phase 1-8 共用 task-pipe 的 runner.cjs，其輸出提示是為 Task-Pipe Flow 設計的。
-在 Blueprint Flow 中，**忽略 BUILD Phase 8 的「下一步: SCAN」指令**：
-
-| BUILD 輸出 | Blueprint Flow 正確行為 |
-|-----------|----------------------|
-| `下一步: BUILD --step=N` | ✅ 正確，繼續下一個 Phase |
-| `下一步: SCAN` | ❌ 忽略！重新執行 `loop.cjs` |
-| BUILD Phase 8 @PASS | 重新執行 `loop.cjs`（自動偵測下一個 Story 或 SHRINK） |
-
-**黃金法則**: 永遠透過 `loop.cjs` 執行下一步，不要直接跑 BUILD 輸出的指令。
+**黃金法則**: 永遠透過 MCP `sdid-loop` 執行下一步，不要直接跑 BUILD 輸出的指令。
 
 ### SCAN→Blueprint 增量替代
 
@@ -138,17 +129,14 @@ Blueprint Flow 不使用 SCAN 階段，取而代之：
 
 | Task-Pipe Flow | Blueprint Flow 對應 |
 |---------------|-------------------|
-| SCAN (全專案掃描) | SHRINK + VERIFY |
-| SCAN → 下一個 iteration | EXPAND → 下一個 iter |
+| SCAN (全專案掃描) | VERIFY |
 
 ### Blueprint Flow 完整循環
 
 ```
-Gate @PASS → draft-to-plan @PASS → BUILD Phase 1-8 (每個 Story) → Shrink @PASS
-  ↓ (如果有下一個 iter)
-Expand @PASS → Gate @PASS → draft-to-plan @PASS → BUILD → Shrink → ...
-  ↓ (最後)
-Verify @PASS → 完成
+Gate @PASS → CYNEFIN @PASS → CONTRACT @PASS → Plan (機械轉換) → BUILD Phase 1-4 (每個 Story)
+  ↓
+SCAN @PASS → Verify @PASS → 完成
 ```
 
 ---
@@ -228,57 +216,35 @@ node task-pipe/runner.cjs --phase=PLAN --step=5 --target=.
 ```
 - 最終確認與說明
 
-## 📚 BUILD 階段 (Phase 1-8)
+## 📚 BUILD 階段 (Phase 1-4，v6)
 
-### Phase 1: 骨架檢查
+### Phase 1: 骨架映射層
 ```bash
-node task-pipe/runner.cjs --phase=BUILD --step=1 --target=.
+node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=.
 ```
-- 確保環境和檔案結構存在
+- 讀 implementation_plan + contract.ts + ac.ts
+- 產出骨架 + GEMS 標籤全覆蓋（P0-P3）
 
-### Phase 2: 標籤驗收 ⭐
+### Phase 2: AC 驗收層 ⭐
 ```bash
-node task-pipe/runner.cjs --phase=BUILD --step=2 --target=.
+node task-pipe/runner.cjs --phase=BUILD --step=2 --story=Story-X.Y --target=.
 ```
-- **The Enforcer**: 掃描 src 確保每個函數符合 GEMS 標籤
-- 不符合 → FAIL
+- 呼叫 ac-runner 執行 ac.ts 的 @GEMS-AC
+- CALC AC 全 PASS 才過，SKIP 不計入失敗
 
-### Phase 3: 測試腳本
+### Phase 3: 整合層
 ```bash
-node task-pipe/runner.cjs --phase=BUILD --step=3 --target=.
+node task-pipe/runner.cjs --phase=BUILD --step=3 --story=Story-X.Y --target=.
 ```
-- 寫測試檔案
+- 路由整合、barrel export、SKIP[INTEGRATION] AC
+- Level S 跳過此 Phase
 
-### Phase 4: Test Gate
+### Phase 4: 標籤品質+Fillback層
 ```bash
-node task-pipe/runner.cjs --phase=BUILD --step=4 --target=.
+node task-pipe/runner.cjs --phase=BUILD --step=4 --story=Story-X.Y --target=.
 ```
-- 驗證測試檔案存在且 import 被測函式
-
-### Phase 5: TDD 測試執行
-```bash
-node task-pipe/runner.cjs --phase=BUILD --step=5 --target=.
-```
-- Unit/Integration 測試
-
-### Phase 6: 修改檔案測試
-```bash
-node task-pipe/runner.cjs --phase=BUILD --step=6 --target=.
-```
-- 整合測試
-
-### Phase 7: 整合檢查
-```bash
-node task-pipe/runner.cjs --phase=BUILD --step=7 --target=.
-```
-- 檢查路由、模組匯出等整合項目
-
-### Phase 8: Fillback
-```bash
-node task-pipe/runner.cjs --phase=BUILD --step=8 --target=.
-```
-- 生成 `Fillback_Story-X.Y.md`
-- 產出: `iteration_suggestions_Story-X.Y.json`
+- GEMS 標籤品質複查（P0-P3 全覆蓋）
+- 產出 `Fillback_Story-X.Y.md` + `iteration_suggestions_Story-X.Y.json`
 
 ## 📚 SCAN 階段
 
@@ -293,7 +259,7 @@ node task-pipe/runner.cjs --phase=SCAN --target=.
 
 1. **禁止腦補**: 模糊需求必須先 `[NEEDS CLARIFICATION]`
 2. **小跑修正**: SEARCH → 修正 → 重試，最多 3 次
-3. **不跳步**: POC Step 1-5 / PLAN Step 1-5 / BUILD Phase 1-8 都不能跳
+3. **不跳步**: POC Step 1-5 / PLAN Step 1-5 / BUILD Phase 1-4 都不能跳
 4. **Context 管理**: 一個 Agent 一個 Item
 5. **驗證優先**: 每個階段都有 Checkpoint
 6. **獨立可測性**: 每個 Story 必須能被單獨驗證

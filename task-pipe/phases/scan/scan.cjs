@@ -151,6 +151,7 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
       generatedBy: 'scan',
       generatedAt: new Date().toISOString(),
       totalCount: scanResult.functions?.length || scanResult.stats?.tagged || 0,
+      untaggedCount: (raw.untagged || []).length,
       byRisk: {
         P0: scanResult.stats.p0,
         P1: scanResult.stats.p1,
@@ -175,6 +176,12 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
         deps: f.deps || [],
         depsRisk: f.depsRisk || '',
         testStatus: f.testStatus || ''
+      })),
+      // M17: untagged 函式清單
+      untagged: (raw.untagged || []).map(f => ({
+        name: f.name,
+        file: f.file,
+        line: f.line || null
       }))
     };
 
@@ -256,6 +263,23 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
       fs.writeFileSync(snapshotPath, JSON.stringify(functionsJson, null, 2));
       console.log(`[SCAN] functions-snapshot.json → ${path.relative(process.cwd(), snapshotPath)}`);
     } catch (e) { /* 快照失敗不影響主流程 */ }
+
+    // M17: 輸出 untagged 函式清單（讓 AI 知道要補哪些 GEMS tag）
+    const untaggedFns = raw.untagged || [];
+    if (untaggedFns.length > 0) {
+      const relTarget = path.relative(process.cwd(), target);
+      console.log('');
+      console.log(`@UNTAGGED | ${untaggedFns.length} 個函式缺少 GEMS tag（P0/P1 必填）`);
+      untaggedFns.slice(0, 10).forEach(fn => {
+        // fn.file 是相對於 target 的路徑（e.g. src\shared\services\foo.ts）
+        const relFile = path.join(relTarget, fn.file);
+        console.log(`  - ${fn.name} | ${relFile}:${fn.line || '?'}`);
+      });
+      if (untaggedFns.length > 10) {
+        console.log(`  ... 還有 ${untaggedFns.length - 10} 個（見 functions.json untagged）`);
+      }
+      console.log('');
+    }
 
     anchorPass('SCAN', 'Enhanced Scan v7.0',
       `SCAN 完成 | Funcs: ${scanResult.functions.length} | 平均 ${scanResult.stats.avgFunctionLines || '?'} 行/函式`,

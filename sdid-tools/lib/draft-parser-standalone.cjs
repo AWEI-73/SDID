@@ -3,9 +3,10 @@
  * Draft Parser Standalone - 活藍圖解析器 (獨立版)
  * 
  * 從 task-pipe/tools/draft-parser.cjs 提取，零依賴。
- * 支援 Enhanced Draft v1 + v2 (活藍圖) 格式。
+ * 支援 Enhanced Draft v1 + v2 + v3 (活藍圖) 格式。
  * 
  * v2 新增解析：deps 欄位、狀態欄位、交付欄位、公開 API、[DONE]/[STUB]/[CURRENT] 標記
+ * v3 新增解析：一句話目標 inline 格式、模組 API 摘要、藍圖狀態欄位、精簡 7 區塊結構
  */
 
 const fs = require('fs');
@@ -34,6 +35,8 @@ function load(filePath) {
 }
 
 function parse(content) {
+  // normalize CRLF → LF (Windows 環境寫出的 markdown 會有 \r\n)
+  content = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const draft = {
     title: '', iteration: '', date: '', status: '', level: '',
     methodology: '', goal: '', requirement: '',
@@ -43,8 +46,8 @@ function parse(content) {
     variationPoints: null,
   };
 
-  // 標題
-  const titleMatch = content.match(/^# 📋\s*(.+?)(?:\s*-\s*(?:需求草稿|活藍圖)|\s*$)/m);
+  // 標題 (v3: 無 📋 emoji; v2: 有 📋)
+  const titleMatch = content.match(/^# (?:📋\s*)?(.+?)(?:\s*-\s*(?:需求草稿|活藍圖)|\s*$)/m);
   if (titleMatch) draft.title = titleMatch[1].trim();
 
   // 元資料
@@ -56,45 +59,79 @@ function parse(content) {
   const scaleMatch = content.match(/\*\*規模\*\*:\s*([SML])/i);
   if (scaleMatch && !draft.level) draft.level = scaleMatch[1].toUpperCase();
 
-  // 一句話目標
+  // 一句話目標 (v3: inline **一句話目標**: 在 section 1 內; v2: 獨立 ## 一句話目標)
   const goalMatch = content.match(/##+ 一句話目標\s*\n+([^\n#]+)/);
-  if (goalMatch) draft.goal = goalMatch[1].trim();
+  if (goalMatch) {
+    draft.goal = goalMatch[1].trim();
+  } else {
+    // v3 inline format: **一句話目標**: ...
+    const inlineGoalMatch = content.match(/\*\*一句話目標\*\*\s*[:：]\s*(.+)/);
+    if (inlineGoalMatch) draft.goal = inlineGoalMatch[1].trim();
+  }
 
   // 用戶原始需求
   const reqMatch = content.match(/## 用戶原始需求\s*\n+([\s\S]*?)(?=\n---|\n##)/);
   if (reqMatch) draft.requirement = reqMatch[1].replace(/^>\s*/gm, '').trim();
 
-  // 族群
-  draft.groups = parseTable(content, /#{2,4}\s*1\.\s*族群識別/);
+  // 族群 (v3: ### 2.1 族群識別 表格; v2: ### 1. 族群識別 表格; v4: inline 列表)
+  draft.groups = parseTable(content, /#{2,4}\s*(?:2\.1|1\.)\s*族群識別/);
+  // v4 fallback: inline 列表格式 "- 角色A: 職責描述（特殊需求）"
+  if (draft.groups.length === 0) {
+    const groupSection = extractSection(content, /#{2,4}\s*(?:2\.1|1\.)\s*族群識別/);
+    if (groupSection) {
+      const listItems = groupSection.split('\n').filter(l => /^\s*-\s+\S/.test(l) && !l.includes('['));
+      for (const line of listItems) {
+        const m = line.match(/^\s*-\s+([^:：]+)[：:]\s*(.+)/);
+        if (m) {
+          const name = m[1].trim();
+          const rest = m[2].trim();
+          const specialMatch = rest.match(/（([^）]+)）/);
+          draft.groups.push({
+            '族群名稱': name,
+            '描述': specialMatch ? rest.replace(/（[^）]+）/, '').trim() : rest,
+            '特殊需求': specialMatch ? specialMatch[1] : '',
+          });
+        }
+      }
+    }
+  }
 
-  // 實體
+  // 實體 (v3: ### 2.2 實體定義; v2: ### 2. 實體定義)
   draft.entities = parseEntities(content);
 
   // 共用模組
   draft.sharedModules = parseChecklist(content, /#{2,4}\s*[23]\.\s*共用模組/);
 
-  // 獨立模組 (v2: 含公開 API)
+  // 獨立模組 (v2: 含公開 API; v3: 模組 API 摘要)
   draft.modules = parseModules(content);
 
-  // 路由
-  const routeMatch = content.match(/#{2,4}\s*[45]\.\s*路由結構[\s\S]*?```([\s\S]*?)```/);
+  // 路由 (v3: ### 2.3 路由結構; v2: ### 4. 或 ### 5. 路由結構)
+  const routeMatch = content.match(/#{2,4}\s*(?:2\.3|[45]\.)\s*路由結構[\s\S]*?```([\s\S]*?)```/);
   if (routeMatch) draft.routes = routeMatch[1].trim();
 
-  // 迭代規劃表 (v2: 含交付 + 狀態)
+  // 迭代規劃表 (v3: ## 3. 迭代規劃表; v2: ## 📅 迭代規劃表)
   draft.iterationPlan = parseIterationPlan(content);
 
-  // 模組動作清單 (v2: 含 deps + 狀態)
+  // 模組動作清單 (v3: ## 5. 模組動作清單; v2: ## 📋 模組動作清單)
   draft.moduleActions = parseModuleActions(content);
 
   // 功能模組清單
   draft.features = parseChecklist(content, /## 功能模組清單/);
 
-  // 不做什麼
+  // 不做什麼 (v3: **不做什麼**: 在 section 1 內; v2: ### 不做什麼)
   const exMatch = content.match(/### 不做什麼\s*\n([\s\S]*?)(?=\n---|\n##)/);
   if (exMatch) {
     draft.exclusions = exMatch[1].split('\n')
       .filter(l => l.trim().startsWith('-'))
       .map(l => l.replace(/^-\s*/, '').trim());
+  } else {
+    // v3 inline format: **不做什麼**: followed by list items
+    const inlineExMatch = content.match(/\*\*不做什麼\*\*\s*[:：]\s*\n([\s\S]*?)(?=\n---|\n##|\n\*\*)/);
+    if (inlineExMatch) {
+      draft.exclusions = inlineExMatch[1].split('\n')
+        .filter(l => l.trim().startsWith('-'))
+        .map(l => l.replace(/^-\s*/, '').trim());
+    }
   }
 
   // 釐清項目
@@ -127,7 +164,7 @@ function parseTable(content, headerPattern) {
 // === 實體解析 ===
 function parseEntities(content) {
   const entities = {};
-  const section = extractSection(content, /#{2,4}\s*2\.\s*實體定義/);
+  const section = extractSection(content, /#{2,4}\s*(?:2\.2|2\.)\s*實體定義/);
   if (!section) return entities;
 
   // 格式 A: #### EntityName 分塊格式（標準格式）
@@ -178,11 +215,29 @@ function parseEntities(content) {
   return entities;
 }
 
-// === 模組解析 (v2: 含公開 API) ===
+// === 模組解析 (v2: 含公開 API; v3: 模組 API 摘要) ===
 function parseModules(content) {
   const modules = {};
+  
+  // v2: ### 3. 獨立模組 or ### 4. 獨立模組
   const section = extractSection(content, /#{2,4}\s*[34]\.\s*獨立模組/);
-  if (!section) return modules;
+  if (section) {
+    parseModulesFromSection(section, modules);
+  }
+  
+  // v3: ### 模組 API 摘要 (under 迭代規劃表)
+  const apiSummarySection = extractSection(content, /#{2,4}\s*模組 API 摘要/);
+  if (apiSummarySection) {
+    parseModulesFromAPISummary(apiSummarySection, modules);
+  }
+  
+  return modules;
+}
+
+/**
+ * v2 格式: #### 模組：module-name
+ */
+function parseModulesFromSection(section, modules) {
   const blocks = section.split(/####\s+模組[：:]\s*/).slice(1);
   for (const block of blocks) {
     const nameMatch = block.match(/^([^\n(]+)/);
@@ -216,12 +271,51 @@ function parseModules(content) {
 
     modules[name] = { name, deps, features, publicAPI: apiLines, layer };
   }
-  return modules;
+}
+
+/**
+ * v3 格式: #### module-name (under ### 模組 API 摘要)
+ * - 依賴: [shared/types]
+ * - 公開 API:
+ *   - functionA(args): ReturnType
+ */
+function parseModulesFromAPISummary(section, modules) {
+  const blocks = section.split(/####\s+/).slice(1);
+  for (const block of blocks) {
+    const nameMatch = block.match(/^([^\n(]+)/);
+    if (!nameMatch) continue;
+    const name = nameMatch[1].trim();
+    if (name.includes('{') && name.includes('}')) continue;
+    if (modules[name]) continue; // v2 已解析過，不覆蓋
+
+    const depsMatch = block.match(/依賴\s*[:：]\s*\[?([^\]\n]*)\]?/);
+    const deps = depsMatch
+      ? depsMatch[1].split(',').map(d => d.trim().replace(/^\[|\]$/g, '')).filter(d => d && d !== '無')
+      : [];
+
+    const apiLines = [];
+    const lines = block.split('\n');
+    let inAPI = false;
+    for (const l of lines) {
+      if (/公開 API\s*[:：]/.test(l)) { inAPI = true; continue; }
+      if (inAPI) {
+        const m = l.match(/^\s+-\s+(.+)/);
+        if (m) {
+          apiLines.push(m[1].trim());
+        } else if (l.trim() && !l.trim().startsWith('-')) {
+          inAPI = false;
+        }
+      }
+    }
+
+    modules[name] = { name, deps, features: [], publicAPI: apiLines, layer: 'feature' };
+  }
 }
 
 // === 迭代規劃表 (v2: 含交付 + 狀態) ===
 function parseIterationPlan(content) {
-  const section = extractSection(content, /## 📅 迭代規劃表/);
+  // v3: ## 3. 迭代規劃表; v2: ## 📅 迭代規劃表
+  const section = extractSection(content, /##\s*(?:📅\s*)?(?:\d+\.\s*)?迭代規劃表/);
   if (!section) return [];
   // 移除 HTML 註解後再解析表格
   const cleanSection = section.replace(/<!--[\s\S]*?-->/g, '');
@@ -234,7 +328,10 @@ function parseIterationPlan(content) {
     if (cells.length < 3) continue;
     const entry = {};
     headers.forEach((h, idx) => { entry[h.toLowerCase()] = cells[idx] || ''; });
-    const iter = parseInt(entry['iter'] || entry['迭代'] || '0');
+    const iterRaw = entry['iter'] || entry['迭代'] || '0';
+    // 支援 "iter-1" 和 "1" 兩種格式
+    const iterNum = iterRaw.match(/\d+/);
+    const iter = iterNum ? parseInt(iterNum[0]) : 0;
     if (isNaN(iter) || iter === 0) continue;
     plan.push({
       iter,
@@ -299,7 +396,8 @@ function extractAllTableLines(blockContent) {
 
 function parseModuleActions(content) {
   const actions = {};
-  const section = extractSection(content, /## 📋 模組動作清單/);
+  // v3: ## 5. 模組動作清單; v2: ## 📋 模組動作清單; 任意數字前綴
+  const section = extractSection(content, /##\s*(?:📋\s*)?(?:\d+\.\s*)?模組動作清單/);
   if (!section) return actions;
   const iterBlocks = section.split(/###\s+/).slice(1);
 
@@ -456,7 +554,8 @@ function parseChecklist(content, headerPattern) {
 
 // === 變異點分析 (v2.1) ===
 function parseVariationPoints(content) {
-  const section = extractSection(content, /## 🔄 變異點分析/);
+  // v3: ## 4. 變異點分析; v2: ## 🔄 變異點分析
+  const section = extractSection(content, /##\s*(?:🔄\s*)?(?:\d+\.\s*)?變異點分析/);
   if (!section) return null;
 
   const result = { nouns: [], layers: [], confirmed: [] };
@@ -515,7 +614,8 @@ function parseVariationPoints(content) {
 
 // === 區塊提取 ===
 function extractSection(content, headerPattern) {
-  const lines = content.split('\n');
+  // normalize CRLF → LF (Windows 環境寫出的 markdown 會有 \r\n)
+  const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   let startIdx = -1, headerLevel = 0;
   for (let i = 0; i < lines.length; i++) {
     if (headerPattern.test(lines[i])) {
@@ -724,11 +824,37 @@ function isV2Draft(draft) {
   return false;
 }
 
+/**
+ * v3 偵測：v3 特徵 — 一句話目標 inline、模組 API 摘要、無 📋 emoji 標題
+ */
+function isV3Draft(rawContent) {
+  if (!rawContent) return false;
+  // v3 特徵：有 **一句話目標**: inline 格式
+  if (/\*\*一句話目標\*\*\s*[:：]/.test(rawContent)) return true;
+  // v3 特徵：有 ### 模組 API 摘要
+  if (/###\s*模組 API 摘要/.test(rawContent)) return true;
+  // v3 特徵：有 ## \d+\. 模組動作清單 (numbered sections without emoji)
+  if (/##\s*\d+\.\s*模組動作清單/.test(rawContent)) return true;
+  return false;
+}
+
+/**
+ * v4 偵測：v4 特徵 — AC 骨架內嵌在動作清單、族群識別為 inline 列表、無獨立驗收條件區塊
+ */
+function isV4Draft(rawContent) {
+  if (!rawContent) return false;
+  // v4 特徵：有 **AC 骨架** 行（在動作清單區塊內）
+  if (/\*\*AC 骨架\*\*/.test(rawContent)) return true;
+  // v4 特徵：有 ## 6. 藍圖備註（取代 ## 6. 驗收條件）
+  if (/##\s*6\.\s*藍圖備註/.test(rawContent)) return true;
+  return false;
+}
+
 module.exports = {
   load, parse,
   getModulesByIter, getAllIterations, getCurrentIter,
   getIterationSummary, checkDependencies,
-  calculateStats, isEnhancedDraft, isV2Draft,
+  calculateStats, isEnhancedDraft, isV2Draft, isV3Draft, isV4Draft,
   filterActionsForModule,
   parseTable, parseEntities, parseModules,
   parseIterationPlan, parseModuleActions,

@@ -315,14 +315,26 @@ function checkContentQuality(content, specPath = '', draftPath = '') {
     }
 
     // ============================================
-    // [BLOCKER 5] 佔位符檢查
+    // [BLOCKER 5] 佔位符檢查（只掃 Story/AC/5.5 區塊，跳過說明行）
     // ============================================
-    const placeholders = findPlaceholdersWithLineNumbers(c);
+    // 提取需要嚴格檢查的區塊（用戶故事、驗收標準、5.5 函式規格表）
+    const strictSections = [];
+    const storySection = c.match(/##\s+1\.\s+用戶故事[\s\S]*?(?=\n##\s+[^#]|$)/)?.[0] || '';
+    const acSection = c.match(/##\s+3\.\s+驗收標準[\s\S]*?(?=\n##\s+[^#]|$)/)?.[0] || '';
+    const table55Section = c.match(/##\s+5\.5\s+函式規格表[\s\S]*?(?=\n##\s+[^#]|$)/)?.[0] || '';
+    if (storySection) strictSections.push(storySection);
+    if (acSection) strictSections.push(acSection);
+    if (table55Section) strictSections.push(table55Section);
+    const strictContent = strictSections.join('\n');
+
+    const placeholders = strictContent
+        ? findPlaceholdersWithLineNumbers(strictContent)
+        : [];
     if (placeholders.length > 0) {
         blockers.push({
             type: 'PLACEHOLDER_FOUND',
             severity: 'BLOCKER',
-            message: `發現 ${placeholders.length} 個佔位符尚未填寫`,
+            message: `發現 ${placeholders.length} 個佔位符尚未填寫（Story/AC/5.5 區塊）`,
             details: placeholders.slice(0, 5),
             fixGuide: placeholders.slice(0, 3).map(p =>
                 `Line ${p.lineNumber}: 將「${p.placeholder}」改為 ${p.suggestedFix}`

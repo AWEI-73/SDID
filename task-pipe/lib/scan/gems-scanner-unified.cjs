@@ -54,7 +54,8 @@ function scan(srcDir, projectRoot, options = {}) {
     try {
       const root = projectRoot || inferProjectRoot(srcDir);
       const v2Result = scannerV2.scanV2(srcDir, root);
-      if (v2Result && (v2Result.functions?.length > 0 || v2Result.tagged?.length > 0)) {
+      // _tsUnavailable: TypeScript 不可用，跳過 v2 結果，走 regex fallback
+      if (v2Result && !v2Result._tsUnavailable && (v2Result.functions?.length > 0 || v2Result.tagged?.length > 0)) {
         result = normalizeV2Result(v2Result);
       }
     } catch (e) {
@@ -252,14 +253,27 @@ function parseFileShrink(filePath, results, projectRoot) {
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
-    // 匹配 shrink 格式：/** GEMS: name | P0 | FLOW */  或  /** GEMS: name | P0 | FLOW | Story-X.Y */
-    const m = trimmed.match(/^\/\*\*\s*GEMS:\s*(\w+)\s*\|\s*(P[0-3])(?:\s*\|\s*([^|*][^*]*))?(?:\s*\|\s*(Story-[\d.]+))?\s*\*\//);
-    if (!m) continue;
+    // 匹配 GEMS 標籤格式（管道分隔欄位，任意數量）:
+    //   /** GEMS: name | P0 | FLOW | Story-X.Y */          (舊格式 3-4 欄)
+    //   /** GEMS: name | P0 | ○○ | signature | Story-X.Y | desc */  (新格式 5+ 欄)
+    const gemsMatch = trimmed.match(/^\/\*\*\s*GEMS:\s*(.+?)\s*\*\/$/);
+    if (!gemsMatch) continue;
 
-    const name = m[1];
-    const priority = m[2];
-    const flow = m[3] ? m[3].trim() : null;
-    const storyId = m[4] ? m[4].trim() : null;
+    // 分割所有欄位
+    const fields = gemsMatch[1].split('|').map(f => f.trim());
+    if (fields.length < 2) continue;
+
+    const name = fields[0];
+    const priority = fields[1];
+    if (!/^P[0-3]$/.test(priority)) continue;
+
+    // 從欄位中找 Story-X.Y（任意位置）
+    const storyField = fields.find(f => /^Story-[\d.]+$/.test(f));
+    const storyId = storyField || null;
+
+    // flow: 優先取簽名欄（含 → 的欄位），否則取第三欄（舊格式）
+    const signatureField = fields.find((f, i) => i >= 2 && f.includes('→'));
+    const flow = signatureField || (fields.length > 2 && !/^Story-/.test(fields[2]) && !/^[○✓✗]/.test(fields[2]) ? fields[2] : null);
 
     // 收集後續的 AC 行和 STEP 行
     const acIds = [];
@@ -285,7 +299,6 @@ function parseFileShrink(filePath, results, projectRoot) {
       acIds: acIds.length > 0 ? acIds : undefined,
       status: '✓✓',
       description: '',
-      storyId: null,
       deps: [],
       depsRisk: null,
       test: null,

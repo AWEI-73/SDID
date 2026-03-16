@@ -186,7 +186,11 @@ export interface Item {
  * @RETURN: string
  */
 
-// ─── AC SPECS (純計算函式驗收，由 ac-runner.cjs Phase 5 機械執行) ────────────
+// ─── AC SPECS (純計算函式驗收，由 ac-runner.cjs Phase 2 機械執行) ────────────
+//
+// ⚠️ 重要：Task-Pipe 路線的 AC 切片由此處提供
+// spec-to-plan 會自動從 5.5 函式規格表提取純計算函式產出 ac.ts 骨架
+// 但若你在 contract.ts 直接填寫 @GEMS-AC，contract-writer 會自動分離 ac.ts
 //
 // 只放「純計算」類函式（無 side effect、無 DOM、無 API call）
 // 格式:
@@ -196,7 +200,11 @@ export interface Item {
 //   @GEMS-AC-INPUT: JSON 陣列，對應函式參數
 //   @GEMS-AC-EXPECT: JSON 值，deep-equal 比對
 //
-// 沒有純計算函式時，整個區塊可省略
+// 有外部依賴時用 SKIP:
+//   @GEMS-AC: AC-X.Y
+//   @GEMS-AC-SKIP: MOCK — 需要 DB/API，靠 jest mock 驗收
+//
+// 沒有純計算函式時，整個區塊可省略（Phase 2 會 SKIP）
 
 // @GEMS-AC: AC-1.0
 // @GEMS-AC-FN: formatItemTitle

@@ -60,94 +60,6 @@
       "init": "python -m venv .venv && pip install pytest"
     }
   },
-  "levels": {
-    "S": {
-      "description": "Prototype - 能跑通 UI 原型即可",
-      "poc": {
-        "story0Scope": "必要的資料型別與 Mock 資料",
-        "maxStories": 3,
-        "forbiddenPatterns": [
-          "axios-interceptor",
-          "shared-utils",
-          "complex-state",
-          "middleware",
-          "caching"
-        ],
-        "requirePocVerification": true
-      },
-      "build": {
-        "phases": [
-          1,
-          2,
-          7,
-          8
-        ],
-        "testRequired": false,
-        "tagsRequired": [
-          "GEMS"
-        ]
-      }
-    },
-    "M": {
-      "description": "Standard - 專案骨架與基礎配置",
-      "poc": {
-        "story0Scope": "專案骨架與基礎配置",
-        "maxStories": 6,
-        "forbiddenPatterns": [
-          "complex-middleware",
-          "advanced-caching"
-        ],
-        "requirePocVerification": false
-      },
-      "build": {
-        "phases": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          7,
-          8
-        ],
-        "testRequired": true,
-        "tagsRequired": [
-          "GEMS",
-          "GEMS-TEST",
-          "GEMS-TEST-FILE"
-        ]
-      }
-    },
-    "L": {
-      "description": "Strict - 完整架構規範",
-      "poc": {
-        "story0Scope": "完整基礎建設（types, config, shared, lib）",
-        "maxStories": 10,
-        "forbiddenPatterns": [],
-        "requirePocVerification": false
-      },
-      "build": {
-        "phases": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8
-        ],
-        "testRequired": true,
-        "tagsRequired": [
-          "GEMS",
-          "GEMS-FLOW",
-          "GEMS-DEPS",
-          "GEMS-DEPS-RISK",
-          "GEMS-TEST",
-          "GEMS-TEST-FILE"
-        ]
-      }
-    }
-  },
   "phaseChain": {
     "POC": {
       "steps": [
@@ -174,11 +86,7 @@
         "1",
         "2",
         "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8"
+        "4"
       ],
       "gate": "build-gate.cjs"
     },

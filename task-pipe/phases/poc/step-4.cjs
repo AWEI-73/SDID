@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { createErrorHandler, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
-const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePending, emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cjs');
+const { anchorOutput, anchorPass, anchorError, anchorErrorSpec } = require('../../lib/shared/log-output.cjs');
 const { checkPocQuality } = require('../../tools/quality-check/poc-quality-checker.cjs');
 let checkDesignQuality = () => ({ quality: 'GOOD', score: 100, issues: [] });
 try {
@@ -269,7 +269,7 @@ function run(options) {
     return { verdict: 'PASS', qualityScore: qualityResult.score, designScore: designResult.score };
   }
 
-  // 尚未建立 - 自動產生智慧 POC scaffold
+  // 尚未建立 POC — 給 AI 指引 + 黃金範例路徑，讓 AI 自由創作
   const draftPath = path.join(target, `.gems/iterations/${iteration}/poc/requirement_draft_${iteration}.md`);
   const altDraftPath = path.join(target, `.gems/requirement_draft.md`);
   let draftContent = '';
@@ -280,230 +280,62 @@ function run(options) {
     draftContent = fs.readFileSync(altDraftPath, 'utf8');
   }
 
-  // 從 draft 提取資訊
+  // 從 draft 提取基本資訊（只用於指引，不用於產生 HTML）
   const titleMatch = draftContent.match(/^#\s*(.+)/m);
   const projectTitle = titleMatch ? titleMatch[1].replace(/[📋🔖]/g, '').trim() : '專案 POC';
-
-  const featureMatches = draftContent.match(/- \[x\]\s*(.+)/g) || [];
-  const features = featureMatches.map(f => f.replace(/- \[x\]\s*/, '').trim()).slice(0, 5);
-
-  // 門控規格 - 告訴 AI 這個 step 會檢查什麼
-  const gateSpecForNew = {
-    checks: [
-      { name: '@GEMS-DESIGN-BRIEF', pattern: '/@GEMS-DESIGN-BRIEF/', desc: '設計摘要標籤' },
-      { name: 'UI元素', pattern: '/<div|<button/i', desc: 'HTML UI 元素' },
-      { name: '@GEMS-VERIFIED', pattern: '/@GEMS-VERIFIED/', desc: '已驗證功能清單' },
-      { name: '@GEMS-FIELD-COVERAGE', pattern: '/@GEMS-FIELD-COVERAGE/', desc: '欄位覆蓋對應' }
-    ]
-  };
-
-  // 產生智慧 POC
-  const smartPocHtml = `<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${projectTitle} POC</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg-main: #f8fafc;
-      --surface: #ffffff;
-      --primary: #6366f1;
-      --primary-hover: #4f46e5;
-      --text-main: #1e293b;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --success: #10b981;
-      --danger: #ef4444;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--bg-main);
-      min-height: 100vh;
-      padding: 2rem;
-    }
-    .container { max-width: 700px; margin: 0 auto; }
-    .card {
-      background: var(--surface);
-      border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
-      padding: 2rem;
-      margin-bottom: 1.5rem;
-    }
-    h1 {
-      color: var(--text-main);
-      font-size: 2rem;
-      font-weight: 800;
-      margin-bottom: 1rem;
-    }
-    .input-group { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
-    input {
-      flex: 1;
-      padding: 0.75rem 1rem;
-      border: 2px solid var(--border);
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color 0.2s;
-    }
-    input:focus { outline: none; border-color: var(--primary); }
-    .btn {
-      padding: 0.75rem 1.5rem;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-primary:hover { background: var(--primary-hover); }
-    .list { list-style: none; }
-    .list-item {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      background: var(--bg-main);
-      border-radius: 8px;
-      margin-bottom: 0.5rem;
-      transition: transform 0.15s;
-    }
-    .list-item:hover { transform: translateX(4px); }
-  </style>
-  <!--
-  @GEMS-DESIGN-BRIEF:
-  - Purpose: 驗證 ${projectTitle} 的核心功能流程
-  - Aesthetic: Modern Clean - 極簡優雅設計
-  - Typography: Outfit (Google Fonts)
-  - ColorPalette: #6366f1 (Primary), #f8fafc (Background), #1e293b (Text)
-  - Motion: Hover 滑動效果, transition 過渡動畫
-  - Avoid: 純白 #FFFFFF 背景、Arial 字體
-  - Memorable: 滑動卡片效果
-
-  @GEMS-CONTRACT-REF: ./ModuleContract.ts
-
-  @GEMS-VERIFIED:
-${features.length > 0 ? features.map(f => `  - [x] ${f}`).join('\n') : '  - [x] 列表顯示\n  - [x] 新增功能\n  - [x] 刪除功能'}
-
-  @GEMS-FIELD-COVERAGE:
-  - id: frontend
-  - name: frontend
-  - status: frontend
-  - createdAt: api-only
-
-  @GEMS-STORY: Story-1.0
-  -->
-</head>
-<body>
-  <div class="container">
-    <div class="card">
-      <h1>📋 ${projectTitle}</h1>
-      <div class="input-group">
-        <input type="text" id="inputField" placeholder="輸入內容...">
-        <button class="btn btn-primary" onclick="handleAdd()">新增</button>
-      </div>
-      <ul id="itemList" class="list"></ul>
-      <div id="stats" style="margin-top: 1rem; color: var(--text-muted); font-size: 0.875rem;"></div>
-    </div>
-  </div>
-
-  <script>
-    // @GEMS-ZONE: [DataZone, ActionZone, RenderZone]
-
-    // @GEMS-MOCK: 示範資料
-    let items = [
-      { id: '1', name: '範例項目 A', status: 'active', createdAt: new Date() },
-      { id: '2', name: '範例項目 B', status: 'active', createdAt: new Date() },
-      { id: '3', name: '已完成項目', status: 'done', createdAt: new Date() }
-    ];
-
-    // @GEMS-FUNCTION: render | P0 | 渲染列表
-    // @GEMS-FLOW: LoadData → BuildHTML → UpdateDOM → UpdateStats
-    function render() {
-      const list = document.getElementById('itemList');
-      const stats = document.getElementById('stats');
-
-      list.innerHTML = items.map(item => \`
-        <li class="list-item">
-          <span style="flex:1">\${item.name}</span>
-          <span style="color: \${item.status === 'done' ? 'var(--success)' : 'var(--primary)'}">
-            \${item.status === 'done' ? '✓' : '○'}
-          </span>
-          <button onclick="handleDelete('\${item.id}')" style="color:var(--danger);background:none;border:none;cursor:pointer">刪除</button>
-        </li>
-      \`).join('');
-
-      stats.textContent = \`共 \${items.length} 個項目\`;
-    }
-
-    // @GEMS-FUNCTION: handleAdd | P0 | 新增項目
-    // @GEMS-FLOW: GetInput → Validate → CreateItem → AddToList → ClearInput → Rerender
-    function handleAdd() {
-      const input = document.getElementById('inputField');
-      const name = input.value.trim();
-      if (!name) return;
-
-      items.push({
-        id: Date.now().toString(),
-        name: name,
-        status: 'active',
-        createdAt: new Date()
-      });
-
-      input.value = '';
-      render();
-    }
-
-    // @GEMS-FUNCTION: handleDelete | P0 | 刪除項目
-    // @GEMS-FLOW: FilterOut → Rerender
-    function handleDelete(id) {
-      items = items.filter(item => item.id !== id);
-      render();
-    }
-
-    // 初始化
-    document.addEventListener('DOMContentLoaded', () => {
-      render();
-      document.getElementById('inputField').addEventListener('keypress', e => {
-        if (e.key === 'Enter') handleAdd();
-      });
-    });
-  </script>
-</body>
-</html>`;
-
-  // 寫入 POC 檔案
-  const pocDir = path.join(target, `.gems/iterations/${iteration}/poc`);
-  if (!fs.existsSync(pocDir)) {
-    fs.mkdirSync(pocDir, { recursive: true });
-  }
-  const pocFilePath = path.join(pocDir, 'ModulePOC.html');
-  fs.writeFileSync(pocFilePath, smartPocHtml, 'utf8');
-
-  // 從 draft 提取目標描述，供 AI 改寫參考
   const goalMatch = draftContent.match(/## ?一句話目標\s*\n([^\n]+)/);
   const projectGoal = goalMatch ? goalMatch[1].trim() : '';
+  const featureMatches = draftContent.match(/- \[x\]\s*(.+)/g) || [];
+  const features = featureMatches.map(f => f.replace(/- \[x\]\s*/, '').trim()).slice(0, 6);
+
+  // 找 contract 檔案（供 AI 參考欄位）
+  const pocDir = path.join(target, `.gems/iterations/${iteration}/poc`);
+  let contractFile = null;
+  if (fs.existsSync(pocDir)) {
+    const files = fs.readdirSync(pocDir);
+    contractFile = files.find(f => f.endsWith('Contract.ts')) || null;
+  }
+
+  // 黃金範例路徑（相對於 TASK_PIPE_ROOT）
+  const goldenExamplePath = path.join(__dirname, '../../../templates/examples/poc-golden.html');
+  const goldenRelPath = 'task-pipe/templates/examples/poc-golden.html';
+  const pocFileName = projectTitle.replace(/\s+/g, '') + 'POC.html';
+  const pocFilePath = path.join(pocDir || path.join(target, `.gems/iterations/${iteration}/poc`), pocFileName);
+
+  // 確保目錄存在
+  if (!fs.existsSync(pocDir)) {
+    fs.mkdirSync(pocDir || path.join(target, `.gems/iterations/${iteration}/poc`), { recursive: true });
+  }
 
   anchorOutput({
-    context: `POC Step 4 | ${iteration} | 智慧 POC scaffold 已產生（⚠️ 需要改寫）`,
+    context: `POC Step 4 | ${iteration} | 請根據黃金範例建立 POC`,
     info: {
-      'Title': projectTitle,
-      'Goal': projectGoal || '（請從 requirement_draft 確認）',
-      'Features': features.length > 0 ? features.join(', ') : '基本 CRUD',
-      'File': pocFilePath
+      'Project': projectTitle,
+      'Goal': projectGoal || '（請讀 requirement_draft 確認）',
+      'Features': features.length > 0 ? features.join(', ') : '（請讀 requirement_draft）',
+      'Contract': contractFile ? `${iteration}/poc/${contractFile}` : '（尚未建立）',
+      'Target File': pocFilePath,
+      'Golden Example': goldenRelPath
     },
     task: [
-      '⚠️ 這是通用 scaffold，內容與你的專案無關，必須改寫',
-      `📌 專案目標: ${projectGoal || '請讀 requirement_draft 確認'}`,
-      '必須改寫的項目:',
-      '  1. <title> 和 <h1> — 改成專案實際名稱（不是「Module 管理」）',
-      '  2. Mock 資料 — 改成符合 contract_iter-1.ts 的欄位和語意',
-      '  3. 函式邏輯 — 改成符合專案功能（不是通用 CRUD）',
-      '  4. @GEMS-VERIFIED — 列出實際實作的函式名稱',
-      '  5. @GEMS-FIELD-COVERAGE — 對應 contract 的欄位',
-      '改寫完成後重新執行此步驟驗證品質'
+      `建立 ${pocFileName}，參考黃金範例的結構與標籤規格，根據本專案需求自由設計`,
+      '',
+      '黃金範例示範了什麼:',
+      '  - @GEMS-DESIGN-BRIEF: 設計摘要（Purpose / Aesthetic / Typography / ColorPalette）',
+      '  - @GEMS-VERIFIED: 列出實際實作的函式名稱（不是敘述，是 function name）',
+      '  - @GEMS-FIELD-COVERAGE: 每個 contract 欄位標註 frontend / api-only',
+      '  - Mock 資料結構符合 contract 欄位',
+      '  - 函式命名清晰（render / handle / compute 開頭）',
+      '',
+      '本專案需要實作的功能:',
+      ...features.map(f => `  - ${f}`),
+      '',
+      contractFile
+        ? `請讀 ${iteration}/poc/${contractFile} 確認欄位，填入 @GEMS-FIELD-COVERAGE`
+        : '尚無 contract，請先完成 POC Step 3 或自行定義欄位',
+      '',
+      '⚠️ 不要照抄黃金範例，它只是計算機範例，你的專案需求不同',
+      '完成後重新執行此步驟驗證品質'
     ],
     output: `NEXT: node task-pipe/runner.cjs --phase=POC --step=4`
   }, {
@@ -513,7 +345,7 @@ ${features.length > 0 ? features.map(f => `  - [x] ${f}`).join('\n') : '  - [x] 
     step: 'step-4'
   });
 
-  return { verdict: 'PENDING', scaffoldGenerated: true };
+  return { verdict: 'PENDING', needsCreation: true };
 }
 
 function findPOC(target, iteration) {

@@ -18,6 +18,9 @@
  *   sdid-poc-scaffold    — POC-FIX 骨架遷移
  *   sdid-build           — BUILD/POC/PLAN runner
  *   sdid-scan            — SCAN runner
+ *   sdid-test            — 整合測試 runner + 報告
+ *   sdid-init-test-project  — 建立臨時測試專案供 flow audit 使用
+ *   sdid-audit-save-report  — AI 跑完 flow audit 後存報告 + 清除 temp 專案
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -29,6 +32,9 @@ import * as stateGuide from './adapters/state-guide.mjs';
 import { specGen, specGate, blueprintGate, microFixGate, pocToScaffold, run } from './adapters/cli-tools.mjs';
 import { dictSyncTool, scannerTool } from './adapters/data-tools.mjs';
 import { build, scan } from './adapters/runners.mjs';
+import { testRunner } from './adapters/test-runner.mjs';
+import { initTestProject } from './adapters/init-test-project.mjs';
+import { auditReport } from './adapters/audit-report.mjs';
 
 // ── Server ──
 const server = new McpServer({ name: 'sdid', version: '1.1.0' });
@@ -46,6 +52,9 @@ server.registerTool('sdid-poc-scaffold',   pocToScaffold.schema,  pocToScaffold.
 server.registerTool('sdid-build',          build.schema,          build.handler);
 server.registerTool('sdid-scan',           scan.schema,           scan.handler);
 server.registerTool('sdid-run',            run.schema,            run.handler);
+server.registerTool('sdid-test',                testRunner.schema,        testRunner.handler);
+server.registerTool('sdid-init-test-project',   initTestProject.schema,   initTestProject.handler);
+server.registerTool('sdid-audit-save-report',   auditReport.schema,       auditReport.handler);
 
 // ── Start ──
 const transport = new StdioServerTransport();

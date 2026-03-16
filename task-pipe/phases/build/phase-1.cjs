@@ -134,6 +134,9 @@ mkdir -p ${planPath}
   const storyContext = getStoryContext(planFile);
   const planSpecsBlock = generatePlanSpecsBlock(planSpec, manifest, story);
 
+  // v6.0: 讀取 ac.ts（或 contract.ts）取得 AC ID 清單，供骨架映射層使用
+  const acInfo = readAcSpec(target, iteration);
+
   // 判斷是 Story-1.0 還是後續模組
   const storyMatch = story.match(/Story-(\d+)\.(\d+)/);
   const storyX = storyMatch ? parseInt(storyMatch[1]) : 1;
@@ -351,6 +354,15 @@ mkdir -p ${planPath}
   if (isGreenfield) {
     const guide = getGreenfieldGuide(projectType);
 
+    // Foundation Story 綠地：自動建立標準目錄骨架
+    if (isFoundation) {
+      const scaffoldResult = autoScaffoldFoundation(target, srcDir, projectType, manifest);
+      if (scaffoldResult.created.length > 0) {
+        console.log(`\n🏗️  Auto-scaffold: 建立 ${scaffoldResult.created.length} 個標準目錄`);
+        scaffoldResult.created.forEach(d => console.log(`   ✅ ${d}`));
+      }
+    }
+
     anchorOutput({
       context: `Phase 1 | ${story} | 綠地專案`,
       info: {
@@ -432,9 +444,11 @@ modules/[module-name]/
       planSpecs: planSpecsBlock || null,
       task: [
         `讀取 ${planFile}（PLAN 階段已確定技術棧與檔案結構）`,
+        acInfo.hasAc ? `讀取 ${acInfo.acFile}（AC 規格，骨架函式需對應 AC-X.Y 標記）` : null,
         isFoundation ? '初始化橫向分層結構（依 PLAN 定義）' : '建立模組垂直分片結構（依 PLAN 定義）',
         '依序實作每個 Item 的功能程式碼',
-        '加入 GEMS 標籤（參考 PLAN_SPECS 區塊，直接複製貼上）',
+        '加入 GEMS 標籤（P0-P3 全部覆蓋，參考 PLAN_SPECS 區塊）',
+        acInfo.acIds.length > 0 ? `在對應函式下方加入 // AC-X.Y 錨點（${acInfo.acIds.join(', ')}）` : null,
         projectType !== 'gas' ? '執行 getDiagnostics() 確認 0 errors' : 'GAS 專案略過型別檢查',
         isFoundation ? '⚠️ 只建立 Plan 定義的檔案，禁止預建後續 Story 的模組目錄或檔案' : null,
         isFoundation ? '⚠️ src/modules/ 只建空目錄，不要在裡面建任何子模組' : null
@@ -454,8 +468,16 @@ modules/[module-name]/
   // 棕地專案：檢查現有源碼
   const srcFiles = findSourceFiles(srcDir, typeConfig.extensions);
 
-  if (srcFiles.length > 0) {
-    // Story-1.0 需要額外檢查橫向分層與環境設定
+  // Foundation Story 棕地：也執行 auto-scaffold（補缺少的標準目錄）
+  if (isFoundation) {
+    const scaffoldResult = autoScaffoldFoundation(target, srcDir, projectType, manifest);
+    if (scaffoldResult.created.length > 0) {
+      console.log(`\n🏗️  Auto-scaffold: 建立 ${scaffoldResult.created.length} 個標準目錄`);
+      scaffoldResult.created.forEach(d => console.log(`   ✅ ${d}`));
+    }
+  }
+
+  if (srcFiles.length > 0) {    // Story-1.0 需要額外檢查橫向分層與環境設定
     const checks = isFoundation
       ? validateModule0Structure(target, srcDir, projectType)
       : validatePhase1(srcFiles);
@@ -728,9 +750,11 @@ src/modules/[module-name]/
     planSpecs: planSpecsBlock || null,
     task: [
       `讀取 ${planFile}（參考 PLAN Step 2.5 架構審查結果與語言要求）`,
+      acInfo.hasAc ? `讀取 ${acInfo.acFile}（AC 規格，骨架函式需對應 AC-X.Y 標記）` : null,
       '檢查並建立環境 (package.json, tsconfig.json) 若不存在',
       '依序實作每個 Item 的功能程式碼',
-      '加入 GEMS 標籤（參考 PLAN_SPECS 區塊，直接複製貼上）',
+      '加入 GEMS 標籤（P0-P3 全部覆蓋，參考 PLAN_SPECS 區塊）',
+      acInfo.acIds.length > 0 ? `在對應函式下方加入 // AC-X.Y 錨點（${acInfo.acIds.join(', ')}）` : null,
       projectType !== 'gas' ? '執行 getDiagnostics() 確認 0 errors' : '確認程式碼完成',
       isFoundation ? '⚠️ 只建立 Plan 定義的檔案，禁止預建後續 Story 的模組目錄或檔案' : null,
       isFoundation ? '⚠️ src/modules/ 只建空目錄，不要在裡面建任何子模組' : null
@@ -837,6 +861,39 @@ function mapCheckToTask(check, target, srcDir, planFile, story) {
     expected: name,
     reference: relPlan
   };
+}
+
+/**
+ * v6.0: 讀取 ac.ts（或 contract.ts）取得 AC ID 清單
+ * 供骨架映射層使用，讓 AI 知道要對應哪些 AC
+ */
+function readAcSpec(target, iteration) {
+  const pocDir = path.join(target, `.gems/iterations/${iteration}/poc`);
+  if (!fs.existsSync(pocDir)) return { hasAc: false, acFile: null, acIds: [] };
+
+  const files = fs.readdirSync(pocDir);
+  // 優先找 ac.ts
+  let acFile = files.find(f => f === 'ac.ts' || f.endsWith('_ac.ts'));
+  if (!acFile) {
+    // fallback: contract.ts
+    acFile = files.find(f => f.startsWith('contract_') && f.endsWith('.ts'));
+  }
+  if (!acFile) return { hasAc: false, acFile: null, acIds: [] };
+
+  const fullPath = path.join(pocDir, acFile);
+  try {
+    const content = fs.readFileSync(fullPath, 'utf8');
+    // 提取 AC-X.Y 格式的 ID
+    const acIds = [];
+    const pattern = /\/\/\s*(AC-[\d.]+)/g;
+    let m;
+    while ((m = pattern.exec(content)) !== null) {
+      if (!acIds.includes(m[1])) acIds.push(m[1]);
+    }
+    return { hasAc: true, acFile: path.relative(target, fullPath), acIds };
+  } catch {
+    return { hasAc: false, acFile: null, acIds: [] };
+  }
 }
 
 function extractItems(content) {
@@ -961,10 +1018,16 @@ function detectExtraFiles(srcDir, manifest, extensions, iterNum = 1, target = nu
     if (storyMatch && fs.existsSync(planDir)) {
       const storyX = parseInt(storyMatch[1]);
       const storyY = parseInt(storyMatch[2]);
-      // 讀取同 iter 所有 Story-X.0 ~ Story-X.(Y-1) 的 plan
-      for (let y = 0; y < storyY; y++) {
-        const prevPlan = path.join(planDir, `implementation_plan_Story-${storyX}.${y}.md`);
-        if (fs.existsSync(prevPlan)) {
+      // 讀取同 iter 所有比當前 Story 早的 plan（跨 Story-X 也納入）
+      const planFiles = fs.readdirSync(planDir).filter(f => f.startsWith('implementation_plan_Story-') && f.endsWith('.md'));
+      for (const planFile of planFiles) {
+        const m = planFile.match(/Story-(\d+)\.(\d+)/);
+        if (!m) continue;
+        const px = parseInt(m[1]);
+        const py = parseInt(m[2]);
+        // 比當前 Story 早：X 更小，或 X 相同但 Y 更小
+        if (px < storyX || (px === storyX && py < storyY)) {
+          const prevPlan = path.join(planDir, planFile);
           try {
             const prevManifest = extractFM(prevPlan);
             addManifestPaths(prevManifest);
@@ -1325,36 +1388,35 @@ function generatePlanSpecsBlock(planSpec, manifest, story) {
   }
   // 如果只有函式清單（表格或簡單 GEMS 標籤）
   else if (manifest.hasManifest && manifest.functions.length > 0) {
-    lines.push(`### 📋 函式清單 (需為每個函式加入完整標籤)`);
+    lines.push(`### 📋 API 簽名對齊表 (骨架映射層必須對齊)`);
     lines.push('');
-    lines.push('| 函式名稱 | 優先級 | 測試要求 |');
-    lines.push('|---------|--------|----------|');
 
+    // M16: 輸出完整 API 簽名，讓 AI 直接對齊，不需要猜
     for (const fn of manifest.functions) {
-      const testReq = fn.priority === 'P0' ? 'Unit + Integration + E2E' :
-        fn.priority === 'P1' ? 'Unit + Integration' :
-          'Unit';
-      lines.push(`| \`${fn.name}\` | ${fn.priority} | ${testReq} |`);
+      const sig = fn.signature || `(...)→void`;
+      const file = fn.file ? ` → \`${fn.file}\`` : '';
+      lines.push('```typescript');
+      lines.push(`/**`);
+      lines.push(` * GEMS: ${fn.name} | ${fn.priority} | ○○ | ${sig} | ${story} | ${fn.description || 'TODO'}`);
+      lines.push(` * GEMS-FLOW: TODO→Process→Return`);
+      lines.push(` * GEMS-DEPS: [TODO.deps]`);
+      lines.push(` * GEMS-DEPS-RISK: LOW`);
+      lines.push(` */`);
+      if (fn.priority === 'P0' || fn.priority === 'P1') {
+        lines.push(`// AC-X.Y`);
+        lines.push(`// [STEP] Step1`);
+      }
+      // 從 signature 推導函式骨架
+      const sigClean = sig.replace(/`/g, '');
+      const argsMatch = sigClean.match(/\(([^)]*)\)/);
+      const retMatch = sigClean.match(/→\s*(.+)$/);
+      const args = argsMatch ? argsMatch[1] : '';
+      const ret = retMatch ? retMatch[1].trim() : 'void';
+      lines.push(`export function ${fn.name}(${args}): ${ret} { throw new Error('not implemented'); }`);
+      lines.push('```');
+      if (file) lines.push(`📁 檔案${file}`);
+      lines.push('');
     }
-    lines.push('');
-
-    // 提供模板範例
-    lines.push(`### 📝 標籤模板 (複製並填入每個函式)`);
-    lines.push('');
-    lines.push('```typescript');
-    lines.push(`/**`);
-    lines.push(` * GEMS: {函式名稱} | {P0-P3} | ○○ | ({參數})→{回傳} | ${story} | {描述}`);
-    lines.push(` * GEMS-FLOW: Step1→Step2→Step3`);
-    lines.push(` * GEMS-DEPS: [Type.Name (說明)]`);
-    lines.push(` * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH`);
-    lines.push(` * GEMS-TEST: ✓ Unit | ✓ Integration | ✓ E2E`);
-    lines.push(` * GEMS-TEST-FILE: {module}.test.ts (模組級，內含 describe('函式名稱'))`);
-    lines.push(` */`);
-    lines.push('// [STEP] Step1 - 步驟描述');
-    lines.push('// [STEP] Step2 - 步驟描述');
-    lines.push('export function {函式名稱}(...) { ... }');
-    lines.push('```');
-    lines.push('');
   }
 
   // 統計資訊
@@ -1370,6 +1432,60 @@ function generatePlanSpecsBlock(planSpec, manifest, story) {
   lines.push(`${'='.repeat(60)}\n`);
 
   return lines.join('\n');
+}
+
+/**
+ * Foundation Story auto-scaffold
+ * 自動建立標準目錄骨架，避免 Phase 1 因缺目錄而 BLOCK
+ * 只建立空目錄（不建檔案），不覆蓋已存在的目錄
+ */
+function autoScaffoldFoundation(target, srcDir, projectType, manifest) {
+  const created = [];
+
+  // 必要分層（所有專案）
+  const requiredDirs = ['config', 'shared', 'modules'];
+  for (const dir of requiredDirs) {
+    const fullPath = path.join(srcDir, dir);
+    if (!fs.existsSync(fullPath)) {
+      fs.mkdirSync(fullPath, { recursive: true });
+      created.push(`src/${dir}/`);
+    }
+  }
+
+  // 偵測前端：有 .tsx/.jsx 或 index.html → 建 assets
+  const hasFrontend = detectHasFrontend(target, srcDir);
+  if (hasFrontend) {
+    const assetsPath = path.join(srcDir, 'assets');
+    if (!fs.existsSync(assetsPath)) {
+      fs.mkdirSync(assetsPath, { recursive: true });
+      created.push('src/assets/');
+    }
+  }
+
+  // 偵測路由需求 → 建 routes
+  const hasRouting = detectHasRouting(target, srcDir);
+  if (hasRouting) {
+    const routesPath = path.join(srcDir, 'routes');
+    if (!fs.existsSync(routesPath)) {
+      fs.mkdirSync(routesPath, { recursive: true });
+      created.push('src/routes/');
+    }
+  }
+
+  // 從 manifest 推導需要的模組目錄（只建空目錄）
+  if (manifest && manifest.hasManifest) {
+    for (const fn of manifest.functions) {
+      if (fn.file) {
+        const dir = path.dirname(path.join(target, fn.file));
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+          created.push(path.relative(target, dir) + '/');
+        }
+      }
+    }
+  }
+
+  return { created };
 }
 
 // 自我執行判斷

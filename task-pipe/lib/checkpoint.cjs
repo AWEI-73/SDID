@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Checkpoint 管理模組 v2.0
- * 用於 BUILD Phase 1-8 的中間狀態追蹤
+ * Checkpoint 管理模組 v2.1
+ * 用於 BUILD Phase 1-4 的中間狀態追蹤
  * 
- * v2.0: 從 phase-registry.json 讀取 phase 列表 (單一真相來源)
+ * v2.1: S/M/L level 已廢棄，BUILD 固定跑 Phase 1-4
  */
 const fs = require('fs');
 const path = require('path');
@@ -17,19 +17,19 @@ try {
   // Fallback
 }
 
-// 取得所有 BUILD phases (含 fallback)
-function getBuildPhaseList(includePhase8 = true) {
+// BUILD 固定 Phase 1-4（v6.1，S/M/L level 已廢棄）
+const FIXED_BUILD_PHASES = ['1', '2', '3', '4'];
+
+// 取得所有 BUILD phases
+function getBuildPhaseList() {
   if (getAllBuildPhases) {
     try {
-      const phases = getAllBuildPhases();
-      return includePhase7 ? phases : phases.filter(p => p !== '7');
+      return getAllBuildPhases();
     } catch (e) {
       // fallback
     }
   }
-  // Fallback
-  const fallback = ['1', '2', '3', '4', '5', '6', '7', '8'];
-  return includePhase8 ? fallback : fallback.filter(p => p !== '8');
+  return FIXED_BUILD_PHASES;
 }
 
 /**
@@ -93,8 +93,7 @@ function getLastCompletedPhase(target, iteration, story) {
     return null;
   }
 
-  const phases = getBuildPhaseList(false);
-  let lastPhase = null;
+  const phases = getBuildPhaseList();
 
   for (const phase of phases) {
     const checkpoint = readCheckpoint(target, iteration, story, phase);
@@ -110,7 +109,7 @@ function getLastCompletedPhase(target, iteration, story) {
  * 檢查是否可以執行指定 phase（前置 phase 必須完成）
  */
 function canExecutePhase(target, iteration, story, phase) {
-  const phaseOrder = getBuildPhaseList(true);
+  const phaseOrder = getBuildPhaseList();
   const currentIndex = phaseOrder.indexOf(phase);
 
   if (currentIndex === 0) return { canExecute: true };
@@ -149,7 +148,7 @@ function clearCheckpoints(target, iteration, story) {
  * 產生 checkpoint 摘要
  */
 function getCheckpointSummary(target, iteration, story) {
-  const phases = getBuildPhaseList(false);
+  const phases = getBuildPhaseList();
   const summary = [];
 
   for (const phase of phases) {
@@ -186,7 +185,7 @@ function getStoryStatus(target, iteration, story) {
 
   if (hasFillback && hasSuggestions) {
     // 已完成：全亮
-    const allPhases = getBuildPhaseList(true);
+    const allPhases = getBuildPhaseList();
     return {
       status: 'completed',
       phases: allPhases.map(p => ({ phase: p, status: 'pass' })),
@@ -206,7 +205,7 @@ function getStoryStatus(target, iteration, story) {
   }
 
   // 3. 進行中：顯示各 phase 狀態
-  const allPhases = getBuildPhaseList(true);
+  const allPhases = getBuildPhaseList();
   const completedPhases = checkpoints.filter(c => c.verdict === 'PASS').map(c => c.phase);
   const lastCompleted = completedPhases[completedPhases.length - 1];
   const lastIndex = allPhases.indexOf(lastCompleted);

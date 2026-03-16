@@ -16,11 +16,8 @@ try {
 }
 
 // Fallback 定義 (當 registry 無法載入時使用)
-const FALLBACK_BUILD_ORDER = {
-    'S': ['1', '2', '8'],
-    'M': ['1', '2', '3', '4', '5', '7', '8'],
-    'L': ['1', '2', '3', '4', '5', '6', '7', '8']
-};
+// S/M/L level 已廢棄，BUILD 固定跑 Phase 1-4，Phase 3 由 story type 決定是否跳過
+const FALLBACK_BUILD_ORDER = ['1', '2', '3', '4'];
 
 const FALLBACK_POC_ORDER = ['0', '0.5', '1', '2', '3'];
 const FALLBACK_PLAN_ORDER = ['1', '2', '2.5', '2.6', '3'];
@@ -47,7 +44,7 @@ function getNextCmd(phase, step, options = {}) {
     // Fallback 邏輯
     let order;
     if (phase === 'BUILD') {
-        order = FALLBACK_BUILD_ORDER[level] || FALLBACK_BUILD_ORDER['M'];
+        order = FALLBACK_BUILD_ORDER; // 固定 1→2→3→4，Phase 3 由 runner 的 story type 判斷是否跳過
     } else if (phase === 'POC') {
         order = FALLBACK_POC_ORDER;
     } else if (phase === 'PLAN') {

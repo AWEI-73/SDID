@@ -10,6 +10,36 @@ const logOutput = require('../../task-pipe/lib/shared/log-output.cjs');
 const parser = require('./draft-parser-standalone.cjs');
 const { calcBlueprintScore, printExistingFunctionsSnapshot } = require('./gate-score.cjs');
 
+/**
+ * 讀取上一輪 gate score log，回傳分數（供 @PREV-SCORE 顯示）
+ */
+function readPrevScore(projectRoot, iter) {
+  if (!projectRoot) return null;
+  const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iter}`, 'logs');
+  if (!fs.existsSync(logsDir)) return null;
+  const scoreLogs = fs.readdirSync(logsDir)
+    .filter(f => f.startsWith('gate-check-score-'))
+    .sort().reverse();
+  if (scoreLogs.length === 0) return null;
+  try {
+    const content = fs.readFileSync(path.join(logsDir, scoreLogs[0]), 'utf8');
+    const m = content.match(/score=(\d+)/);
+    return m ? parseInt(m[1]) : null;
+  } catch { return null; }
+}
+
+/**
+ * 存 score log 供下輪讀取
+ */
+function saveScoreLog(projectRoot, iter, score, logOptions) {
+  if (!projectRoot) return;
+  const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iter}`, 'logs');
+  if (!fs.existsSync(logsDir)) return;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const logPath = path.join(logsDir, `gate-check-score-${ts}.log`);
+  fs.writeFileSync(logPath, `score=${score.total}\ngrade=${score.grade}\nbreakdown=${JSON.stringify(score.breakdown)}\n`);
+}
+
 function generateReport(draft, allIssues, args, rawContent = '') {
   const stats = parser.calculateStats(draft);
   const blockers = allIssues.filter(i => i.level === 'BLOCKER');
@@ -78,7 +108,7 @@ function generateReport(draft, allIssues, args, rawContent = '') {
   console.log(`  垂直切片覆蓋  ${bar(score.breakdown.vsc, 25)}  ${score.breakdown.vsc}/25  (${score.details.fullSliceIters}/${score.details.nonFoundationIters} iter 有前後端)`);
   console.log(`  Story 密度    ${bar(score.breakdown.density, 20)}  ${score.breakdown.density}/20  (平均 ${score.details.avgStories} story/iter)`);
   console.log(`  Flow 品質     ${bar(score.breakdown.flow, 20)}  ${score.breakdown.flow}/20  (${score.details.goodFlowActions}/${score.details.totalActions} 動作有業務語意 flow)`);
-  console.log(`  AC 覆蓋率     ${bar(score.breakdown.ac, 20)}  ${score.breakdown.ac}/20  (${score.details.p01WithAC}/${score.details.p01Total} P0/P1 有 AC)`);
+  console.log(`  AC 品質       ${bar(score.breakdown.ac, 20)}  ${score.breakdown.ac}/20  (${score.details.p01WithQualityAC ?? score.details.p01WithAC}/${score.details.p01Total} P0/P1 有 Given/When/Then AC)`);
   console.log(`  基礎建設      ${bar(score.breakdown.infra, 15)}  ${score.breakdown.infra}/15  (型別:${score.details.hasTypes?'✓':'✗'} 介面契約:${score.details.hasContract?'✓':'✗'} 前端殼:${score.details.hasShell?'✓':'✗'} 樣式:${score.details.hasStyle?'✓':'✗'})`);
   if (score.suggestions.length > 0) {
     console.log('');
@@ -87,24 +117,45 @@ function generateReport(draft, allIssues, args, rawContent = '') {
   }
   console.log('');
 
+  // 存 score log 供下輪讀取 @PREV-SCORE
+  if (projectRoot) saveScoreLog(projectRoot, args.iter || 1, score);
+
   // 注入既有函式快照（讓 AI 在修藍圖時知道之前已有什麼）
   printExistingFunctionsSnapshot(projectRoot, args.iter || 1);
 
   if (finalPass) {
-    // Score 門檻：低於 70 分升為 BLOCKER
-    const SCORE_THRESHOLD = 70;
+    // Score 門檻：低於 80 分 → @REGEN（重生成，不是 patch）
+    const SCORE_THRESHOLD = 80;
     if (score.total < SCORE_THRESHOLD) {
-      const scoreBlocker = `Blueprint Score ${score.total}/100 低於門檻 ${SCORE_THRESHOLD} — 必須改善 draft 品質才能進入 PLAN`;
-      const scoreDetails = score.suggestions.map(s => `  - ${s}`).join('\n');
-      const fixCmd = `修復藍圖後重跑: node sdid-tools/blueprint/gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
-      console.log(`\n@BLOCKER: ${scoreBlocker}`);
-      console.log(scoreDetails);
-      if (projectRoot) {
-        logOutput.emitBlock({ scope: `Blueprint Gate | iter-${args.iter || 1}`, summary: scoreBlocker, nextCmd: fixCmd }, logOptions);
-      } else {
-        console.log(`NEXT: ${fixCmd}`);
+      const prevScore = readPrevScore(projectRoot, args.iter || 1);
+      const prevScoreLine = prevScore !== null
+        ? (() => {
+            const delta = score.total - prevScore;
+            const trend = delta > 0 ? `+${delta}，方向對繼續` : delta < 0 ? `${delta}，退步了，檢查是否改壞了什麼` : `±0，沒有進展，換個方向`;
+            return `@PREV-SCORE: ${prevScore} → ${score.total} (${trend})`;
+          })()
+        : null;
+
+      const breakdown = score.breakdown || {};
+      const regenCmd = `node sdid-tools/blueprint/gate.cjs --draft=${args.draft}${args.iter ? ' --iter=' + args.iter : ''}`;
+
+      console.log(`\n@REGEN | score=${score.total}/100 | threshold=${SCORE_THRESHOLD} | grade=${score.grade}`);
+      console.log(`  分項: 垂直切片 ${breakdown.vsc ?? '?'}/25 | Story密度 ${breakdown.density ?? '?'}/20 | Flow品質 ${breakdown.flow ?? '?'}/20 | AC品質 ${breakdown.ac ?? '?'}/20 | 基礎建設 ${breakdown.infra ?? '?'}/15`);
+      if (prevScoreLine) console.log(`  ${prevScoreLine}`);
+      if (score.suggestions.length > 0) {
+        console.log(`@REGEN-HINT: 重新生成整個 draft，帶入以下方向（不是 patch 舊文字）`);
+        for (const s of score.suggestions) console.log(`  - ${s}`);
       }
-      return { passed: false, blockers: 1, warns: warns.length, issues: [...allIssues, { level: 'BLOCKER', code: 'SCORE-001', msg: scoreBlocker }] };
+      console.log(`@NEXT_COMMAND: 修改 draft 後重跑: ${regenCmd}`);
+
+      if (projectRoot) {
+        logOutput.emitBlock({
+          scope: `Blueprint Gate | iter-${args.iter || 1}`,
+          summary: `Blueprint Score ${score.total}/100 低於門檻 ${SCORE_THRESHOLD}，需重新生成 draft`,
+          nextCmd: regenCmd,
+        }, logOptions);
+      }
+      return { passed: false, blockers: 1, warns: warns.length, issues: [...allIssues, { level: 'BLOCKER', code: 'SCORE-001', msg: `Blueprint Score ${score.total}/100 低於門檻 ${SCORE_THRESHOLD}` }] };
     }
 
     const nextCmd = `node sdid-tools/blueprint/draft-to-plan.cjs --draft=${args.draft} --iter=${args.iter || 1} --target=<project>`;
@@ -228,6 +279,8 @@ module.exports = {
   generateReport,
   inferProjectRoot,
   getFixGuidance,
+  readPrevScore,
+  saveScoreLog,
 };
 
 

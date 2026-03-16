@@ -51,32 +51,14 @@ function safeExec(cmd, cwd) {
   } catch { return null; }
 }
 
-// ─── ROADMAP 解析 ────────────────────────────────────────────
-// 從根目錄 ROADMAP.md 解析 Milestone 狀態
+// ─── ROADMAP / Milestone 讀取 ────────────────────────────────
+// 從 sdid-monitor/milestones.json 讀取（唯一來源，手動維護）
 
 function parseRoadmap() {
-  const roadmapPath = path.join(WORKSPACE_ROOT, 'ROADMAP.md');
-  const raw = safeRead(roadmapPath);
-  if (!raw) return null;
-
-  // 取更新日期
-  const dateMatch = raw.match(/最後更新[：:]\s*([\d-]+)/);
-  const updatedAt = dateMatch ? dateMatch[1] : '—';
-
-  // 解析 Milestone：### ★ M{N} 或 ### M{N}
-  const milestones = [];
-  const msRegex = /^###\s+(?:★\s+)?(M\d+[^|✅⬜🟡\n]+?)\s*(✅[^\n]*|🟡[^\n]*|⬜[^\n]*)?$/gm;
-  let match;
-  while ((match = msRegex.exec(raw)) !== null) {
-    const label = match[1].trim();
-    const statusStr = (match[2] || '').trim();
-    let status = 'pending';
-    if (statusStr.startsWith('✅')) status = 'done';
-    else if (statusStr.startsWith('🟡')) status = 'wip';
-    milestones.push({ label, status });
-  }
-
-  return { updatedAt, milestones };
+  const msPath = path.join(__dirname, 'milestones.json');
+  const data = safeJSON(msPath);
+  if (!data?.milestones) return null;
+  return { milestones: data.milestones };
 }
 
 // ─── ARCHITECTURE 摘要 ───────────────────────────────────────
@@ -87,7 +69,7 @@ function parseArchitecture() {
   const raw = safeRead(archPath);
   if (!raw) return null;
 
-  // 取版本
+  // 取版本（支援 "> 版本: v6.0" 格式）
   const verMatch = raw.match(/版本:\s*(v[\d.]+)/);
   const version = verMatch ? verMatch[1] : '—';
 
@@ -95,12 +77,29 @@ function parseArchitecture() {
   const dateMatch = raw.match(/更新:\s*([\d-]+)/);
   const updatedAt = dateMatch ? dateMatch[1] : '—';
 
-  // 提取四條路線名稱
+  // v6: 從四層設計模型提取路線名稱（Layer 0/1/2/3）
   const routes = [];
-  const routeRegex = /^### 路線\s*[A-D][：:]\s*(.+)$/gm;
+  const layerRegex = /^Layer\s+\d+:\s+(.+?)（/gm;
   let m;
-  while ((m = routeRegex.exec(raw)) !== null) {
+  while ((m = layerRegex.exec(raw)) !== null) {
     routes.push(m[1].trim());
+  }
+
+  // fallback: 舊格式 "### 路線 A: ..."
+  if (routes.length === 0) {
+    const routeRegex = /^### 路線\s*[A-D][：:]\s*(.+)$/gm;
+    while ((m = routeRegex.exec(raw)) !== null) {
+      routes.push(m[1].trim());
+    }
+  }
+
+  // 再 fallback: 從 MCP Loop 流程圖抓路線
+  if (routes.length === 0) {
+    const flowRegex = /^\s+(Blueprint|Task-Pipe|POC-FIX|MICRO-FIX):/gm;
+    const seen = new Set();
+    while ((m = flowRegex.exec(raw)) !== null) {
+      if (!seen.has(m[1])) { seen.add(m[1]); routes.push(m[1]); }
+    }
   }
 
   return { version, updatedAt, routes };
@@ -296,15 +295,11 @@ function scan() {
     }
   }
 
-  // 合併 roadmap：保留 hub.json 手動維護的 milestones，只更新 updatedAt
+  // roadmap：直接從 milestones.json 讀，updatedAt 用本次生成時間
   const parsedRoadmap = parseRoadmap();
-  const existingHub = safeJSON(OUT_FILE);
-  const existingMilestones = existingHub?.roadmap?.milestones || [];
   const roadmap = {
-    updatedAt: parsedRoadmap?.updatedAt || '—',
-    milestones: parsedRoadmap?.milestones?.length > 0
-      ? parsedRoadmap.milestones   // ROADMAP.md 有解析到就用（未來支援）
-      : existingMilestones,        // 否則保留現有 hub.json 的手動資料
+    updatedAt: new Date().toISOString().slice(0, 10),
+    milestones: parsedRoadmap?.milestones || [],
   };
 
   return {
@@ -318,7 +313,7 @@ function scan() {
   };
 }
 
-// ─── 判斷 project 即時 badge（從 log 檔名）────────────────────
+// ─── 判斷 project 即時 badge（從 log 檔名，v6 log 前綴）────────────────────
 
 function deriveBadge(projData) {
   if (!projData.hasGems) return null;
@@ -326,54 +321,81 @@ function deriveBadge(projData) {
   if (!ps) return null;
 
   const { latestIter } = ps;
-  // 從 hub 的 iters 資料取 logs
   const logs = projData.iters?.[latestIter]?.logs || [];
   if (logs.length === 0) return { iter: latestIter, phase: null, badge: null };
 
-  // 簡單判斷：找最後一筆有狀態的 log
-  const sorted = [...logs].sort();
-  let phase = null, badge = null;
+  // 按時間戳排序（從 log 名稱末尾提取 ISO 時間戳）
+  const extractTs = (name) => {
+    const m = name.match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
+    return m ? m[1] : name;
+  };
+  const sorted = [...logs].sort((a, b) => extractTs(a).localeCompare(extractTs(b)));
 
-  // 判斷 DONE
-  if (sorted.some(l => /^scan-scan-pass-/.test(l) || /^gate-verify-pass-/.test(l))) {
+  // DONE：有 gate-verify-pass 或 scan-scan-pass
+  if (sorted.some(l => /^gate-verify-pass-/.test(l) || /^scan-scan-pass-/.test(l))) {
     return { iter: latestIter, phase: 'DONE', badge: '@PASS' };
   }
-  // BUILD
-  const buildLogs = sorted.filter(l => /^build-phase-/.test(l));
-  if (buildLogs.length > 0) {
-    const last = buildLogs[buildLogs.length - 1];
-    const m = last.match(/^build-phase-(\d+)-(?:Story-[\d.]+-)?(.+?)-\d{4}/);
-    if (m) {
-      phase = `BUILD-${m[1]}`;
-      badge = m[2].includes('pass') ? '@PASS' : m[2].includes('template') || m[2].includes('info') ? '@FIX' : '@BLOCK';
+
+  // 找最新的「有意義」log（排除 info/template/smoke-test/report 等輔助 log）
+  const meaningfulPrefixes = [
+    { re: /^gate-verify-error-/,   phase: 'VERIFY',   badge: '@BLOCK' },
+    { re: /^scan-scan-/,           phase: 'SCAN',      badge: (l) => l.includes('-pass-') ? '@PASS' : '@BLOCK' },
+    { re: /^build-phase-(\d+)-(?:Story-[\d.]+-)?(.+?)-\d{4}/, phase: null, badge: null }, // 特殊處理
+    { re: /^pocfix-/,              phase: 'POC-FIX',   badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^contract-gate-/,       phase: 'CONTRACT',  badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^contract-error-/,      phase: 'CONTRACT',  badge: '@BLOCK' },
+    { re: /^draft-gate-/,          phase: 'GATE',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^blueprint-gate-/,      phase: 'GATE',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^cynefin-check-/,       phase: 'CYNEFIN',   badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    // v5 legacy
+    { re: /^gate-verify-error-/,   phase: 'VERIFY',    badge: '@BLOCK' },
+    { re: /^gate-check-/,          phase: 'GATE',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^gate-plan-/,           phase: 'PLAN',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^plan-step-/,           phase: null,        badge: null }, // 特殊處理
+    { re: /^poc-step-/,            phase: null,        badge: null }, // 特殊處理
+  ];
+
+  // 找最新的有意義 log（從後往前掃）
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const l = sorted[i];
+    // 跳過純輔助 log
+    if (/-(info|template|smoke-test|report|checkpoint)-/.test(l) || l.endsWith('.json')) continue;
+
+    // BUILD（特殊處理，需解析 phase number）
+    const buildM = l.match(/^build-phase-(\d+)-(?:Story-[\d.]+-)?(.+?)-\d{4}/);
+    if (buildM) {
+      const phaseNum = parseInt(buildM[1]);
+      const status = buildM[2];
+      return {
+        iter: latestIter,
+        phase: `BUILD-${phaseNum}`,
+        badge: status.includes('pass') ? '@PASS'
+             : status.includes('fix') ? '@FIX'
+             : '@BLOCK',
+      };
     }
-  }
-  // PLAN
-  if (!phase) {
-    const planLogs = sorted.filter(l => /^plan-step-/.test(l));
-    if (planLogs.length > 0) {
-      const last = planLogs[planLogs.length - 1];
-      const m = last.match(/^plan-step-([\d.]+)-(?:Story-[\d.]+-)?(.+?)-\d{4}/);
-      if (m) {
-        phase = `PLAN-${m[1]}`;
-        badge = m[2].includes('pass') ? '@PASS' : '@BLOCK';
-      }
+
+    // PLAN（特殊處理）
+    const planM = l.match(/^plan-step-([\d.]+)-(?:Story-[\d.]+-)?(.+?)-\d{4}/);
+    if (planM) {
+      return { iter: latestIter, phase: `PLAN-${planM[1]}`, badge: planM[2].includes('pass') ? '@PASS' : '@BLOCK' };
     }
-  }
-  // POC
-  if (!phase) {
-    const pocLogs = sorted.filter(l => /^poc-step-/.test(l));
-    if (pocLogs.length > 0) {
-      const last = pocLogs[pocLogs.length - 1];
-      const m = last.match(/^poc-step-([\d.]+)-(.+?)-\d{4}/);
-      if (m) {
-        phase = `POC-${m[1]}`;
-        badge = m[2].includes('pass') ? '@PASS' : '@BLOCK';
+
+    // POC（特殊處理）
+    const pocM = l.match(/^poc-step-([\d.]+)-(.+?)-\d{4}/);
+    if (pocM) {
+      return { iter: latestIter, phase: `POC-${pocM[1]}`, badge: pocM[2].includes('pass') ? '@PASS' : '@BLOCK' };
+    }
+
+    // 其他前綴
+    for (const { re, phase: p, badge: b } of meaningfulPrefixes) {
+      if (re.test(l) && p !== null) {
+        return { iter: latestIter, phase: p, badge: typeof b === 'function' ? b(l) : b };
       }
     }
   }
 
-  return { iter: latestIter, phase, badge };
+  return { iter: latestIter, phase: null, badge: null };
 }
 
 // ─── 生成 ROADMAP.md（架構快照 + 導航）─────────────────────
@@ -392,17 +414,13 @@ function generateRoadmap(hub) {
     const { version, routes } = hub.architecture;
     lines.push(`ARCHITECTURE.md ${version}`);
     lines.push('');
-    const routeKeys = ['A', 'B', 'C', 'D'];
-    const routeDesc = [
-      '需求模糊 / 大型功能',
-      '第三方串接 / 特化模組',
-      '單函式微調 / 快速修復',
-      '漸進式設計 / 小型專案（備用）',
-    ];
-    routes.forEach((r, i) => {
-      lines.push(`**路線 ${routeKeys[i]}**: ${r}`);
-      if (routeDesc[i]) lines.push(`  → 適用: ${routeDesc[i]}`);
-    });
+    if (routes.length > 0) {
+      routes.forEach(r => lines.push(`- ${r}`));
+    } else {
+      lines.push('- Blueprint Flow（主線）');
+      lines.push('- POC-FIX');
+      lines.push('- MICRO-FIX');
+    }
   } else {
     lines.push(`_找不到 ARCHITECTURE.md_`);
   }
@@ -425,25 +443,36 @@ function generateRoadmap(hub) {
       const phase = info?.phase || '—';
       const badge = info?.badge || '';
 
-      // 推斷下一步指令
+      // 推斷下一步指令（v6 路徑）
       let nextCmd = null;
+      const iterN = iter.replace('iter-', '');
       if (phase && phase !== 'DONE' && phase !== '—') {
-        if (phase === 'GATE' || phase.startsWith('GATE')) {
-          nextCmd = `node sdid-tools/blueprint/gate.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
+        if (phase === 'GATE' || phase === 'BLUEPRINT_GATE') {
+          nextCmd = `node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=.gems/design/blueprint.md --target=${name}`;
+        } else if (phase === 'DRAFT_GATE') {
+          nextCmd = `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-${iterN}.md --target=${name}`;
+        } else if (phase === 'CONTRACT') {
+          nextCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/${iter}/contract_iter-${iterN}.ts --target=${name} --iter=${iterN}`;
+        } else if (phase === 'CYNEFIN') {
+          nextCmd = `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${name} --iter=${iterN}`;
         } else if (phase === 'PLAN') {
-          nextCmd = `node sdid-tools/blueprint/draft-to-plan.cjs --draft=<draft.md> --iter=${iter.replace('iter-', '')} --target=${name}`;
+          nextCmd = `node task-pipe/tools/spec-to-plan.cjs --target=${name} --iteration=${iter}`;
         } else if (phase.startsWith('BUILD-')) {
           const phaseNum = parseInt(phase.replace('BUILD-', '')) || 1;
-          const nextPhase = badge === '@BLOCK' ? phaseNum : phaseNum + 1;
-          nextCmd = `node task-pipe/runner.cjs --phase=BUILD --step=${nextPhase} --target=${name}`;
-        } else if (phase === 'SHRINK✓' || phase === 'VERIFY') {
-          nextCmd = `node sdid-tools/blueprint/verify.cjs --draft=<draft.md> --target=${name} --iter=${iter.replace('iter-', '')}`;
+          const nextPhase = badge === '@BLOCK' ? phaseNum : Math.min(phaseNum + 1, 4);
+          nextCmd = `node task-pipe/runner.cjs --phase=BUILD --step=${nextPhase} --story=Story-X.Y --target=${name} --iteration=${iter}`;
+        } else if (phase === 'SCAN') {
+          nextCmd = `node task-pipe/runner.cjs --phase=SCAN --target=${name} --iteration=${iter}`;
+        } else if (phase === 'VERIFY') {
+          nextCmd = `node sdid-tools/blueprint/verify.cjs --draft=.gems/design/draft_iter-${iterN}.md --target=${name} --iter=${iterN}`;
+        } else if (phase === 'POC-FIX') {
+          nextCmd = `node sdid-tools/poc-fix/micro-fix-gate.cjs --target=${name} --iter=${iterN}`;
         } else if (phase.startsWith('POC-')) {
           const stepNum = parseInt(phase.replace('POC-', '')) || 1;
-          nextCmd = `node task-pipe/runner.cjs --phase=POC --step=${stepNum} --target=${name}`;
+          nextCmd = `node task-pipe/runner.cjs --phase=POC --step=${stepNum} --target=${name} --iteration=${iter}`;
         } else if (phase.startsWith('PLAN-')) {
           const stepNum = parseInt(phase.replace('PLAN-', '')) || 1;
-          nextCmd = `node task-pipe/runner.cjs --phase=PLAN --step=${stepNum} --target=${name}`;
+          nextCmd = `node task-pipe/runner.cjs --phase=PLAN --step=${stepNum} --target=${name} --iteration=${iter}`;
         }
       }
 
@@ -469,22 +498,30 @@ function generateRoadmap(hub) {
     lines.push('');
   }
 
-  // ── 工具快速參考 ──
+  // ── 工具快速參考（v6）──
   lines.push(`## 工具快速參考`);
   lines.push('');
   lines.push('```bash');
-  lines.push('# Blueprint Flow');
-  lines.push('node sdid-tools/blueprint/gate.cjs --draft=<path> --target=<proj> --iter=N');
-  lines.push('node sdid-tools/blueprint/draft-to-plan.cjs  --draft=<path> --iter=N --target=<proj>');
-  lines.push('node task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<proj>');
-  lines.push('node sdid-tools/blueprint/shrink.cjs --draft=<path> --iter=N --target=<proj>');
-  lines.push('node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<proj> --iter=N');
+  lines.push('# Blueprint Flow (v6)');
+  lines.push('node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=.gems/design/blueprint.md --target=<proj>');
+  lines.push('node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-N.md --target=<proj>');
+  lines.push('node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-N/contract_iter-N.ts --target=<proj> --iter=N');
+  lines.push('node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<proj> --iter=N');
+  lines.push('node task-pipe/tools/spec-to-plan.cjs --target=<proj> --iteration=iter-N');
+  lines.push('node task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<proj> --iteration=iter-N');
+  lines.push('node task-pipe/runner.cjs --phase=SCAN --target=<proj> --iteration=iter-N');
+  lines.push('node sdid-tools/blueprint/verify.cjs --draft=.gems/design/draft_iter-N.md --target=<proj> --iter=N');
   lines.push('');
-  lines.push('# POC-FIX / MICRO-FIX');
-  lines.push('node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<proj> --iter=N');
+  lines.push('# POC-FIX');
+  lines.push('node sdid-tools/poc-to-scaffold.cjs --log=<consolidation-log.md> --target=<proj>');
+  lines.push('node sdid-tools/poc-fix/micro-fix-gate.cjs --target=<proj> --iter=N');
+  lines.push('');
+  lines.push('# MICRO-FIX');
+  lines.push('node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=<files> --target=<proj>');
   lines.push('');
   lines.push('# 狀態查詢');
   lines.push('node sdid-tools/state-guide.cjs --project=<proj>');
+  lines.push('node task-pipe/tools/project-status.cjs --target=<proj>');
   lines.push('');
   lines.push('# Monitor');
   lines.push('node sdid-monitor/server.cjs   # http://localhost:3737');
@@ -513,9 +550,8 @@ function generateMarkdown(hub) {
     lines.push(`ARCHITECTURE.md ${version}，更新 ${updatedAt}`);
     if (routes.length > 0) {
       lines.push('');
-      lines.push(`**四條路線**:`);
-      const routeLabels = ['A', 'B', 'C', 'D'];
-      routes.forEach((r, i) => lines.push(`- 路線 ${routeLabels[i] || i+1}: ${r}`));
+      lines.push(`**路線**:`);
+      routes.forEach(r => lines.push(`- ${r}`));
     }
   } else {
     lines.push(`_找不到 ARCHITECTURE.md_`);
@@ -524,18 +560,22 @@ function generateMarkdown(hub) {
 
   // ── 2. ROADMAP Milestone ──
   lines.push(`## ROADMAP Milestone`);
-  if (hub.roadmap) {
-    const { updatedAt, milestones } = hub.roadmap;
-    lines.push(`最後更新 ${updatedAt}`);
+  if (hub.roadmap?.milestones?.length > 0) {
+    const { milestones } = hub.roadmap;
+    lines.push(`最後更新 —`);
     lines.push('');
     const wip  = milestones.filter(m => m.status === 'wip');
-    const todo = milestones.filter(m => m.status === 'pending');
+    const p1   = milestones.filter(m => m.status === 'pending' && m.priority === 1);
+    const p2   = milestones.filter(m => m.status === 'pending' && m.priority === 2);
+    const p3   = milestones.filter(m => m.status === 'pending' && m.priority === 3);
     const done = milestones.filter(m => m.status === 'done');
     if (wip.length)  lines.push(`**進行中**: ${wip.map(m => m.label).join(' | ')}`);
-    if (todo.length) lines.push(`**待做**: ${todo.map(m => m.label).join(' | ')}`);
+    if (p1.length)   lines.push(`**待做 P1**: ${p1.map(m => m.label).join(' | ')}`);
+    if (p2.length)   lines.push(`**待做 P2**: ${p2.map(m => m.label).join(' | ')}`);
+    if (p3.length)   lines.push(`**待做 P3**: ${p3.map(m => m.label).join(' | ')}`);
     if (done.length) lines.push(`**完成**: ${done.map(m => m.label).join(' | ')}`);
   } else {
-    lines.push(`_找不到 ROADMAP.md_`);
+    lines.push(`_找不到 milestones.json_`);
   }
   lines.push('');
 
@@ -630,12 +670,23 @@ function generateMarkdown(hub) {
   // ── 7. Log 命名規則（保留，Claude 常需要） ──
   lines.push(`## Log 命名規則`);
   lines.push(`\`\`\``);
+  lines.push(`# v6 Blueprint Flow`);
+  lines.push(`blueprint-gate-{pass|error}-{ts}.log`);
+  lines.push(`draft-gate-{pass|error}-{ts}.log`);
+  lines.push(`contract-gate-{pass|error}-{ts}.log`);
+  lines.push(`cynefin-check-{pass|fail}-{ts}.log`);
+  lines.push(`pocfix-active-{ts}.log`);
+  lines.push(`pocfix-pass-{ts}.log`);
   lines.push(`build-phase-{N}-Story-{X.Y}-{status}-{ts}.log`);
+  lines.push(`scan-scan-{pass|error}-{ts}.log`);
+  lines.push(`gate-verify-{pass|error}-{ts}.log`);
+  lines.push(`adversarial-review-{pass|drift}-{ts}.log`);
+  lines.push(`# MICRO-FIX（全局，不屬於 iter）`);
+  lines.push(`microfix-{pass|error}-{ts}.log  → .gems/logs/`);
+  lines.push(`# v5 legacy（向後相容）`);
+  lines.push(`gate-{check|plan|shrink|expand|verify}-{status}-{ts}.log`);
   lines.push(`poc-step-{N}-{status}-{ts}.log`);
   lines.push(`plan-step-{N}-Story-{X.Y}-{status}-{ts}.log`);
-  lines.push(`gate-{check|plan|shrink|expand|verify}-{status}-{ts}.log`);
-  lines.push(`cynefin-check-{pass|fail}-{ts}.log`);
-  lines.push(`scan-scan-{status}-{ts}.log`);
   lines.push(`\`\`\``);
 
   // ── 8. 規則 ──
@@ -693,7 +744,7 @@ console.log(`[update-hub] ${new Date().toISOString()}`);
 console.log(`  workspace : ${WORKSPACE_ROOT}`);
 console.log(`  framework : ${Object.keys(hub.framework).join(', ')}`);
 console.log(`  projects  : ${total} total, ${hasGems} with .gems, ${hasFn} with functions`);
-console.log(`  roadmap   : ${hub.roadmap ? hub.roadmap.milestones.length + ' milestones parsed' : 'not found'}`);
+console.log(`  roadmap   : ${hub.roadmap ? hub.roadmap.milestones.length + ' milestones (milestones.json)' : 'not found'}`);
 console.log(`  arch      : ${hub.architecture ? hub.architecture.version + ', ' + hub.architecture.routes.length + ' routes' : 'not found'}`);
 console.log(`  git       : branch=${hub.git?.branch}, worktrees=${hub.git?.worktrees?.length || 0}`);
 console.log(`  hub.json  : ${OUT_FILE}`);

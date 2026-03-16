@@ -1,12 +1,22 @@
 #!/usr/bin/env node
 /**
- * AC Runner v2.0
- * 讀取 contract_iter-N.ts 的 @GEMS-AC 標記，直接 require 函式執行比對
+ * AC Runner v3.0 — vitest orchestrator
+ * 讀取 contract_iter-N.ts 的 @GEMS-AC 標記
+ * 讀 cynefin-report.json → needsTest:true 的 AC 生成 vitest test → vitest run
+ * needsTest:false 的 CALC AC 走舊的直接執行模式（向後相容）
  *
  * 設計原則:
  *   - contract.ts 在 Gate 階段鎖定（有 contract-pass.log），AI 無法在 BUILD 時修改
- *   - 只驗收「純計算」類 AC（無 side effect、無 DOM、無 API call）
+ *   - CYNEFIN 決定哪些 action needsTest: true
+ *   - needsTest:true → 生成 vitest test 檔（支援 SETUP 前置步驟）
+ *   - needsTest:false → 直接 require 執行比對（v2.0 相容模式）
  *   - UI/Hook/整合類 AC 繼續靠 POC.HTML 人工確認
+ *
+ * v3.0 變更:
+ *   - 讀 cynefin-report.json 的 actions[] → 判斷 needsTest
+ *   - needsTest:true AC → 生成 vitest test，支援 @GEMS-AC-SETUP 前置步驟
+ *   - THEN（@GEMS-AC-EXPECT）明確為 JS 表達式
+ *   - 向後相容: cynefin-report.json 不存在 → fallback 到 v2.0 直接執行模式
  *
  * v2.0 變更:
  *   - Story-scope: 自動從 @GEMS-STORY-ITEM 推導 AC→Story 映射
@@ -14,7 +24,7 @@
  *   - 格式異常升級為 ERROR: INPUT/EXPECT parse 失敗 → BLOCKER，不再靜默跳過
  *
  * 用法:
- *   node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N] [--story=Story-X.Y]
+ *   node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N] [--story=Story-X.Y] [--dry-run]
  *
  * 輸出:
  *   @PASS    — 所有 AC 通過
@@ -30,12 +40,13 @@ const path = require('path');
 // 參數解析
 // ─────────────────────────────────────────────────────────────
 function parseArgs() {
-  const args = { contract: null, target: null, iter: null, story: null, help: false };
+  const args = { contract: null, target: null, iter: null, story: null, help: false, dryRun: false };
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--contract=')) args.contract = path.resolve(arg.split('=').slice(1).join('='));
     else if (arg.startsWith('--target='))  args.target  = path.resolve(arg.split('=').slice(1).join('='));
     else if (arg.startsWith('--iter='))    args.iter    = parseInt(arg.split('=')[1]) || 1;
     else if (arg.startsWith('--story='))   args.story   = arg.split('=').slice(1).join('=');
+    else if (arg === '--dry-run')          args.dryRun  = true;
     else if (arg === '--help' || arg === '-h') args.help = true;
   }
   return args;
@@ -52,6 +63,7 @@ function parseArgs() {
  * @property {string} module    - 相對於 src/ 的模組路徑
  * @property {any[]}  input     - 函式參數陣列
  * @property {any}    expect    - 預期回傳值
+ * @property {Array<{fn:string,module:string,args:any[]}>} [setup] - SETUP 前置步驟
  * @property {string[]} [fields]      - 只比對特定欄位（可選）
  * @property {string}   [skip]        - @GEMS-AC-SKIP 原因（MOCK/MANUAL AC，ac-runner 跳過不 BLOCKER）
  * @property {string}   [expectThrow] - @GEMS-AC-EXPECT-THROW 預期拋出的 Error 類型（失敗路徑驗收）
@@ -72,8 +84,8 @@ function parseAcSpecs(contractContent) {
     const storyHeaderMatch = t.match(/^\/\/\s*@GEMS-STORY:\s*(Story-[\w.]+)\s*\|/);
     if (storyHeaderMatch) { _currentStory = storyHeaderMatch[1]; continue; }
     if (_currentStory) {
-      // 取最後一欄為 AC-X.Y（忽略 "-"）
-      const itemMatch = t.match(/^\/\/\s*@GEMS-STORY-ITEM:.*\|\s*(AC-[\d.]+)\s*$/);
+      // 取最後一欄，提取 AC-X.Y（忽略 [SKIP]/[MANUAL]/[CALC] 等標記）
+      const itemMatch = t.match(/^\/\/\s*@GEMS-STORY-ITEM:.*\|\s*(AC-[\d.]+)/);
       if (itemMatch) acStoryMap[itemMatch[1]] = _currentStory;
     }
   }
@@ -86,17 +98,28 @@ function parseAcSpecs(contractContent) {
     const acMatch = trimmed.match(/^\/\/\s*@GEMS-AC:\s*(AC-[\d.]+)/);
     if (acMatch) {
       if (current) specs.push(current);
-      current = { id: acMatch[1], fn: null, module: null, input: null, expect: null, fields: null };
+      current = { id: acMatch[1], fn: null, module: null, setup: null, input: null, expect: null, fields: null, type: 'CALC' };
       continue;
     }
 
     if (!current) continue;
+
+    const typeMatch = trimmed.match(/^\/\/\s*@GEMS-AC-TYPE:\s*(\S+)/);
+    if (typeMatch) { current.type = typeMatch[1].toUpperCase(); continue; }
 
     const fnMatch = trimmed.match(/^\/\/\s*@GEMS-AC-FN:\s*(\S+)/);
     if (fnMatch) { current.fn = fnMatch[1]; continue; }
 
     const modMatch = trimmed.match(/^\/\/\s*@GEMS-AC-MODULE:\s*(\S+)/);
     if (modMatch) { current.module = modMatch[1]; continue; }
+
+    const setupMatch = trimmed.match(/^\/\/\s*@GEMS-AC-SETUP:\s*(.+)/);
+    if (setupMatch) {
+      try { current.setup = JSON.parse(setupMatch[1]); } catch (e) {
+        current.setupParseError = `JSON parse failed: ${e.message}`;
+      }
+      continue;
+    }
 
     const inputMatch = trimmed.match(/^\/\/\s*@GEMS-AC-INPUT:\s*(.+)/);
     if (inputMatch) {
@@ -418,6 +441,9 @@ function runAc(spec, target) {
   // @GEMS-AC-SKIP: MOCK/MANUAL AC → 直接 SKIP，不進入驗收流程（不計入 BLOCKER）
   if (spec.skip) return { ...result, status: 'SKIP', error: `[SKIP] ${spec.skip}` };
 
+  // UNIT 類型 → 已移除，改標 @GEMS-AC-SKIP 由開發者自行驗收
+  if (spec.type === 'UNIT') return { ...result, status: 'SKIP', error: '[SKIP] UNIT 類型已移除，請改用 @GEMS-AC-SKIP 標記' };
+
   // 驗證 spec 完整性（格式殘缺 → ERROR，不是 SKIP，Phase 2 應 BLOCKER）
   if (!spec.fn)     return { ...result, status: 'ERROR', error: '格式異常: 缺少 @GEMS-AC-FN' };
   if (!spec.module) return { ...result, status: 'ERROR', error: '格式異常: 缺少 @GEMS-AC-MODULE' };
@@ -520,6 +546,171 @@ function runAc(spec, target) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// CYNEFIN report 讀取（v3.0）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 找最新的 cynefin-report.json
+ * 搜尋 .gems/iterations/iter-N/logs/cynefin-report-*.json
+ */
+function findLatestCynefinReport(target, iterNum) {
+  const logsDir = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+  if (!fs.existsSync(logsDir)) return null;
+  const files = fs.readdirSync(logsDir)
+    .filter(f => f.startsWith('cynefin-report-') && f.endsWith('.json'))
+    .map(f => ({ name: f, mtime: fs.statSync(path.join(logsDir, f)).mtime }))
+    .sort((a, b) => b.mtime - a.mtime);
+  if (files.length === 0) return null;
+  try {
+    const content = fs.readFileSync(path.join(logsDir, files[0].name), 'utf8');
+    return JSON.parse(content);
+  } catch { return null; }
+}
+
+/**
+ * 從 cynefin report 的 actions[] 建立 action→needsTest map
+ * key: action.name（函式名稱）
+ */
+function buildNeedsTestMap(cynefinReport) {
+  const map = {};
+  if (!cynefinReport || !Array.isArray(cynefinReport.actions)) return map;
+  for (const action of cynefinReport.actions) {
+    if (action.name) map[action.name] = !!action.needsTest;
+  }
+  return map;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Vitest test 生成（v3.0）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 生成 vitest test 檔案內容
+ * @param {AcSpec[]} vitestSpecs - 需要 vitest 驗收的 AC specs
+ * @param {string}   target      - 專案根目錄
+ * @param {number}   iterNum     - 迭代編號
+ */
+function generateVitestContent(vitestSpecs, target, iterNum) {
+  // 收集所有需要 import 的模組
+  const imports = new Map(); // modulePath → Set<fnName>
+
+  for (const spec of vitestSpecs) {
+    if (spec.module) {
+      if (!imports.has(spec.module)) imports.set(spec.module, new Set());
+      imports.get(spec.module).add(spec.fn);
+    }
+    if (spec.setup) {
+      for (const step of spec.setup) {
+        if (step.module) {
+          if (!imports.has(step.module)) imports.set(step.module, new Set());
+          imports.get(step.module).add(step.fn);
+        }
+      }
+    }
+  }
+
+  const lines = [];
+  lines.push(`// AUTO-GENERATED by ac-runner v3.0 — DO NOT EDIT MANUALLY`);
+  lines.push(`// iter-${iterNum} vitest AC verification`);
+  lines.push(`import { describe, it, expect, beforeEach } from 'vitest'`);
+  lines.push('');
+
+  // imports
+  for (const [modulePath, fns] of imports) {
+    const importPath = `../../src/${modulePath}`;
+    lines.push(`import { ${[...fns].join(', ')} } from '${importPath}'`);
+  }
+  lines.push('');
+
+  lines.push(`describe('AC Verification - iter-${iterNum}', () => {`);
+  lines.push('');
+
+  for (const spec of vitestSpecs) {
+    lines.push(`  it('${spec.id}: ${spec.fn}', async () => {`);
+
+    // SETUP steps
+    if (spec.setup && spec.setup.length > 0) {
+      lines.push(`    // SETUP`);
+      for (const step of spec.setup) {
+        const argsJson = step.args ? step.args.map(a => JSON.stringify(a)).join(', ') : '';
+        lines.push(`    ${step.fn}(${argsJson})`);
+      }
+    }
+
+    // WHEN
+    lines.push(`    // WHEN`);
+    const inputArgs = spec.input ? spec.input.map(a => JSON.stringify(a)).join(', ') : '';
+    lines.push(`    const result = ${spec.fn}(${inputArgs})`);
+
+    // THEN
+    lines.push(`    // THEN`);
+    if (spec.expectThrow) {
+      lines.push(`    // Note: expectThrow '${spec.expectThrow}' — manual vitest assertion needed`);
+    } else if (spec.expectFn) {
+      lines.push(`    expect((${spec.expectFn})(result)).toBe(true)`);
+    } else if (spec.expect !== null && spec.expect !== undefined) {
+      lines.push(`    expect(result).toEqual(${JSON.stringify(spec.expect)})`);
+    }
+    lines.push(`  })`);
+    lines.push('');
+  }
+
+  lines.push(`})`);
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * 確認專案是否有 vitest dependency
+ */
+function hasVitest(target) {
+  const pkgPath = path.join(target, 'package.json');
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
+    return !!deps['vitest'];
+  } catch { return false; }
+}
+
+/**
+ * 執行 vitest run 並解析結果
+ * 回傳 { passed, failed, errors }
+ */
+function runVitest(target, testFile, dryRun) {
+  const { execSync } = require('child_process');
+  if (dryRun) {
+    console.log(`   [dry-run] 跳過 vitest 實際執行`);
+    return { passed: 0, failed: 0, errors: [], dryRun: true };
+  }
+  try {
+    const output = execSync(
+      `npx vitest run "${testFile}" --reporter=verbose`,
+      { cwd: target, stdio: 'pipe', encoding: 'utf8', timeout: 60000 }
+    );
+    // 解析 passed/failed
+    const passedMatch = output.match(/(\d+) passed/);
+    const failedMatch = output.match(/(\d+) failed/);
+    return {
+      passed: passedMatch ? parseInt(passedMatch[1]) : 0,
+      failed: failedMatch ? parseInt(failedMatch[1]) : 0,
+      errors: [],
+      output,
+    };
+  } catch (e) {
+    const output = e.stdout || e.stderr || e.message;
+    const passedMatch = output.match(/(\d+) passed/);
+    const failedMatch = output.match(/(\d+) failed/);
+    return {
+      passed: passedMatch ? parseInt(passedMatch[1]) : 0,
+      failed: failedMatch ? parseInt(failedMatch[1]) : 0,
+      errors: [output.slice(0, 2000)],
+      output,
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // 主程式
 // ─────────────────────────────────────────────────────────────
 
@@ -528,29 +719,38 @@ function main() {
 
   if (args.help) {
     console.log(`
-AC Runner v2.0 — 純計算函式驗收
+AC Runner v3.0 — vitest orchestrator + 純計算函式驗收
 
 用法:
-  node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N] [--story=Story-X.Y]
+  node sdid-tools/ac-runner.cjs --contract=<path> --target=<project> [--iter=N] [--story=Story-X.Y] [--dry-run]
 
 選項:
   --contract=<path>    contract_iter-N.ts 路徑（必填）
   --target=<path>      專案根目錄（必填）
   --iter=<N>           迭代編號（用於存 log，預設: 1）
   --story=<Story-X.Y>  只跑該 Story 的 AC（從 @GEMS-STORY-ITEM 自動推導映射）
+  --dry-run            不實際執行函式/vitest，只解析 AC 並印出計畫
   --help               顯示此訊息
 
 AC 分類與 contract 格式:
 
-  [CALC] 純計算（ac-runner 機械驗收）:
+  [CALC] 純計算（needsTest:false → 直接執行）:
     // @GEMS-AC: AC-1.0
     // @GEMS-AC-FN: computeNodeDates
     // @GEMS-AC-MODULE: modules/Dashboard/lib/compute-node-dates
     // @GEMS-AC-INPUT: ["2026-04-13", [{"taskCode":"N-75","offsetDays":75}]]
     // @GEMS-AC-EXPECT: [{"taskCode":"N-75","dueDate":"2026-01-28"}]
 
-  [CALC] 失敗路徑（驗收 throw）:
+  [CALC+SETUP] 有狀態流程（needsTest:true → vitest orchestrator）:
     // @GEMS-AC: AC-1.1
+    // @GEMS-AC-FN: getTransactions
+    // @GEMS-AC-MODULE: modules/Ledger/services/ledger-service
+    // @GEMS-AC-SETUP: [{"fn":"addTransaction","module":"modules/Ledger/services/ledger-service","args":[{...}]}]
+    // @GEMS-AC-INPUT: ["2026-03"]
+    // @GEMS-AC-EXPECT: (r) => r.length === 3
+
+  [CALC] 失敗路徑（驗收 throw）:
+    // @GEMS-AC: AC-1.2
     // @GEMS-AC-FN: transitionOrderStatus
     // @GEMS-AC-MODULE: modules/Order/lib/transition-status
     // @GEMS-AC-INPUT: [{"status":"DELIVERED","event":"PAYMENT_RECEIVED"}]
@@ -563,6 +763,12 @@ AC 分類與 contract 格式:
   [MANUAL] UI 或 side effect（人工 POC 驗收）:
     // @GEMS-AC: AC-3.0
     // @GEMS-AC-SKIP: UI 互動，人工 POC 驗收
+
+vitest orchestrator 模式（v3.0）:
+  - 讀 .gems/iterations/iter-N/logs/cynefin-report-*.json（最新）
+  - 對 needsTest:true 的 AC 生成 vitest test 到 .gems/iterations/iter-N/ac-tests/
+  - 對 needsTest:false 的 AC 走舊的直接執行模式
+  - 向後相容: cynefin-report.json 不存在 → 全部走直接執行模式
 
 輸出:
   @PASS    — 所有 AC 通過（SKIP 不計入失敗），存 ac-pass-*.log
@@ -605,12 +811,107 @@ AC 分類與 contract 格式:
     specs = filtered;
   }
 
-  console.log(`\n🧪 AC Runner v2.0`);
+  console.log(`\n🧪 AC Runner v3.0`);
   console.log(`   Contract: ${path.relative(args.target, args.contract)}`);
-  console.log(`   AC 數量: ${specs.length} 個\n`);
+  console.log(`   AC 數量: ${specs.length} 個`);
 
-  // 執行所有 AC
-  const results = specs.map(spec => runAc(spec, args.target));
+  // ── v3.0: 讀 cynefin-report.json，建立 needsTest map ──────────
+  const cynefinReport = findLatestCynefinReport(args.target, iterNum);
+  const needsTestMap = buildNeedsTestMap(cynefinReport);
+  const hasNeedsTestData = Object.keys(needsTestMap).length > 0;
+
+  if (hasNeedsTestData) {
+    const needsTestCount = Object.values(needsTestMap).filter(Boolean).length;
+    console.log(`   CYNEFIN: ${needsTestCount} 個 action needsTest:true → vitest 模式`);
+  } else {
+    console.log(`   CYNEFIN: 無 cynefin-report.json，fallback 到 v2.0 直接執行模式`);
+  }
+  console.log('');
+
+  // 分流：哪些 AC 走 vitest，哪些走直接執行
+  const calcSpecs = specs.filter(s => !s.skip);
+  const skipSpecs = specs.filter(s => s.skip);
+
+  // 如果有 SETUP 或 needsTest:true → vitest
+  // 否則 → 直接執行（向後相容）
+  const vitestSpecs = calcSpecs.filter(s => {
+    if (s.setup && s.setup.length > 0) return true; // 有 SETUP 一定用 vitest
+    if (hasNeedsTestData && needsTestMap[s.fn] === true) return true;
+    return false;
+  });
+  const directSpecs = calcSpecs.filter(s => !vitestSpecs.includes(s));
+
+  // dry-run 模式：印出計畫，不實際執行
+  if (args.dryRun) {
+    console.log(`   [dry-run] 執行計畫:`);
+    console.log(`     vitest 模式: ${vitestSpecs.length} 個 AC`);
+    vitestSpecs.forEach(s => console.log(`       - ${s.id} ${s.fn}${s.setup ? ' (SETUP)' : ''}`));
+    console.log(`     直接執行模式: ${directSpecs.length} 個 AC`);
+    directSpecs.forEach(s => console.log(`       - ${s.id} ${s.fn}`));
+    console.log(`     SKIP: ${skipSpecs.length} 個 AC`);
+    skipSpecs.forEach(s => console.log(`       - ${s.id} [${s.skip}]`));
+    console.log(`\n@SKIP | ac-runner | dry-run 完成，未實際執行\n`);
+    process.exit(0);
+  }
+
+  // ── vitest 模式（needsTest:true AC）──────────────────────────
+  let vitestResults = [];
+  if (vitestSpecs.length > 0) {
+    // 確認專案有 vitest
+    if (!hasVitest(args.target)) {
+      console.log(`   ⚠ 專案沒有 vitest dependency，無法跑 needsTest:true AC`);
+      console.log('');
+      console.log(`@TASK`);
+      console.log(`  ACTION: INSTALL_VITEST`);
+      console.log(`  FILE: package.json`);
+      console.log(`  FIX: 安裝 vitest — npm install -D vitest`);
+      console.log(`       安裝後重跑 ac-runner`);
+      // 將這些 AC 標記為 ERROR
+      vitestResults = vitestSpecs.map(s => ({
+        id: s.id, fn: s.fn, status: 'ERROR',
+        error: 'vitest 未安裝，無法執行有狀態 AC',
+      }));
+    } else {
+      // 生成 vitest test 檔
+      const acTestsDir = path.join(args.target, '.gems', 'iterations', `iter-${iterNum}`, 'ac-tests');
+      if (!fs.existsSync(acTestsDir)) fs.mkdirSync(acTestsDir, { recursive: true });
+      const testFileName = `ac-iter-${iterNum}.test.ts`;
+      const testFilePath = path.join(acTestsDir, testFileName);
+      const testContent = generateVitestContent(vitestSpecs, args.target, iterNum);
+      fs.writeFileSync(testFilePath, testContent, 'utf8');
+      console.log(`   vitest test 生成: ${path.relative(args.target, testFilePath)}`);
+
+      // 執行 vitest
+      const vitestResult = runVitest(args.target, testFilePath, args.dryRun);
+      console.log(`   vitest 結果: ${vitestResult.passed} PASS | ${vitestResult.failed} FAIL`);
+
+      // 將 vitest 結果對應到每個 spec
+      vitestResults = vitestSpecs.map((s, idx) => {
+        // 沒有細粒度結果時，用整體結果判斷
+        if (vitestResult.dryRun) return { id: s.id, fn: s.fn, status: 'SKIP', error: '[SKIP] dry-run' };
+        if (vitestResult.errors.length > 0 && vitestResult.failed > 0) {
+          // 有失敗：標記為 FAIL（無法細分是哪個 test 失敗，保守處理）
+          return { id: s.id, fn: s.fn, status: 'FAIL',
+            diff: { expected: 'vitest PASS', actual: vitestResult.errors[0]?.slice(0, 500) || 'vitest FAIL' } };
+        }
+        return { id: s.id, fn: s.fn, status: 'PASS' };
+      });
+    }
+  }
+
+  // ── 直接執行模式（needsTest:false AC）───────────────────────
+  const directResults = directSpecs.map(spec => runAc(spec, args.target));
+
+  // ── SKIP AC ─────────────────────────────────────────────────
+  const skipResults = skipSpecs.map(spec => ({ id: spec.id, fn: spec.fn, status: 'SKIP', error: `[SKIP] ${spec.skip}` }));
+
+  // 合併結果（保持原始順序）
+  const results = specs.map(spec => {
+    const r = vitestResults.find(r => r.id === spec.id)
+           || directResults.find(r => r.id === spec.id)
+           || skipResults.find(r => r.id === spec.id);
+    return r || { id: spec.id, fn: spec.fn, status: 'UNKNOWN', error: '未執行' };
+  });
 
   const passed  = results.filter(r => r.status === 'PASS');
   const failed  = results.filter(r => r.status === 'FAIL');

@@ -37,6 +37,22 @@
 
 ---
 
+## Phase 0.5: Action 層級分析
+
+在模組域識別之後，對每個 action（動作清單中的每一行）做個別分析：
+
+| 欄位 | 說明 |
+|------|------|
+| name | 動作的技術名稱（techName） |
+| story | 所屬 Story |
+| domain | Clear/Complicated/Complex |
+| hiddenSteps | 這個 action 的隱含步驟 |
+| needsTest | domain=Complicated/Complex 或 hiddenSteps.length>=2 |
+
+將 actions[] 填入 JSON report，供 cynefin-log-writer.cjs 寫入 cynefin-report.json，再由 ac-runner v3.0 讀取決定哪些 AC 走 vitest 模式。
+
+---
+
 ## Phase 1: 模組域識別
 
 對每個模組/功能做三問判定：
@@ -77,40 +93,83 @@
 
 ```json
 {
-  "iteration": "iter-1",
-  "docQuality": {
-    "clarity": 4,
-    "completeness": 3,
-    "testability": 4,
-    "consistency": 5,
-    "feasibility": 4,
-    "total": 20,
-    "verdict": "PASS",
-    "weakPoints": ["completeness: 缺少錯誤處理描述"]
-  },
+  "route": "Blueprint|TaskPipe",
+  "inputFile": "path/to/draft.md",
   "modules": [
     {
       "name": "模組名稱",
       "domain": "Clear|Complicated|Complex",
-      "reasoning": "判定理由（一句話）",
-      "hiddenSteps": ["展開的隱含步驟1", "展開的隱含步驟2"],
-      "actionCount": 3,
-      "budgetOk": true
+      "threeQuestions": {
+        "q1_clear": true,
+        "q2_reference": false,
+        "q3_costly": true
+      },
+      "flowSteps": 4,
+      "depsCount": 2,
+      "timeCoupling": false,
+      "iterBudget": {
+        "actionCount": 6,
+        "maxPerIter": 4,
+        "suggestedIters": 2,
+        "currentIters": 1
+      },
+      "issues": [
+        {
+          "level": "BLOCKER|WARNING|INFO",
+          "description": "問題描述",
+          "suggestions": ["建議1", "建議2"],
+          "fixTarget": "需修改的文件路徑"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "addTransaction",
+      "story": "Story-1.0",
+      "domain": "Clear",
+      "hiddenSteps": ["UUID 生成"],
+      "needsTest": false
+    },
+    {
+      "name": "getTransactions",
+      "story": "Story-1.0",
+      "domain": "Complicated",
+      "hiddenSteps": ["月份過濾邊界", "日期降序排列"],
+      "needsTest": true
     }
   ],
   "verdict": "PASS|NEEDS_FIX",
-  "issues": ["超出預算的模組或需要拆分的項目"]
+  "issues": []
 }
 ```
+
+### iterBudget 填寫規則
+
+**必填**，腳本會根據此欄位機械判定預算是否超標：
+
+| 欄位 | 說明 | 範例 |
+|------|------|------|
+| `actionCount` | 此模組在本 iter 的動作數（Story 數 × 平均動作數） | `6` |
+| `maxPerIter` | 依域設定上限：Clear=不限(999)、Complicated=4、Complex=3 | `4` |
+| `suggestedIters` | `ceil(actionCount / maxPerIter)` | `2` |
+| `currentIters` | 目前規劃的 iter 數（通常是 1） | `1` |
+
+若 `currentIters < suggestedIters` 且域為 Complicated(costly) 或 Complex，腳本自動產生 BLOCKER。
 
 ---
 
 ## 完成後
 
+產出 JSON report，儲存到：
+```
+{project}/.gems/iterations/iter-N/logs/cynefin-report-<timestamp>.json
+```
+
 執行以下指令寫入 log：
 
 ```bash
-node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=<N>
+node sdid-tools/cynefin-log-writer.cjs --report-file=<上述路徑> --target=<project> --iter=<N>
 ```
 
 log 寫入成功後才算 `@PASS`，loop 才會放行進入 **CONTRACT** 節點。

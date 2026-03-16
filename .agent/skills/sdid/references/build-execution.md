@@ -2,8 +2,8 @@
 
 ## 概覽
 
-不管從 Blueprint 還是 Task-Pipe 進來，到了 implementation_plan 之後就是同一套 BUILD Phase 1-8。
-差異只在 BUILD 完成後的收尾：Blueprint 走 SHRINK→VERIFY，Task-Pipe 走 SCAN。
+不管從 Blueprint 還是 Task-Pipe 進來，到了 implementation_plan 之後就是同一套 BUILD Phase 1-4（v6）。
+差異只在 BUILD 完成後的收尾：Blueprint 走 VERIFY，Task-Pipe 走 SCAN。
 
 ## 執行方式
 
@@ -17,18 +17,17 @@
 
 > ⚠️ 舊的 `blueprint-loop.cjs` / `taskpipe-loop.cjs` 已 deprecated，不要使用。
 
-## BUILD Phase 1-8
+## BUILD Phase 1-4（v6）
 
 | Phase | 名稱 | 內容 |
 |-------|------|------|
-| 1 | 骨架檢查 | 確保環境和檔案結構存在 |
-| 2 | 標籤驗收 | 掃描 src 確保每個函數符合 GEMS 標籤 |
-| 3 | 測試腳本 | 寫測試檔案 |
-| 4 | Test Gate | 驗證測試檔案存在且 import 被測函式 |
-| 5 | TDD 測試執行 | Unit/Integration 測試 |
-| 6 | 修改檔案測試 | 整合測試 |
-| 7 | 整合檢查 | 檢查路由、模組匯出等整合項目 |
-| 8 | Fillback | 生成 Fillback + iteration_suggestions |
+| 1 | 骨架映射層 | 讀 implementation_plan + contract.ts + ac.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3） |
+| 2 | AC 驗收層 | ac-runner 讀 cynefin-report.json → needsTest:true 的 AC 生成 vitest test → vitest run；needsTest:false 的 CALC AC 走舊的直接執行模式；SKIP AC 跳過 |
+| 3 | 整合層 | 路由整合、barrel export、SKIP[INTEGRATION] AC（Level S 跳過） |
+| 4 | 標籤品質+Fillback層 | GEMS 標籤品質複查（全覆蓋）+ 產出 Fillback + iteration_suggestions |
+
+> Level S 走 Phase 1→2→4（跳過 Phase 3）
+> Level M/L 走 Phase 1→2→3→4
 
 ## 執行循環
 
@@ -44,6 +43,12 @@
 - 直接根據 ACTION + FILE + EXPECTED 執行修復
 - 禁止回讀 plan 文件或架構文件來「理解全貌」
 - 只讀 @TASK 指定的 FILE 和 error log
+- **例外**：@TASK 的 EXPECTED 含型別名稱但 FILE 裡找不到定義時，允許讀 `contract_iter-N.ts` 查型別簽名（僅此一個檔案，不讀 plan）
+
+### Phase 2 找不到 ac.ts
+- 若 ac.ts 不存在但 contract.ts 存在：Phase 2 會 WARN 並 fallback 到 contract.ts
+- 若兩者都不存在：Phase 2 直接 BLOCK
+- 正常流程：contract-writer @PASS 後 ac.ts 會自動分離，不應出現 fallback
 
 ### 收到 @TACTICAL_FIX
 - 讀 output 指定的 error log
@@ -66,22 +71,10 @@
 ## BUILD 完成後
 
 ### Blueprint 路線
-BUILD Phase 8 完成後，**忽略 output 的「下一步: SCAN」**。
-再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD 或 SHRINK）。
-
-**活藍圖狀態由 blueprint-shrink 自動維護，不需要手動更新：**
-
-```
-sdid-loop 在所有 Story 完成後自動進入 SHRINK：
-  → 主藍圖 iter-N: [CURRENT] → [DONE]
-  → 主藍圖 iter-N+1: [STUB] → [CURRENT]（升格，帶 Fillback suggestions）
-```
-
-shrink 完成後，告知使用者：
-「Iter-N 已完成並折疊。下一個 iter-(N+1) [{模組名}] 已升格為 [CURRENT]，可執行 BLUEPRINT-CONTINUE 展開。」
+BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD 或 VERIFY）。
 
 ### Task-Pipe 路線
-BUILD Phase 8 完成後，再次呼叫 MCP `sdid-loop`，它會自動進入 SCAN。
+BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動進入 SCAN。
 
 ## 禁止事項
 
@@ -99,5 +92,5 @@ BUILD Phase 8 完成後，再次呼叫 MCP `sdid-loop`，它會自動進入 SCAN
 - `plan-step-N-{pass|error}-*.log` — PLAN 結果
 - `build-phase-N-Story-X.Y-{pass|error}-*.log` — BUILD 結果
 - `gate-check-{pass|error}-*.log` — Blueprint Gate 結果
-- `gate-shrink-{pass|error}-*.log` — Shrink 結果
+- `gate-verify-{pass|error}-*.log` — Verify 結果
 - `scan-{pass|error}-*.log` — SCAN 結果

@@ -91,6 +91,7 @@ function parseReport(args) {
  * 驗證 report 結構
  * 必要欄位: route, inputFile, modules[]
  * 每個 module: name, domain, flowSteps, depsCount, issues[]
+ * 選填欄位: actions[]（v1.1 新增，action 層級分析）
  */
 function validateReport(report) {
   const errors = [];
@@ -98,6 +99,30 @@ function validateReport(report) {
   if (!report.inputFile) errors.push('缺少 inputFile');
   if (!Array.isArray(report.modules)) errors.push('缺少 modules 陣列');
   if (errors.length > 0) throw new Error(`Report 格式錯誤: ${errors.join(', ')}`);
+}
+
+/**
+ * needsTest 判斷規則（action 層級）
+ * - domain === 'Complicated' || domain === 'Complex' → true
+ * - hiddenSteps.length >= 2 → true
+ * - 其他 → false
+ */
+function computeNeedsTest(action) {
+  if (action.domain === 'Complicated' || action.domain === 'Complex') return true;
+  if (Array.isArray(action.hiddenSteps) && action.hiddenSteps.length >= 2) return true;
+  return false;
+}
+
+/**
+ * 從 report.actions[] 中補上 needsTest 欄位（如果 AI 已填入 actions[]）
+ * 如果 report 沒有 actions[]，回傳空陣列
+ */
+function enrichActions(report) {
+  if (!Array.isArray(report.actions)) return [];
+  return report.actions.map(action => ({
+    ...action,
+    needsTest: action.needsTest !== undefined ? action.needsTest : computeNeedsTest(action),
+  }));
 }
 
 // ============================================
@@ -130,18 +155,26 @@ function determineResult(modules) {
     // --- 新增: iterBudget 機械強制 ---
     if (mod.iterBudget) {
       const budget = mod.iterBudget;
-      const maxPerIter = budget.maxPerIter || 4;
-      const suggestedIters = budget.suggestedIters || Math.ceil((budget.actionCount || 0) / maxPerIter);
+      // maxPerIter 根據 domain 語意決定，不依賴 AI 填值
+      const domainMax = {
+        Simple: Infinity,
+        Complicated: 6,
+        Complex: 3,
+        Chaotic: 2,
+      };
+      const maxPerIter = domainMax[mod.domain] ?? (budget.maxPerIter || 4);
+      const actionCount = budget.actionCount || 0;
+      const suggestedIters = maxPerIter === Infinity ? 1 : Math.ceil(actionCount / maxPerIter);
       const currentIters = budget.currentIters || 1;
 
       if (mod.domain === 'Complicated' && mod.threeQuestions && mod.threeQuestions.q3_costly) {
         // Complicated + costly: 嚴格預算
-        if (budget.actionCount > maxPerIter && currentIters < suggestedIters) {
+        if (actionCount > maxPerIter && currentIters < suggestedIters) {
           blockers.push({
             module: mod.name,
             issue: {
               level: 'BLOCKER',
-              description: `迭代預算不足: Complicated+costly 模組 "${mod.name}" 有 ${budget.actionCount} 個動作，目前 ${currentIters} iter（上限 ${maxPerIter}/iter），需拆為至少 ${suggestedIters} 個 iter`,
+              description: `迭代預算不足: Complicated+costly 模組 "${mod.name}" 有 ${actionCount} 個動作，目前 ${currentIters} iter（上限 ${maxPerIter}/iter），需拆為至少 ${suggestedIters} 個 iter`,
               suggestions: [
                 `將模組拆分為 ${suggestedIters} 個 iter，每個 iter 最多 ${maxPerIter} 個動作`,
                 `P0 動作優先進第一個 iter，P1/P2 動作排入後續 iter`,
@@ -158,23 +191,37 @@ function determineResult(modules) {
             module: mod.name,
             issue: {
               level: 'WARNING',
-              description: `迭代預算建議: 模組 "${mod.name}" 有 ${budget.actionCount} 個動作，建議 ${suggestedIters} iter（目前 ${currentIters}）`,
+              description: `迭代預算建議: 模組 "${mod.name}" 有 ${actionCount} 個動作，建議 ${suggestedIters} iter（目前 ${currentIters}）`,
               suggestions: [`考慮增加迭代數以降低單一 iter 風險`],
             }
           });
         }
       } else if (mod.domain === 'Complex') {
         // Complex: 更嚴格，探索性需要小步
-        const complexMax = budget.maxPerIter || 3;
-        const complexSuggested = Math.ceil((budget.actionCount || 0) / complexMax);
-        if (currentIters < complexSuggested) {
+        if (currentIters < suggestedIters) {
           blockers.push({
             module: mod.name,
             issue: {
               level: 'BLOCKER',
-              description: `迭代預算不足: Complex 模組 "${mod.name}" 有 ${budget.actionCount} 個動作，探索性模組每 iter 最多 ${complexMax} 個，需拆為至少 ${complexSuggested} 個 iter`,
+              description: `迭代預算不足: Complex 模組 "${mod.name}" 有 ${actionCount} 個動作，探索性模組每 iter 最多 ${maxPerIter} 個，需拆為至少 ${suggestedIters} 個 iter`,
               suggestions: [
-                `將模組拆為 ${complexSuggested} 個 iter，先做 Probe（探索驗證）再做完整實作`,
+                `將模組拆為 ${suggestedIters} 個 iter，先做 Probe（探索驗證）再做完整實作`,
+              ],
+              fixTarget: '迭代規劃表 + 模組動作清單',
+            }
+          });
+        }
+      } else if (mod.domain === 'Chaotic') {
+        // Chaotic: 最嚴格，每 iter 最多 2 個動作
+        if (actionCount > maxPerIter && currentIters < suggestedIters) {
+          blockers.push({
+            module: mod.name,
+            issue: {
+              level: 'BLOCKER',
+              description: `迭代預算不足: Chaotic 模組 "${mod.name}" 有 ${actionCount} 個動作，每 iter 最多 ${maxPerIter} 個，需拆為至少 ${suggestedIters} 個 iter`,
+              suggestions: [
+                `Chaotic 域需要最小步驟探索，每 iter 只做 ${maxPerIter} 個動作`,
+                `先穩定問題域再增加動作數`,
               ],
               fixTarget: '迭代規劃表 + 模組動作清單',
             }
@@ -190,7 +237,7 @@ function determineResult(modules) {
 // ============================================
 // Log 內容產生
 // ============================================
-function buildLogContent(report, result, iterNum) {
+function buildLogContent(report, result, iterNum, enrichedActions) {
   const ts = new Date().toISOString();
   const lines = [];
 
@@ -268,6 +315,24 @@ function buildLogContent(report, result, iterNum) {
     lines.push('下一步: 進入 PLAN');
   }
 
+  // Action 層級分析（v1.1）
+  if (enrichedActions && enrichedActions.length > 0) {
+    lines.push('');
+    lines.push('--- Action 層級分析 ---');
+    lines.push('');
+    const needsTestActions = enrichedActions.filter(a => a.needsTest);
+    lines.push(`needsTest:true  — ${needsTestActions.length} 個 action（vitest 驗收）`);
+    lines.push(`needsTest:false — ${enrichedActions.length - needsTestActions.length} 個 action（直接執行或 SKIP）`);
+    lines.push('');
+    for (const a of enrichedActions) {
+      const marker = a.needsTest ? '[TEST]' : '[SKIP]';
+      const steps = Array.isArray(a.hiddenSteps) && a.hiddenSteps.length > 0
+        ? ` hidden:[${a.hiddenSteps.join(', ')}]`
+        : '';
+      lines.push(`  ${marker} ${a.name} (${a.domain}) story:${a.story || '?'}${steps}`);
+    }
+  }
+
   lines.push('=========================');
   return lines.join('\n');
 }
@@ -313,8 +378,29 @@ Report JSON 格式:
           }
         ]
       }
+    ],
+    "actions": [
+      {
+        "name": "functionName",
+        "story": "Story-1.0",
+        "domain": "Clear|Complicated|Complex",
+        "hiddenSteps": [],
+        "needsTest": false
+      },
+      {
+        "name": "getTransactions",
+        "story": "Story-1.0",
+        "domain": "Complicated",
+        "hiddenSteps": ["月份過濾邊界", "日期降序排列"],
+        "needsTest": true
+      }
     ]
   }
+
+needsTest 判斷規則（腳本自動計算，AI 也可手動填入）:
+  - domain === 'Complicated' || domain === 'Complex' → true
+  - hiddenSteps.length >= 2 → true
+  - 其他 → false
 `);
     process.exit(0);
   }
@@ -331,11 +417,39 @@ Report JSON 格式:
     validateReport(report);
   } catch (e) {
     console.error(`@ERROR | cynefin-log-writer | ${e.message}`);
+    console.error('');
+    console.error('📋 Minimal Schema 範本（複製後填入實際值）:');
+    console.error(JSON.stringify({
+      route: 'Blueprint',
+      inputFile: 'path/to/draft_iter-N.md',
+      modules: [
+        {
+          name: '模組名稱',
+          domain: 'Simple',
+          threeQuestions: { q1_clear: true, q2_reference: true, q3_costly: false },
+          flowSteps: 3,
+          depsCount: 1,
+          timeCoupling: false,
+          iterBudget: {
+            actionCount: 4,
+            maxPerIter: 6,
+            suggestedIters: 1,
+            currentIters: 1
+          },
+          issues: []
+        }
+      ]
+    }, null, 2));
+    console.error('');
+    console.error('domain 合法值: Simple | Complicated | Complex | Chaotic');
     process.exit(1);
   }
 
   // 判斷結果
   const result = determineResult(report.modules);
+
+  // 補上 actions[] needsTest（v1.1）
+  const enrichedActions = enrichActions(report);
 
   // 存 log
   const logsDir = getLogsDir(args.target, args.iter);
@@ -345,9 +459,19 @@ Report JSON 格式:
   const logType = result.pass ? 'pass' : 'fail';
   const logFileName = `cynefin-check-${logType}-${ts}.log`;
   const logPath = path.join(logsDir, logFileName);
-  const logContent = buildLogContent(report, result, args.iter);
+  const logContent = buildLogContent(report, result, args.iter, enrichedActions);
 
   fs.writeFileSync(logPath, logContent, 'utf8');
+
+  // 存 cynefin-report.json（供 ac-runner 讀取 actions[]）
+  const reportJsonPath = path.join(logsDir, `cynefin-report-${ts}.json`);
+  const reportWithActions = {
+    ...report,
+    actions: enrichedActions,
+    generatedAt: new Date().toISOString(),
+    iteration: `iter-${args.iter}`,
+  };
+  fs.writeFileSync(reportJsonPath, JSON.stringify(reportWithActions, null, 2), 'utf8');
 
   const relPath = path.relative(args.target, logPath);
 

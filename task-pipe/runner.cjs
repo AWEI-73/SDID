@@ -420,10 +420,21 @@ function runPhase(phase, step, options, config) {
       if (next) {
         log('');
         if (next.phase === 'SPEC_TO_PLAN') {
-          // Task-Pipe 路線：直接機械轉換，跳過 PLAN 步驟
-          const cmd = `node task-pipe/tools/spec-to-plan.cjs --target=${options.target} --iteration=${options.iteration}`;
-          log(`→ Next: spec-to-plan (機械轉換，跳過 PLAN)`, 'cyan');
-          log(`  ${cmd}`, 'dim');
+          // Task-Pipe 路線：CYNEFIN-CHECK 強制，通過後才能進 spec-to-plan
+          const iterNum = (options.iteration || 'iter-1').replace('iter-', '');
+          const logsDir = path.join(options.target, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+          const cynefinPassed = fs.existsSync(logsDir) &&
+            fs.readdirSync(logsDir).some(f => f.startsWith('cynefin-check-pass'));
+          if (!cynefinPassed) {
+            log(`→ Next: CYNEFIN-CHECK（強制，Task-Pipe 路線）`, 'cyan');
+            log(`  1. AI 執行 CYNEFIN 語意域分析（讀 spec + draft，評估複雜度域）`, 'dim');
+            log(`  2. node sdid-tools/cynefin-log-writer.cjs --report=<json> --target=${options.target} --iter=${iterNum}`, 'dim');
+            log(`  3. @PASS 後再執行 spec-to-plan`, 'dim');
+          } else {
+            const cmd = `node task-pipe/tools/spec-to-plan.cjs --target=${options.target} --iteration=${options.iteration}`;
+            log(`→ Next: spec-to-plan (CYNEFIN 已通過，機械轉換)`, 'cyan');
+            log(`  ${cmd}`, 'dim');
+          }
         } else {
           log(`→ Next: ${next.phase} step ${next.step}`, 'cyan');
           const storyArg = options.story ? ` --story=${options.story}` : '';
@@ -691,9 +702,22 @@ function main() {
       log('✓ All phases complete', 'green');
       log(`  → node task-pipe/runner.cjs --phase=SCAN --target=${options.target}`, 'dim');
     } else if (state.phase === 'SPEC_TO_PLAN') {
-      log(`→ Next: spec-to-plan (機械轉換，跳過 PLAN)`, 'cyan');
-      log('');
-      log(`  node task-pipe/tools/spec-to-plan.cjs --target=${options.target} --iteration=${iteration}`, 'green');
+      // Task-Pipe 路線：CYNEFIN-CHECK 強制，通過後才能進 spec-to-plan
+      const iterNum = (iteration || 'iter-1').replace('iter-', '');
+      const logsDir = path.join(options.target, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+      const cynefinPassed = fs.existsSync(logsDir) &&
+        fs.readdirSync(logsDir).some(f => f.startsWith('cynefin-check-pass'));
+      if (!cynefinPassed) {
+        log(`→ Next: CYNEFIN-CHECK（強制，Task-Pipe 路線）`, 'cyan');
+        log('');
+        log(`  1. AI 執行 CYNEFIN 語意域分析（讀 spec + draft，評估複雜度域）`, 'dim');
+        log(`  2. node sdid-tools/cynefin-log-writer.cjs --report=<json> --target=${options.target} --iter=${iterNum}`, 'green');
+        log(`  3. @PASS 後再執行 spec-to-plan`, 'dim');
+      } else {
+        log(`→ Next: spec-to-plan (CYNEFIN 已通過，機械轉換)`, 'cyan');
+        log('');
+        log(`  node task-pipe/tools/spec-to-plan.cjs --target=${options.target} --iteration=${iteration}`, 'green');
+      }
     } else {
       log(`→ Next: ${state.phase} step ${state.step}`, 'cyan');
       if (state.reason) {

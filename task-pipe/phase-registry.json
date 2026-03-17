@@ -194,6 +194,9 @@
     },
     "levelPhases": {
         "_deprecated": "S/M/L level 已廢棄，BUILD 固定跑 Phase 1-4，Phase 3 由 story type 決定是否跳過（Foundation X.0 自動跳過）",
+        "S": ["1", "2", "3", "4"],
+        "M": ["1", "2", "3", "4"],
+        "L": ["1", "2", "3", "4"],
         "default": ["1", "2", "3", "4"]
     },
     "flowSequence": [

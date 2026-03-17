@@ -118,6 +118,10 @@ mkdir -p ${planPath}
   }
   if (planValidation.warnings.length > 0) {
     console.log(`⚠️  Plan Schema: ${planValidation.warnings.length} warning(s) — ${planValidation.warnings.map(w => w.rule).join(', ')}`);
+    if (planValidation.warnings.some(w => w.rule === 'AC_FIELD')) {
+      console.log(`   ℹ️  AC_FIELD warning: plan-generator 的 AC 欄位為機械佔位符（○○），`);
+      console.log(`      Phase 2 ac-runner 執行時會從 contract.ts 自動對齊，此 warning 可忽略。`);
+    }
   }
 
   // 偵測專案類型
@@ -163,14 +167,16 @@ mkdir -p ${planPath}
     });
 
     const missingVSC = [];
-    if (!allTypes.has('ROUTE')) {
+    // UI 類型也算前端展示層，有 UI 或 ROUTE 都滿足前端進入點需求
+    if (!allTypes.has('ROUTE') && !allTypes.has('UI')) {
       missingVSC.push('ROUTE (使用者進入點 — 路由路徑或頁面元件)');
     }
     if (!allTypes.has('SVC') && !allTypes.has('API')) {
       missingVSC.push('SVC 或 API (業務邏輯層)');
     }
-    const hasFrontend = allTypes.has('UI') || allTypes.has('HOOK');
-    if (hasFrontend && !allTypes.has('UI')) {
+    // ROUTE 本身就是前端展示層，有 ROUTE 就不需要額外要求 UI
+    const hasFrontend = allTypes.has('UI') || allTypes.has('HOOK') || allTypes.has('ROUTE');
+    if (hasFrontend && !allTypes.has('UI') && !allTypes.has('ROUTE')) {
       missingVSC.push('UI (前端展示層)');
     }
 

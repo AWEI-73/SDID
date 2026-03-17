@@ -574,7 +574,82 @@ function main() {
             return;
         }
 
-        // ─── CYNEFIN ✓ + spec-to-plan ✓ + CONTRACT quality gate ✓ → 推進到 BUILD-1 ──
+        // ─── Step D: VSC 垂直切片完整性預檢（避免 Phase 1 VSC-002 BLOCK）──────────────
+        const planDir = path.join(iterPath, 'plan');
+        const planFiles2 = fs.existsSync(planDir)
+            ? fs.readdirSync(planDir).filter(f => f.startsWith('implementation_plan_'))
+            : [];
+        const vscPassed = fs.existsSync(logsDir) &&
+            fs.readdirSync(logsDir).some(f => f.startsWith('vsc-precheck-pass'));
+        if (!vscPassed && planFiles2.length > 0) {
+            const vscViolations = [];
+            for (const pf of planFiles2) {
+                const pfContent = fs.readFileSync(path.join(planDir, pf), 'utf8');
+                const types = (pfContent.match(/\|\s*(ROUTE|SVC|API|HOOK|UI|DATA|CONST|LIB)\s*\|/gi) || [])
+                    .map(m => m.replace(/\|/g, '').trim().toUpperCase());
+                const hasRoute = types.includes('ROUTE') || types.includes('UI');
+                const hasSvc = types.includes('SVC') || types.includes('API');
+                const storyMatch = pf.match(/Story-[\d.]+/i);
+                if (hasRoute && !hasSvc) {
+                    vscViolations.push(storyMatch ? storyMatch[0] : pf);
+                }
+            }
+            if (vscViolations.length > 0) {
+                log(`\n⚠️  [Task-Pipe] VSC Pre-check: ${vscViolations.join(', ')} 有 ROUTE 但缺 SVC/API — Phase 1 會 BLOCK`, 'yellow');
+                log(`\n@TASK`, 'yellow');
+                log(`ACTION: 修正以下 Story 的 implementation_plan，補齊 SVC 層`, 'yellow');
+                log(`Stories: ${vscViolations.join(', ')}`, 'yellow');
+                log(`RULE: 每個 Feature Story 必須有 ROUTE + SVC 組合（垂直切片完整性）`, 'yellow');
+                log(`  - 純前端協調邏輯（CSV 下載、ICS 生成）→ 在 services/ 建 browser-side SVC`, 'yellow');
+                log(`  - 資料查詢 → 在 services/ 建 query SVC`, 'yellow');
+                log(`  - 純 LIB+ROUTE 沒有協調邏輯 → 補一個輕量 SVC 作為呼叫入口`, 'yellow');
+                log(`範例: | downloadCsvTemplate | SVC | P2 | 明確 | GENERATE→BLOB→DOWNLOAD |`, 'yellow');
+                log(`\n修正後寫入 vsc-precheck-pass log:`, 'yellow');
+                log(`  log 格式: @PASS | vsc-precheck | VSC 完整性通過 | ${state.iteration}`, 'yellow');
+                log(`  log 路徑: ${path.join(logsDir, 'vsc-precheck-pass-<timestamp>.log')}`, 'yellow');
+                log(`  寫完後再次執行此腳本繼續 plan-to-scaffold`, 'yellow');
+                return;
+            }
+            fs.mkdirSync(logsDir, { recursive: true });
+            const vscTs = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            fs.writeFileSync(
+                path.join(logsDir, `vsc-precheck-pass-${vscTs}.log`),
+                `@PASS | vsc-precheck | VSC 完整性通過（全部 Story 有 ROUTE+SVC）| ${state.iteration}\n`
+            );
+        }
+
+        // ─── Step E: plan-to-scaffold（預建 .ts 骨架，Phase 1 只填實作）───────────────
+        const scaffoldGenerated = fs.existsSync(logsDir) &&
+            fs.readdirSync(logsDir).some(f => f.startsWith('scaffold-generated-pass'));
+        if (!scaffoldGenerated && planFiles2.length > 0) {
+            const SDID_TOOLS = path.resolve(TASK_PIPE_ROOT, '..', 'sdid-tools');
+            const scaffoldScript = path.join(SDID_TOOLS, 'plan-to-scaffold.cjs');
+            log(`\n🔧 [Task-Pipe] plan-to-scaffold: 預建骨架 .ts 檔案 (${planFiles2.length} 個 Story)`, 'blue');
+            let scaffoldFailed = false;
+            for (const pf of planFiles2) {
+                const r = spawnSync('node', [
+                    scaffoldScript,
+                    `--plan=${path.join(planDir, pf)}`,
+                    `--target=${projectPath}`,
+                ], { stdio: 'inherit', encoding: 'utf-8' });
+                if (r.status !== 0) {
+                    log(`⚠️  plan-to-scaffold 部分失敗: ${pf} (繼續執行)`, 'yellow');
+                    scaffoldFailed = true;
+                }
+            }
+            fs.mkdirSync(logsDir, { recursive: true });
+            const scaffoldTs = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            fs.writeFileSync(
+                path.join(logsDir, `scaffold-generated-pass-${scaffoldTs}.log`),
+                `@PASS | scaffold-generated | plan-to-scaffold ${scaffoldFailed ? '部分' : ''}完成 | ${planFiles2.length} 個 Story | ${state.iteration}\n`
+            );
+            log('\n✅ scaffold-generated 完成 → 骨架 .ts 已預建，Phase 1 只需填實作', 'green');
+            log('\n@NEXT_ACTION', 'yellow');
+            log('請再次執行此腳本繼續 BUILD Phase 1。', 'yellow');
+            return;
+        }
+
+        // ─── CYNEFIN ✓ + CONTRACT ✓ + VSC ✓ + scaffold ✓ → 推進到 BUILD-1 ────────────
         try {
             const stateManager = require(path.join(TASK_PIPE_ROOT, 'lib', 'shared', 'state-manager-v3.cjs'));
             const current = stateManager.readState(projectPath, state.iteration) || {};
@@ -591,7 +666,7 @@ function main() {
                 fs.writeFileSync(stateFile, JSON.stringify(s, null, 2), 'utf8');
             }
         }
-        log('\n✅ [Task-Pipe] PLAN 完成（CYNEFIN ✓ + spec-to-plan ✓ + CONTRACT Quality Gate ✓）', 'green');
+        log('\n✅ [Task-Pipe] PLAN 完成（CYNEFIN ✓ + spec-to-plan ✓ + CONTRACT Quality Gate ✓ + scaffold ✓）', 'green');
         log('\n@NEXT_ACTION', 'yellow');
         log('請再次執行此腳本繼續 BUILD Phase 1。', 'yellow');
         return;

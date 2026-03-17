@@ -349,7 +349,18 @@ function scanGemsTagsEnhanced(srcDir) {
           const matchedLine = lines[funcStartLine - 1] || '';
           const isTypeDeclaration = /^\s*(?:export\s+)?(?:interface|type|enum)\s/.test(matchedLine);
 
-          if (!isTypeDeclaration) {
+          // 過濾巢狀/縮排函式（inline handlers、local helpers）— 不需要 GEMS tag
+          // 判斷依據：宣告行有前置空白 → 是縮排的 → 不是 module-level 宣告
+          const isIndented = /^\s+/.test(matchedLine);
+
+          // 過濾 React state setter 衍生名稱（set + 大寫開頭）
+          const isStateSetter = /^set[A-Z]/.test(funcName);
+
+          // 過濾 React hook 解構賦值 const [x, setX] = useX(...)
+          // 這種情況 matchedLine 會包含 "[" 在 "=" 之前
+          const isHookDestructuring = /^\s*(?:const|let|var)\s*\[/.test(matchedLine);
+
+          if (!isTypeDeclaration && !isIndented && !isStateSetter && !isHookDestructuring) {
             if (!foundFunctions.has(funcName)) {
               foundFunctions.set(funcName, true);
               result.untagged.push({

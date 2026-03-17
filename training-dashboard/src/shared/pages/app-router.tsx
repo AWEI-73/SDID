@@ -2,18 +2,19 @@ import React, { useState } from 'react';
 import DashboardPage from '../../modules/Dashboard/pages/dashboard-page';
 import ImportPage from '../../modules/Import/pages/import-page';
 import ClassManagementPage from '../../modules/ClassManagement/pages/class-management-page';
+import NodeManagementPage from '../../modules/NodeManagement/pages/node-management-page';
 
 /**
- * GEMS: AppRouter | P1 | ✓○ | ()→JSX.Element | Story-1.0 | React 前端路由入口
+ * GEMS: AppRouter | P1 | ✓✓ | ()→JSX.Element | Story-1.0 | React 前端路由入口
  * GEMS-FLOW: ENTRY→ROUTER→PAGES
  * GEMS-DEPS: [TrainingClassSchema]
  * GEMS-DEPS-RISK: MEDIUM
  */
 // [STEP] ENTRY — 應用程式入口，定義頁面路由
 // [STEP] ROUTER — 根據 activePage 狀態切換頁面
-// [STEP] PAGES — 渲染對應頁面元件（lazy import 待 Story-1.1+ 實作）
+// [STEP] PAGES — 渲染對應頁面元件
 
-type Page = 'dashboard' | 'classes' | 'import' | 'rooms';
+type Page = 'dashboard' | 'classes' | 'import' | 'nodes';
 
 export default function AppRouter() {
   // [STEP] ENTRY
@@ -25,7 +26,7 @@ export default function AppRouter() {
       case 'dashboard': return <DashboardPage />;
       case 'classes':   return <ClassManagementPage />;
       case 'import':    return <ImportPage />;
-      case 'rooms':     return <PlaceholderPage title="教室排程" desc="教室時間軸視覺化（iter-2）" />;
+      case 'nodes':     return <NodeManagementPage />;
     }
   };
 
@@ -44,8 +45,8 @@ function Sidebar({ activePage, onNavigate }: { activePage: Page; onNavigate: (p:
   const items: { key: Page; label: string; icon: string }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
     { key: 'classes',   label: '班別管理',   icon: '📚' },
+    { key: 'nodes',     label: '節點管控',   icon: '�' },
     { key: 'import',    label: '資料匯入',   icon: '📥' },
-    { key: 'rooms',     label: '教室排程',   icon: '🏫' },
   ];
   return (
     <nav style={{ width: 200, background: '#fff', borderRight: '1px solid #dee2e6', padding: '16px 0', flexShrink: 0 }}>
@@ -67,14 +68,5 @@ function Sidebar({ activePage, onNavigate }: { activePage: Page; onNavigate: (p:
         </div>
       ))}
     </nav>
-  );
-}
-
-function PlaceholderPage({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div style={{ padding: 32 }}>
-      <h1 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{title}</h1>
-      <p style={{ color: '#6c757d' }}>{desc}</p>
-    </div>
   );
 }

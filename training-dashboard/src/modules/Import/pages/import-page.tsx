@@ -1,14 +1,14 @@
 import React, { useState, useRef } from 'react';
+import { downloadCsvTemplate } from '../services/download-csv-template';
 
 /**
- * GEMS: ImportPage | P1 | ✓✓ | ()→JSX.Element | Story-1.2 | CSV 匯入頁面
- * GEMS-FLOW: UPLOAD→PREVIEW→CONFIRM
- * GEMS-DEPS: [importCSV]
+ * GEMS: ImportPage | P1 | ✓✓ | ()→JSX.Element | Story-2.3 | CSV 匯入頁面（含範本下載）
+ * GEMS-FLOW: RENDER→DOWNLOAD
+ * GEMS-DEPS: [importCSV, generateCsvTemplate]
  * GEMS-DEPS-RISK: MEDIUM
  */
-// [STEP] UPLOAD — 選擇 CSV 檔案
-// [STEP] PREVIEW — 顯示解析預覽
-// [STEP] CONFIRM — 確認送出匯入
+// [STEP] RENDER — 顯示上傳區 + 下載按鈕
+// [STEP] DOWNLOAD — 觸發 CSV 範本下載
 
 interface ImportResult {
   inserted: number;
@@ -84,6 +84,17 @@ export default function ImportPage() {
       <div>
         <h1 className="text-lg font-medium text-gray-800 mb-1">資料匯入</h1>
         <p className="text-sm text-gray-500">上傳 CSV 檔案批次匯入班別資料</p>
+      </div>
+
+      {/* [STEP] DOWNLOAD — CSV 範本下載 */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={downloadCsvTemplate}
+          className="px-3 py-1.5 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
+        >
+          ⬇ 下載 CSV 範本
+        </button>
+        <span className="text-xs text-gray-400">請依範本格式填寫後上傳</span>
       </div>
 
       {/* 上傳區 */}

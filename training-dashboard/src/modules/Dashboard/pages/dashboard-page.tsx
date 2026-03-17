@@ -1,16 +1,17 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useClasses } from '../hooks/use-classes';
 import { detectConflicts } from '../lib/detect-conflicts';
 import type { TrainingClass, ConflictFlag } from '../../../shared/types/training-class-schema';
+import type { UpcomingNode } from '../../../shared/types/class-node-schema';
 
 /**
- * GEMS: DashboardPage | P1 | ✓✓ | ()→JSX.Element | Story-1.1 | Dashboard 總覽頁面
+ * GEMS: DashboardPage | P1 | ✓✓ | ()→JSX.Element | Story-2.2 | Dashboard 總覽頁面（含待辦節點）
  * GEMS-FLOW: FETCH→RENDER→TABLE
- * GEMS-DEPS: [useClasses, detectConflicts]
+ * GEMS-DEPS: [useClasses, detectConflicts, getUpcomingNodes]
  * GEMS-DEPS-RISK: MEDIUM
  */
-// [STEP] FETCH — 透過 useClasses 取得資料
-// [STEP] RENDER — 顯示統計卡片 + 衝突警示
+// [STEP] FETCH — 透過 useClasses 取得資料 + 取得待辦節點
+// [STEP] RENDER — 顯示統計卡片 + 衝突警示 + 待辦節點
 // [STEP] TABLE — 班別列表表格
 
 function getUpcoming(classes: TrainingClass[], days = 14): TrainingClass[] {
@@ -27,6 +28,15 @@ export default function DashboardPage() {
   const { classes, loading, error, refetch } = useClasses();
   const conflicts: ConflictFlag[] = detectConflicts(classes);
   const upcoming = getUpcoming(classes);
+
+  const [upcomingNodes, setUpcomingNodes] = useState<UpcomingNode[]>([]);
+
+  useEffect(() => {
+    fetch('/api/nodes/upcoming?days=7')
+      .then(r => r.ok ? r.json() : [])
+      .then(setUpcomingNodes)
+      .catch(() => setUpcomingNodes([]));
+  }, []);
 
   if (loading) {
     return <div className="p-8 text-gray-500">載入中...</div>;
@@ -62,6 +72,33 @@ export default function DashboardPage() {
           </ul>
         </div>
       )}
+
+      {/* 近期待辦節點 */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <h2 className="text-sm font-medium text-gray-700">📌 近期待辦節點（7天內）</h2>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {upcomingNodes.length === 0 ? (
+            <p className="px-4 py-6 text-center text-gray-400 text-sm">近 7 天無待辦節點</p>
+          ) : (
+            upcomingNodes.map((item, i) => {
+              const daysClass = item.daysUntil === 0
+                ? 'text-red-600 font-semibold'
+                : item.daysUntil <= 2 ? 'text-yellow-600' : 'text-green-600';
+              const daysText = item.daysUntil === 0 ? '今天' : `${item.daysUntil} 天後`;
+              return (
+                <div key={i} className="flex items-center gap-4 px-4 py-3">
+                  <span className="text-xs text-gray-400 w-24">{item.dueDate}</span>
+                  <span className={`text-xs w-16 ${daysClass}`}>{daysText}</span>
+                  <span className="flex-1 text-sm text-gray-700">{item.node.name}</span>
+                  <span className="text-xs text-gray-400">{item.className}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
 
       {/* [STEP] TABLE */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

@@ -15,7 +15,7 @@ export const schema = {
   title: 'SDID Loop (主入口)',
   description: `🔁 唯一主流程入口 — 所有 SDID 開發流程必須從此工具開始，禁止直接呼叫其他 sdid-* 工具。自動偵測專案狀態並執行下一步，支援兩條路線（文件驅動自動偵測）：
   Blueprint: GATE → CYNEFIN → CONTRACT → PLAN → BUILD (Phase 1-4) → SCAN → VERIFY
-  Task-Pipe: POC → PLAN → BUILD → SCAN → VERIFY
+  Task-Pipe: POC → CYNEFIN → spec-to-plan → CONTRACT-QUALITY-GATE → BUILD → SCAN → VERIFY
   POC-FIX / MICRO-FIX 路線自動偵測。
 每次呼叫會：(1) 偵測路線+當前階段（由文件存在與否決定，不靠 route 參數） (2) 執行對應工具 (3) 回傳結果 + @TASK 或 @NEXT 指示。
 收到 @TASK 時請修改程式碼，修完後再次呼叫此工具。收到 @PASS 時直接再次呼叫。
@@ -278,7 +278,80 @@ export async function handler({ project, iter, story, forceStart }) {
       break;
     }
     case 'PLAN': {
-      // Blueprint 優先讀 contract，Task-Pipe 讀 spec — 兩條路線統一走 spec-to-plan
+      const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
+      const logsDir = path.join(iterPath, 'logs');
+
+      // Task-Pipe 路線：補齊 Blueprint 的三個品質關卡（CYNEFIN + spec-to-plan + CONTRACT quality gate）
+      // Blueprint 路線：contract 已在 CONTRACT phase 通過 quality gate，直接 spec-to-plan 即可
+      if (detectedRoute === 'Task-Pipe') {
+        // ─── Step A: CYNEFIN-CHECK（強制，未通過不得進 spec-to-plan）─────────────────
+        const cynefinPassed = fs.existsSync(logsDir) &&
+          fs.readdirSync(logsDir).some(f => f.startsWith('cynefin-check-pass'));
+        if (!cynefinPassed) {
+          const pocPath = path.join(iterPath, 'poc');
+          let inputFile = null;
+          if (fs.existsSync(pocPath)) {
+            const files = fs.readdirSync(pocPath);
+            inputFile = files.find(f => f.startsWith('requirement_spec_')) || files.find(f => f.startsWith('requirement_draft_'));
+          }
+          const inputPath = inputFile ? path.join(pocPath, inputFile) : path.join(iterPath, 'poc', `requirement_spec_iter-${iterNum}.md`);
+          lines.push('');
+          lines.push('⚠️  [Task-Pipe] PLAN 前強制 CYNEFIN-CHECK（對齊 Blueprint 路線品質標準）');
+          lines.push('');
+          lines.push('@TASK');
+          lines.push(`ACTION: 讀 .agent/skills/sdid/references/cynefin-check.md 對以下文件做語意域分析`);
+          lines.push(`FILE: ${inputPath}`);
+          lines.push(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectRoot} --iter=${iterNum}`);
+          lines.push('');
+          lines.push('@REMINDER: cynefin-log-writer @PASS 後再次呼叫 sdid-loop 繼續');
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+
+        // ─── Step B: spec-to-plan（contract.ts + plan 骨架生成）─────────────────────
+        const contractPath = path.join(iterPath, 'poc', `contract_iter-${iterNum}.ts`);
+        const contractQualityPassed = fs.existsSync(logsDir) &&
+          fs.readdirSync(logsDir).some(f => f.startsWith('contract-quality-pass'));
+
+        if (!fs.existsSync(contractPath)) {
+          // contract.ts 不存在 → 先跑 spec-to-plan（生成 contract.ts + plan 骨架）
+          lines.push(`🚀 [Task-Pipe] CYNEFIN ✓ → 執行 spec-to-plan.cjs (contract/spec → plan 機械轉換)`);
+          result = await runCli('../task-pipe/tools/spec-to-plan.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
+          break;
+        }
+
+        // ─── Step C: CONTRACT quality gate（與 Blueprint CONTRACT gate 同規格，門檻 90）──
+        if (!contractQualityPassed) {
+          lines.push('');
+          lines.push('📋 [Task-Pipe] CONTRACT Quality Gate（對齊 Blueprint 標準，門檻 90 / 5 維度）');
+          lines.push('');
+          lines.push('@TASK');
+          lines.push(`ACTION: 讀 .agent/skills/sdid/references/design-quality-gate.md 的 CONTRACT 節點評分細則`);
+          lines.push(`FILE: ${contractPath}`);
+          lines.push('EXPECTED: 對 contract.ts 執行 90 分制 5 維度評分:');
+          lines.push('  ① Interface 完整性（25pts）— spec §5.5 每個函式都有對應 STORY-ITEM');
+          lines.push('  ② 型別具體性（20pts）— 無 any / unknown / 裸 object');
+          lines.push('  ③ AC 精確化（25pts）— STORY-ITEM AC 欄指向「該函式自身的測試」，不借用其他函式的 AC');
+          lines.push('  ④ AC 邊界覆蓋（20pts）— 有依賴者標 @GEMS-AC-SKIP: MOCK + 理由，純計算者標 @GEMS-AC-FN');
+          lines.push('  ⑤ 命名一致性（10pts）— 與 requirement_spec 實體名稱完全對齊');
+          lines.push('');
+          lines.push(`@PASS (≥90): 寫入 ${path.join(logsDir, 'contract-quality-pass-<timestamp>.log')}`);
+          lines.push('  log 格式: @PASS | CONTRACT quality gate | Task-Pipe | <score>/100 | iter-' + iterNum);
+          lines.push('  寫完後再次呼叫 sdid-loop 繼續進 BUILD');
+          lines.push('@GUIDED (65~89): 列出失分項 + 修法，AI 自行修正 contract.ts，重評只有 @PASS 或 @FAIL');
+          lines.push('  若 STORY-ITEM 結構異動，需重跑 spec-to-plan 重新生成 plan 骨架');
+          lines.push('@FAIL (<65): 重新修改 contract.ts，再次呼叫 sdid-loop');
+          lines.push('');
+          lines.push('@REMINDER: contract-quality-pass log 寫入後才能進 BUILD');
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+
+        // ─── CYNEFIN ✓ + spec-to-plan ✓ + CONTRACT quality gate ✓ → 進 BUILD ────────
+        lines.push('✅ [Task-Pipe] PLAN 完成（CYNEFIN ✓ + CONTRACT Quality Gate ✓）');
+        result = { output: '@PASS: Task-Pipe PLAN 完成\nNEXT: BUILD', exitCode: 0 };
+        break;
+      }
+
+      // Blueprint / Unknown 路線：contract 已在 CONTRACT phase 通過 quality gate，直接 spec-to-plan
       lines.push(`🚀 執行: spec-to-plan.cjs (contract/spec → plan 機械轉換)`);
       result = await runCli('../task-pipe/tools/spec-to-plan.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
       break;

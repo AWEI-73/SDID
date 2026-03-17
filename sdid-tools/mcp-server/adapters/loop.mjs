@@ -319,6 +319,42 @@ export async function handler({ project, iter, story, forceStart }) {
           break;
         }
 
+        // ─── Step B.5: PLAN 產物品質 gate（spec-to-plan 輸出，門檻 80）──────────────────
+        const planQualityPassed = fs.existsSync(logsDir) &&
+          fs.readdirSync(logsDir).some(f => f.startsWith('plan-quality-pass'));
+        if (!planQualityPassed) {
+          const planDir = path.join(iterPath, 'plan');
+          const planFiles = fs.existsSync(planDir)
+            ? fs.readdirSync(planDir).filter(f => f.startsWith('implementation_plan_'))
+            : [];
+          if (planFiles.length > 0) {
+            lines.push('');
+            lines.push('📋 [Task-Pipe] PLAN Quality Gate（spec-to-plan 機械輸出品質審查，門檻 80 / 4 維度）');
+            lines.push('');
+            lines.push('@TASK');
+            lines.push(`ACTION: 讀 .agent/skills/sdid/references/design-quality-gate.md 的 PLAN 節點評分細則`);
+            lines.push(`FILES: ${planFiles.map(f => path.join(planDir, f)).join(', ')}`);
+            lines.push('EXPECTED: 對所有 implementation_plan_Story-*.md 執行 80 分制 4 維度評分:');
+            lines.push('  ① STORY-ITEM 完整性（30pts）— 每個 Item 都有 Type/Priority/File/GEMS-FLOW 欄位');
+            lines.push('  ② GEMS-FLOW 非佔位符（25pts）— 無 TODO/TBD/待定，每個 STEP 有明確語意');
+            lines.push('  ③ AC 映射正確性（25pts）— 同 CONTRACT gate [A][B][C] 三步交叉驗證:');
+            lines.push('     [A] plan 裡的 // AC-X.Y 注解與 contract STORY-ITEM 最後欄一致');
+            lines.push('     [B] 純計算函式對應 AC 有真實 INPUT/EXPECT（非佔位符）');
+            lines.push('     [C] SVC/ROUTE 對應 AC 有 SKIP: MOCK — <理由>');
+            lines.push('  ④ Story 範圍紀律（20pts）— 每個 Item 都明確標注所屬 Story，不跨 Story 混用');
+            lines.push('');
+            lines.push(`@PASS (≥80): 寫入 ${path.join(logsDir, 'plan-quality-pass-<timestamp>.log')}`);
+            lines.push('  log 格式: @PASS | PLAN quality gate | Task-Pipe | <score>/100 | iter-' + iterNum);
+            lines.push('  寫完後再次呼叫 sdid-loop 繼續 CONTRACT quality gate');
+            lines.push('@GUIDED (55~79): 列出失分項 + 修法，AI 自行修正 implementation_plan_*.md，重評只有 @PASS 或 @FAIL');
+            lines.push('  常見修法：補齊 GEMS-FLOW 語意、修正 AC 注解對齊 contract、補 SKIP 理由');
+            lines.push('@FAIL (<55): 重新修改所有 implementation_plan_*.md，再次呼叫 sdid-loop');
+            lines.push('');
+            lines.push('@REMINDER: plan-quality-pass log 寫入後才進 CONTRACT quality gate');
+            return { content: [{ type: 'text', text: lines.join('\n') }] };
+          }
+        }
+
         // ─── Step C: CONTRACT quality gate（與 Blueprint CONTRACT gate 同規格，門檻 90）──
         if (!contractQualityPassed) {
           lines.push('');
@@ -441,7 +477,65 @@ export async function handler({ project, iter, story, forceStart }) {
       break;
     }
     case 'POC': {
-      const pocStep = state.step || '1';
+      const pocStep = String(state.step || '1');
+      const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
+      const logsDir = path.join(iterPath, 'logs');
+      const pocDir = path.join(iterPath, 'poc');
+
+      // ─── Step 3 後置 gate: TDD LITE 交叉驗證（contract 寫完後立即執行）──────────────
+      if (pocStep === '3') {
+        const contractPath = path.join(pocDir, `contract_iter-${iterNum}.ts`);
+        const tddPassed = fs.existsSync(logsDir) &&
+          fs.readdirSync(logsDir).some(f => f.startsWith('poc-step-3-tdd-pass'));
+        if (fs.existsSync(contractPath) && !tddPassed) {
+          lines.push('');
+          lines.push('📋 [Task-Pipe] POC Step 3 TDD LITE Gate（contract 寫完後強制 AC cross-check）');
+          lines.push('');
+          lines.push('@TASK');
+          lines.push(`ACTION: 對 ${contractPath} 執行 TDD LITE 交叉驗證（在進 Step 4 前完成）`);
+          lines.push('步驟:');
+          lines.push('  [A] 列出所有 STORY-ITEM 最後一欄非 "-" 的項目 → [(funcName, AC-X.Y), ...]');
+          lines.push('      對每一對找 @GEMS-AC: AC-X.Y，取 @GEMS-AC-FN，確認 funcName == @GEMS-AC-FN');
+          lines.push('      ❌ 常見錯誤：同函式有多個 AC（邊界測試）時，第一個 AC 孤兒化被塞給上一個 STORY-ITEM');
+          lines.push('  [B] 純計算函式（LIB/CONST）的 @GEMS-AC 必須有真實 @GEMS-AC-INPUT + @GEMS-AC-EXPECT（非佔位符）');
+          lines.push('  [C] SVC/ROUTE 有外部依賴者：最後一欄應為 "-"，對應 @GEMS-AC-SKIP: MOCK — <理由>');
+          lines.push('');
+          lines.push('若有問題：直接修正 contract.ts，無需重跑 Step 3');
+          lines.push(`無問題或修正完成後，寫入 log 格式: @PASS | poc-step-3-tdd | TDD LITE 交叉驗證通過 | iter-${iterNum}`);
+          lines.push(`log 路徑: ${path.join(logsDir, `poc-step-3-tdd-pass-<timestamp>.log`)}`);
+          lines.push('寫完後再次呼叫 sdid-loop 繼續 Step 4');
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+      }
+
+      // ─── Step 4 後置 gate: POC.HTML quality gate（design-quality-gate.md 75pt）────────
+      if (pocStep === '4') {
+        const pocFiles = fs.existsSync(pocDir) ? fs.readdirSync(pocDir).filter(f => f.endsWith('.html')) : [];
+        const htmlQualityPassed = fs.existsSync(logsDir) &&
+          fs.readdirSync(logsDir).some(f => f.startsWith('poc-html-quality-pass'));
+        if (pocFiles.length > 0 && !htmlQualityPassed) {
+          const pocHtml = path.join(pocDir, pocFiles[0]);
+          lines.push('');
+          lines.push('📋 [Task-Pipe] POC Step 4 HTML Quality Gate（design-quality-gate.md 75pt 評分）');
+          lines.push('');
+          lines.push('@TASK');
+          lines.push(`ACTION: 讀 .agent/skills/sdid/references/design-quality-gate.md POC.HTML 節點評分細則`);
+          lines.push(`FILE: ${pocHtml}`);
+          lines.push('EXPECTED: 75 分制 4 維度 @GUIDED 三態評分:');
+          lines.push('  ① Spec 路由覆蓋（30pts）— draft/spec 每個路由都有示意畫面');
+          lines.push('  ② 實體名稱與 spec 一致（25pts）— 畫面名稱與 spec 定義對齊');
+          lines.push('  ③ 關鍵互動可操作（25pts）— 非純靜態，submit 有 mock 反應');
+          lines.push('  ④ 無佔位內容（20pts）— 無 Lorem ipsum / TODO / 空白欄位');
+          lines.push('');
+          lines.push(`@PASS (≥75): 寫入 ${path.join(logsDir, 'poc-html-quality-pass-<timestamp>.log')}`);
+          lines.push('  log 格式: @PASS | poc-html-quality | <score>/100 | iter-' + iterNum);
+          lines.push('  寫完後再次呼叫 sdid-loop 繼續 Step 5');
+          lines.push('@GUIDED (50~74): 列出失分項 + 修法，AI 自行修正 HTML，重評只有 @PASS 或 @FAIL');
+          lines.push('@FAIL (<50): 回到 Step 4 重新產生 POC HTML');
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+      }
+
       lines.push(`🚀 執行: runner.cjs POC Step ${pocStep}`);
       result = await runRunner([`--phase=POC`, `--step=${pocStep}`, `--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
       break;

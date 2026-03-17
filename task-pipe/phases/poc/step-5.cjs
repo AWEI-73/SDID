@@ -214,7 +214,7 @@ ${issuesContent}
 
     const iterNum = iteration.replace('iter-', '');
 
-    const templateContent = generateTemplate(target, iterNum, pocAnalysis, finalModules, deferredNames, deferred);
+    const templateContent = generateTemplate(target, iterNum, pocAnalysis, finalModules, deferredNames, deferred, overflowModules);
 
     // 黃金範例路徑
     const goldSpecPath = path.join(__dirname, '../../templates/examples/spec/requirement_spec_GOLD.md');
@@ -261,7 +261,7 @@ Deferred: ${deferredNames.join(', ') || '無'}`
     return { verdict: 'PENDING', modules: finalModules, deferred: deferred };
 }
 
-function generateTemplate(target, iterNum, pocAnalysis, finalModules, deferredNames, deferred) {
+function generateTemplate(target, iterNum, pocAnalysis, finalModules, deferredNames, deferred, overflowModules = []) {
     return `# 📦 ${path.basename(target)} - 需求規格書
 
 **版本**: v1.0

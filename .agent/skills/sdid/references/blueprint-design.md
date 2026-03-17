@@ -2,129 +2,12 @@
 
 ## 概覽
 
-Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求收斂為 Enhanced Draft。
-完成後存檔到 `{project}/.gems/iterations/iter-{X}/poc/requirement_draft_iter-{X}.md`，
-然後交給 BUILD-AUTO 模式（MCP `sdid-loop`）執行。
+Blueprint 是大方向設計模式，透過 5 輪結構化對話將模糊需求收斂為 Blueprint + Draft。
+完成後存檔到：
+- `{project}/.gems/design/blueprint.md`（全局索引，可選）
+- `{project}/.gems/design/draft_iter-{N}.md`（per-iter 業務語意規格）
 
 > **迭代號規則**: 存檔前先掃描 `{project}/.gems/iterations/` 找到最大的 iter-N，新建 iter-(N+1)。若無任何迭代目錄則從 iter-1 開始。
-
----
-
-## BLUEPRINT-CONTINUE 模式（活藍圖續跑）
-
-### 狀態流轉（完整循環）
-
-```
-主藍圖初始規劃
-  iter-N 欄：[STUB]（只有概要，無 AC）
-       ↓
-  blueprint-shrink 執行（iter-N-1 完成後）
-  → iter-N: [STUB] → [CURRENT]（shrink 自動升格）
-  → 附加上一個 iter 的 Fillback suggestions 到 iter-N 備註
-       ↓
-  新 session BLUEPRINT-CONTINUE 觸發
-  → 讀主藍圖，找到 [CURRENT] iter-N
-  → 補 AC、Demo Checkpoint，產出完整 Stub Draft
-  → 存到 iter-N/poc/requirement_draft_iter-N.md
-       ↓
-  BUILD Phase 1-4
-       ↓
-  blueprint-shrink 執行（iter-N 完成後）
-  → iter-N: [CURRENT] → [DONE]
-  → iter-N+1: [STUB] → [CURRENT]
-       ↓
-  下個 session BLUEPRINT-CONTINUE ...
-```
-
-**職責分工：**
-- `blueprint-shrink`：狀態轉換（[STUB]→[CURRENT]、[CURRENT]→[DONE]）+ 傳遞 Fillback
-- `BLUEPRINT-CONTINUE`：AC 補齊（概要→完整 Stub Draft）+ 產出 iter-N/poc/
-
----
-
-### 觸發條件
-
-進入 DESIGN-BLUEPRINT 時，**先掃描專案是否存在「活藍圖」**：
-
-```
-活藍圖 = iter-1/poc/requirement_draft_iter-1.md 存在
-         且 藍圖狀態 = [~] ACTIVE
-         且 迭代規劃表有 [CURRENT] 或 [STUB] 狀態的 iter
-         且 該 iter 的 poc/ 下無 requirement_draft_iter-N.md（尚未展開）
-```
-
-若符合，**不需要 5 輪對話**，直接進入 BLUEPRINT-CONTINUE 模式。
-
-### BLUEPRINT-CONTINUE 執行步驟
-
-```
-Step 1: 讀主藍圖（iter-1 的 requirement_draft_iter-1.md）
-Step 2: 找目標 iter
-        優先找 [CURRENT]（shrink 已升格，帶 Fillback suggestions）
-        次找 [STUB]（shrink 尚未跑，需自行從概要展開）
-        確認 iter-N/poc/ 下無既有 draft（避免重複展開）
-Step 3: 從主藍圖的「模組動作清單」讀取 iter-N 的概要動作
-        若 shrink 已附加 Fillback suggestions，一併讀取作為補齊參考
-Step 4: 補齊 AC 與 Demo Checkpoint，產出完整 Stub Draft：
-         - 格式同 Enhanced Draft
-         - 開頭標注「承接主藍圖，展開 iter-N [{模組名}]」
-         - 繼承主藍圖的實體定義、共用模組（不重複定義）
-         - 每個 P0 動作必須有 Given/When/Then AC
-Step 5: Blueprint Gate 驗證（同正常流程）
-        v4 路線：`node sdid-tools/blueprint/gate.cjs --draft=<path> --target=<project> --iter=N`
-        v5 路線：`sdid-loop` 自動執行 draft-gate v5（blueprint.md 存在時）
-Step 6: 存到 {project}/.gems/iterations/iter-N/poc/requirement_draft_iter-N.md
-Step 7: 提示使用者：「Iter-N ({模組名}) 已展開，接下來自動進入 CYNEFIN-CHECK → CONTRACT → spec-to-plan → BUILD-AUTO（不等待使用者確認）」
-```
-
-> 注意：Step 7 不再手動更新主藍圖狀態——[CURRENT]→[DONE] 由 blueprint-shrink 在 BUILD 完成後自動處理。
-
-### 主藍圖 vs Stub Draft 的職責區分
-
-| 文件 | 職責 | 更新者 |
-|------|------|--------|
-| `iter-1/poc/requirement_draft_iter-1.md` (主藍圖) | 全局規劃、迭代規劃表、實體定義、概要動作清單 | blueprint-shrink（狀態）/ 人工（規劃調整）|
-| `iter-N/poc/requirement_draft_iter-N.md` (Stub Draft) | 單一 iter 的完整 AC、Demo Checkpoint | BLUEPRINT-CONTINUE（一次性寫入）|
-
-### 主藍圖迭代狀態標記規則
-
-在迭代規劃表中，每個 iter 必須有明確狀態標記：
-
-| 狀態 | 含義 | 由誰轉換 |
-|------|------|---------|
-| `[STUB]` | 概要規劃，尚未升格 | 初始寫入 |
-| `[CURRENT]` | shrink 升格後，等待本 session BLUEPRINT-CONTINUE 展開 | blueprint-shrink |
-| `[DONE]` | BUILD + shrink 完成 | blueprint-shrink |
-
-### BLUEPRINT-CONTINUE 條件判斷流程
-
-```
-新 session 進入 DESIGN-BLUEPRINT
-  ↓
-Q1: iter-1 draft 存在且狀態 = [~] ACTIVE？
-  → No: 正常 5 輪對話
-  → Yes: ↓
-
-Q2: 有 [CURRENT] iter 且 iter-N/poc/ 無既有 draft？
-  → Yes: BLUEPRINT-CONTINUE（Step 1，帶 Fillback suggestions）
-  → No: ↓
-
-Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
-  → Yes: BLUEPRINT-CONTINUE（Step 1，從概要展開）
-  → No: 全部完成或全部已展開，告知使用者狀態
-```
-
-### 全授權模式下的 BLUEPRINT-CONTINUE
-
-使用者說「全部授權」時：
-
-```
-自動讀主藍圖 → 找 [CURRENT] 或 [STUB]（優先 CURRENT）
-→ 補 AC → 產 Stub Draft → Gate 驗證 → 存檔
-不問使用者，最終輸出：「Iter-N ({模組名}) 已展開 + 準備 BUILD」
-```
-
----
 
 ---
 
@@ -243,79 +126,57 @@ Q3: 有 [STUB] iter 且 iter-N/poc/ 無既有 draft？
 
 ---
 
-## 組裝 Blueprint + Draft（v5 路線，推薦）
+## 組裝 Blueprint + Draft
 
-5 輪完成後，v5 路線產出兩個文件：
+5 輪完成後產出兩個文件：
 
-### 文件 1: Blueprint（全局索引）
-- 路徑: `{project}/.gems/iterations/iter-{X}/poc/blueprint.md`
+### 文件 1: Blueprint（全局索引，可選）
+- 路徑: `{project}/.gems/design/blueprint.md`
 - 內容: 目標、實體定義、路由結構、迭代規劃表、API 摘要（不含動作清單）
 - 格式: `task-pipe/templates/blueprint-golden.template.v5.md`
 - 範例: `task-pipe/templates/examples/blueprint-ecotrack.example.v5.md`
 - 大小: ~100-150 行，不隨 iter 數膨脹
 
 ### 文件 2: Per-iter Draft（單一 iter 業務語意）
-- 路徑: `{project}/.gems/iterations/iter-{X}/poc/draft_iter-{X}.md`
+- 路徑: `{project}/.gems/design/draft_iter-{N}.md`
 - 內容: 動作清單 + AC 骨架（只含當前 iter 的業務語意規格）
 - 格式: `task-pipe/templates/draft-iter-golden.template.v5.md`
 - 範例: `task-pipe/templates/examples/draft-iter-1-ecotrack.example.v5.md`
 
-> v4 相容路線：仍可寫 `requirement_draft_iter-{X}.md`（Enhanced Draft 合一格式），sdid-loop 自動偵測。
-
 設定 POC Level: S(≤3 Stories) / M(≤6) / L(≤10)
 確認當前迭代號（掃描 `.gems/iterations/` 取最大 iter-N，遞增為 iter-(N+1)；無則 iter-1）
-提示使用者：「Blueprint + Draft 已完成（iter-{X}），接下來執行 sdid-loop 進入三節點流程」
+提示使用者：「Blueprint + Draft 已完成（iter-{N}），接下來執行 sdid-loop 進入三節點流程」
 
-## Draft 完成後的三節點流程（Blueprint 路線強制）
+## Draft 完成後的三節點流程（強制）
 
 > ⚠️ Draft 存檔後不是直接 BUILD，必須依序通過三個節點。
 
-### v5 路線（blueprint.md 存在時）
-
 ```
-Blueprint (blueprint.md)
-  ↓ blueprint-gate v5
-Per-iter Draft (draft_iter-N.md)
-  ↓ draft-gate v5
-Contract (contract_iter-N.ts)
-  ↓ contract-gate v5
+blueprint.md（可選）
+  ↓ blueprint-gate
+draft_iter-N.md（.gems/design/draft_iter-N.md）
+  ↓ draft-gate
   ↓
 [1] CYNEFIN-CHECK — 語意域分析，展開隱含複雜度
     node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=N
     產物: cynefin-check-pass-*.log
   ↓
-[2] PLAN — 機械轉換 contract @GEMS-STORIES → implementation_plan
-    node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-N
+[2] CONTRACT — AI 從 draft 推導型別邊界，寫 contract_iter-N.ts
+    節點：contract-gate v5
+    路徑：.gems/iterations/iter-N/contract_iter-N.ts
+    產物: contract-gate-pass-*.log + contract_iter-N.ts
+  ↓
+[3] PLAN — 機械轉換 contract @GEMS-STORIES → implementation_plan
+    node sdid-tools/blueprint/v5/spec-to-plan.cjs --target=<project> --iteration=iter-N
     產物: implementation_plan_Story-N.Y.md + .ts 骨架
   ↓
 BUILD Phase 1-4
 ```
 
-### v4 路線（requirement_draft_iter-N.md 存在時）
-
-```
-Enhanced Draft (requirement_draft_iter-N.md)
-  ↓
-[1] CYNEFIN-CHECK — 語意域分析，展開隱含複雜度
-    node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=N
-    產物: cynefin-check-pass-*.log
-  ↓
-[2] CONTRACT — 從 draft 推導型別邊界，寫 contract_iter-N.ts
-    node sdid-tools/blueprint/contract-writer.cjs --contract=<path> --target=<project> --iter=N
-    產物: contract-pass-*.log + contract_iter-N.ts
-  ↓
-[3] PLAN — 機械轉換 contract → implementation_plan
-    node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-N
-    產物: implementation_plan_Story-N.Y.md + .ts 骨架
-  ↓
-BUILD Phase 1-4
-```
-
-**為什麼需要 CONTRACT 節點：**
-- draft 的 type 欄位（CONST/SVC/API）是人工填的，容易填錯（如把 `ITrainingService` 填成 CONST）
-- contract.ts 是 Gem 對話後明確設計的型別邊界，有完整 interface body
-- plan-generator 直讀 contract @GEMS-STORIES，contract 是骨架生成的 single source of truth
-- **v5 路線：contract 由 draft-gate @PASS 後 AI 從 draft 推導，不再需要 contract-writer 工具**
+**CONTRACT 節點存在的理由：**
+- draft 的 type 欄位是人工填的，容易語意模糊
+- contract.ts 是型別邊界的 single source of truth，有完整 interface body
+- plan-generator 直讀 contract @GEMS-STORIES，contract 精確 → plan 精確
 
 > 實際執行透過 `sdid-loop` MCP tool 自動偵測並依序執行，不需要手動呼叫各工具。
 
@@ -354,10 +215,6 @@ BUILD Phase 1-4
 - Draft template: `task-pipe/templates/draft-iter-golden.template.v5.md`
 - Blueprint example: `task-pipe/templates/examples/blueprint-ecotrack.example.v5.md`
 - Draft example: `task-pipe/templates/examples/draft-iter-1-ecotrack.example.v5.md`
-
-### v4 路線（相容）
-- Enhanced Draft template: `task-pipe/templates/enhanced-draft-golden.template.v4.md`
-- EcoTrack example: `task-pipe/templates/examples/enhanced-draft-ecotrack.example.v4.md`
 
 ---
 

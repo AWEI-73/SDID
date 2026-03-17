@@ -520,8 +520,15 @@ function main() {
             log(`EXPECTED: 對 contract.ts 執行 90 分制 5 維度評分:`, 'yellow');
             log(`  ① Interface 完整性（25pts）— spec §5.5 每個函式都有對應 STORY-ITEM`, 'yellow');
             log(`  ② 型別具體性（20pts）— 無 any / unknown / 裸 object`, 'yellow');
-            log(`  ③ AC 精確化（25pts）— STORY-ITEM AC 欄指向「該函式自身的測試」，不借用其他函式的 AC`, 'yellow');
-            log(`  ④ AC 邊界覆蓋（20pts）— 有依賴者標 @GEMS-AC-SKIP: MOCK + 理由，純計算者標 @GEMS-AC-FN`, 'yellow');
+            log(`  ③ AC 映射正確性 + TDD LITE（25pts）— 三步交叉驗證:`, 'yellow');
+            log(`     [A] 列出所有 STORY-ITEM 最後一欄非 "-" 的項目 → [(funcName, AC-X.Y), ...]`, 'yellow');
+            log(`         對每一對找 @GEMS-AC: AC-X.Y，取 @GEMS-AC-FN，比對 funcName == @GEMS-AC-FN`, 'yellow');
+            log(`         不相等 → 每個扣 8（常見錯誤：同函式多個 AC 時，第一個 AC 被塞給前一個 STORY-ITEM）`, 'yellow');
+            log(`     [B] 純計算函式（LIB/CONST 無外部依賴）的 @GEMS-AC 必須有真實 INPUT + EXPECT，非佔位符`, 'yellow');
+            log(`         缺 INPUT/EXPECT → 每個扣 8`, 'yellow');
+            log(`     [C] SVC/ROUTE 等有外部依賴者：最後一欄應為 "-"，@GEMS-AC-SKIP: MOCK — <理由>`, 'yellow');
+            log(`         缺 SKIP 理由 → 每個扣 5`, 'yellow');
+            log(`  ④ AC 邊界覆蓋（20pts）— 純計算函式至少 1 正常案例 + 1 邊界/錯誤案例`, 'yellow');
             log(`  ⑤ 命名一致性（10pts）— 與 requirement_spec 實體名稱完全對齊`, 'yellow');
             log(``, 'yellow');
             log(`@PASS (≥90): 寫入 ${path.join(logsDir, 'contract-quality-pass-<timestamp>.log')}`, 'yellow');

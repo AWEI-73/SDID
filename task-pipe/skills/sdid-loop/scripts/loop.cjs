@@ -452,49 +452,108 @@ function main() {
         return;
     }
     
-    // SPEC_TO_PLAN: 直接執行 spec-to-plan 工具（不走 runner）
+    // SPEC_TO_PLAN: Task-Pipe 三段式品質關卡（對齊 Blueprint 標準）
+    // Step A: CYNEFIN-CHECK → Step B: spec-to-plan → Step C: CONTRACT quality gate → BUILD
     if (state.phase === 'SPEC_TO_PLAN') {
-        const specToPlanPath = path.join(TASK_PIPE_ROOT, 'tools', 'spec-to-plan.cjs');
-        log(`\n📐 SPEC_TO_PLAN: 機械轉換 spec → implementation_plan`, 'blue');
-        log(`   node task-pipe/tools/spec-to-plan.cjs --target=${projectPath} --iteration=${state.iteration}`, 'cyan');
+        const iterNum = state.iteration.replace('iter-', '');
+        const iterPath = path.join(projectPath, '.gems', 'iterations', state.iteration);
+        const logsDir = path.join(iterPath, 'logs');
 
-        const result = spawnSync('node', [
-            specToPlanPath,
-            `--target=${projectPath}`,
-            `--iteration=${state.iteration}`,
-        ], {
-            stdio: 'inherit',
-            cwd: TASK_PIPE_ROOT,
-            encoding: 'utf-8'
-        });
-
-        if (result.status === 0) {
-            // 更新 state 到 BUILD-1
-            try {
-                const stateManager = require(path.join(TASK_PIPE_ROOT, 'lib', 'shared', 'state-manager-v3.cjs'));
-                const current = stateManager.readState(projectPath, state.iteration) || {};
-                current.flow = current.flow || {};
-                current.flow.currentNode = 'BUILD-1';
-                stateManager.writeState(projectPath, state.iteration, current);
-            } catch (e) {
-                // state-manager 不可用，直接改 .state.json
-                const stateFile = path.join(projectPath, '.gems', 'iterations', state.iteration, '.state.json');
-                if (fs.existsSync(stateFile)) {
-                    const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-                    s.flow = s.flow || {};
-                    s.flow.currentNode = 'BUILD-1';
-                    s.lastUpdated = new Date().toISOString();
-                    fs.writeFileSync(stateFile, JSON.stringify(s, null, 2), 'utf8');
-                }
+        // ─── Step A: CYNEFIN-CHECK（強制，未通過不得進 spec-to-plan）─────────────────
+        const cynefinPassed = fs.existsSync(logsDir) &&
+            fs.readdirSync(logsDir).some(f => f.startsWith('cynefin-check-pass'));
+        if (!cynefinPassed) {
+            const pocPath = path.join(iterPath, 'poc');
+            let inputFile = null;
+            if (fs.existsSync(pocPath)) {
+                const files = fs.readdirSync(pocPath);
+                inputFile = files.find(f => f.startsWith('requirement_spec_')) || files.find(f => f.startsWith('requirement_draft_'));
             }
-            log('\n✅ spec-to-plan 完成，state 已推進到 BUILD-1', 'green');
-            log('\n@NEXT_ACTION', 'yellow');
-            log('請再次執行此腳本繼續 BUILD Phase 1。', 'yellow');
-        } else {
-            log('\n❌ spec-to-plan 失敗', 'red');
-            log('\n@NEXT_ACTION', 'yellow');
-            log('請檢查 requirement_spec 格式，確認 5.5 函式規格表存在。', 'yellow');
+            const inputPath = inputFile ? path.join(pocPath, inputFile) : path.join(iterPath, 'poc', `requirement_spec_${state.iteration}.md`);
+            log(`\n⚠️  [Task-Pipe] SPEC_TO_PLAN 前強制 CYNEFIN-CHECK（對齊 Blueprint 路線品質標準）`, 'yellow');
+            log(`\n@TASK`, 'yellow');
+            log(`ACTION: 讀 .agent/skills/sdid/references/cynefin-check.md 對以下文件做語意域分析`, 'yellow');
+            log(`FILE: ${inputPath}`, 'yellow');
+            log(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectPath} --iter=${iterNum}`, 'yellow');
+            log(`\n@REMINDER: cynefin-log-writer @PASS 後再次執行此腳本繼續`, 'yellow');
+            return;
         }
+
+        // ─── Step B: spec-to-plan（contract.ts + plan 骨架生成）─────────────────────
+        const contractPath = path.join(iterPath, 'poc', `contract_${state.iteration}.ts`);
+        const contractQualityPassed = fs.existsSync(logsDir) &&
+            fs.readdirSync(logsDir).some(f => f.startsWith('contract-quality-pass'));
+
+        if (!fs.existsSync(contractPath)) {
+            const specToPlanPath = path.join(TASK_PIPE_ROOT, 'tools', 'spec-to-plan.cjs');
+            log(`\n📐 [Task-Pipe] CYNEFIN ✓ → SPEC_TO_PLAN: 機械轉換 spec → contract.ts + plan`, 'blue');
+            log(`   node task-pipe/tools/spec-to-plan.cjs --target=${projectPath} --iteration=${state.iteration}`, 'cyan');
+
+            const result = spawnSync('node', [
+                specToPlanPath,
+                `--target=${projectPath}`,
+                `--iteration=${state.iteration}`,
+            ], {
+                stdio: 'inherit',
+                cwd: TASK_PIPE_ROOT,
+                encoding: 'utf-8'
+            });
+
+            if (result.status === 0) {
+                log('\n✅ spec-to-plan 完成', 'green');
+                log('\n@NEXT_ACTION', 'yellow');
+                log('請再次執行此腳本進行 CONTRACT quality gate。', 'yellow');
+            } else {
+                log('\n❌ spec-to-plan 失敗', 'red');
+                log('\n@NEXT_ACTION', 'yellow');
+                log('請檢查 requirement_spec 格式，確認 5.5 函式規格表存在。', 'yellow');
+            }
+            return;
+        }
+
+        // ─── Step C: CONTRACT quality gate（與 Blueprint CONTRACT gate 同規格，門檻 90）──
+        if (!contractQualityPassed) {
+            log(`\n📋 [Task-Pipe] CONTRACT Quality Gate（對齊 Blueprint 標準，門檻 90 / 5 維度）`, 'cyan');
+            log(`\n@TASK`, 'yellow');
+            log(`ACTION: 讀 .agent/skills/sdid/references/design-quality-gate.md 的 CONTRACT 節點評分細則`, 'yellow');
+            log(`FILE: ${contractPath}`, 'yellow');
+            log(`EXPECTED: 對 contract.ts 執行 90 分制 5 維度評分:`, 'yellow');
+            log(`  ① Interface 完整性（25pts）— spec §5.5 每個函式都有對應 STORY-ITEM`, 'yellow');
+            log(`  ② 型別具體性（20pts）— 無 any / unknown / 裸 object`, 'yellow');
+            log(`  ③ AC 精確化（25pts）— STORY-ITEM AC 欄指向「該函式自身的測試」，不借用其他函式的 AC`, 'yellow');
+            log(`  ④ AC 邊界覆蓋（20pts）— 有依賴者標 @GEMS-AC-SKIP: MOCK + 理由，純計算者標 @GEMS-AC-FN`, 'yellow');
+            log(`  ⑤ 命名一致性（10pts）— 與 requirement_spec 實體名稱完全對齊`, 'yellow');
+            log(``, 'yellow');
+            log(`@PASS (≥90): 寫入 ${path.join(logsDir, 'contract-quality-pass-<timestamp>.log')}`, 'yellow');
+            log(`  log 格式: @PASS | CONTRACT quality gate | Task-Pipe | <score>/100 | ${state.iteration}`, 'yellow');
+            log(`  寫完後再次執行此腳本繼續進 BUILD`, 'yellow');
+            log(`@GUIDED (65~89): 列出失分項 + 修法，AI 自行修正 contract.ts，重評只有 @PASS 或 @FAIL`, 'yellow');
+            log(`  若 STORY-ITEM 結構異動，需重跑 spec-to-plan 重新生成 plan 骨架`, 'yellow');
+            log(`@FAIL (<65): 重新修改 contract.ts，再次執行此腳本`, 'yellow');
+            log(`\n@REMINDER: contract-quality-pass log 寫入後才能進 BUILD`, 'yellow');
+            return;
+        }
+
+        // ─── CYNEFIN ✓ + spec-to-plan ✓ + CONTRACT quality gate ✓ → 推進到 BUILD-1 ──
+        try {
+            const stateManager = require(path.join(TASK_PIPE_ROOT, 'lib', 'shared', 'state-manager-v3.cjs'));
+            const current = stateManager.readState(projectPath, state.iteration) || {};
+            current.flow = current.flow || {};
+            current.flow.currentNode = 'BUILD-1';
+            stateManager.writeState(projectPath, state.iteration, current);
+        } catch (e) {
+            const stateFile = path.join(projectPath, '.gems', 'iterations', state.iteration, '.state.json');
+            if (fs.existsSync(stateFile)) {
+                const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+                s.flow = s.flow || {};
+                s.flow.currentNode = 'BUILD-1';
+                s.lastUpdated = new Date().toISOString();
+                fs.writeFileSync(stateFile, JSON.stringify(s, null, 2), 'utf8');
+            }
+        }
+        log('\n✅ [Task-Pipe] PLAN 完成（CYNEFIN ✓ + spec-to-plan ✓ + CONTRACT Quality Gate ✓）', 'green');
+        log('\n@NEXT_ACTION', 'yellow');
+        log('請再次執行此腳本繼續 BUILD Phase 1。', 'yellow');
         return;
     }
 

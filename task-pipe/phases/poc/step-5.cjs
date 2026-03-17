@@ -13,45 +13,19 @@ const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePe
 // v3.0: 引入欄位覆蓋解析
 const { extractFieldCoverage } = require('../../tools/quality-check/poc-quality-checker.cjs');
 
-// 等級限制配置
-const LEVEL_CONSTRAINTS = {
-    S: {
-        description: 'Prototype - 能跑通 UI 原型即可',
-        allowedPatterns: ['types', 'mock', 'basic-component'],
-        forbiddenPatterns: ['axios-interceptor', 'shared-utils', 'complex-state', 'middleware'],
-        story0Scope: '必要的資料型別與 Mock 資料',
-        maxStories: 3,
-    },
-    M: {
-        description: 'Standard - 專案骨架與基礎配置',
-        allowedPatterns: ['types', 'config', 'api', 'service', 'hook'],
-        forbiddenPatterns: ['complex-middleware', 'advanced-caching'],
-        story0Scope: '專案骨架與基礎配置',
-        maxStories: 6,
-    },
-    L: {
-        description: 'Strict - 完整架構規範',
-        allowedPatterns: ['*'],
-        forbiddenPatterns: [],
-        story0Scope: '完整基礎建設（types, config, shared, lib）',
-        maxStories: 10,
-    }
-};
+// 注意：S/M/L level 等級限制已移除（改用語意判斷，與 runner.cjs 對齊）
 
 function run(options) {
 
     console.log(getSimpleHeader('POC', 'Step 5'));
 
-    const { target, iteration = 'iter-1', level = 'S' } = options;
+    const { target, iteration = 'iter-1' } = options;
     const pocPath = `.gems/iterations/${iteration}/poc`;
     const specPath = `${pocPath}/requirement_spec_${iteration}.md`;
     const draftPath = path.join(target, pocPath, `requirement_draft_${iteration}.md`);
 
     // 初始化錯誤處理器
     const errorHandler = createErrorHandler('POC', 'step-5', null);
-
-    // 取得等級限制
-    const levelConfig = LEVEL_CONSTRAINTS[level.toUpperCase()] || LEVEL_CONSTRAINTS.S;
 
     // 檢查前置
     const has = {
@@ -65,8 +39,8 @@ function run(options) {
 
     if (specFile) {
         const content = fs.readFileSync(specFile, 'utf8');
-        const errors = validateSpec(content, levelConfig);
-        const gateSpec = getGateSpec(content, levelConfig);
+        const errors = validateSpec(content);
+        const gateSpec = getGateSpec(content);
 
         if (errors.length) {
             // TACTICAL_FIX 機制
@@ -228,12 +202,11 @@ ${issuesContent}
     // [A] 範疇剪枝: 分析 POC 實際驗證了什麼
     const pocAnalysis = analyzePocCoverage(target, iteration);
 
-    // [B] 等級限制: 過濾不允許的模組
-    const { allowed, deferred } = filterModulesByLevel(modules, levelConfig, pocAnalysis);
+    // [B] 已驗證分析: 標記哪些模組已在 POC 驗證（等級限制已移除）
+    const { allowed, deferred } = filterModulesByLevel(modules, pocAnalysis);
 
-    // [C] 限制 Story 數量
-    const finalModules = allowed.slice(0, levelConfig.maxStories - 1); // -1 for Story X.0
-    const overflowModules = allowed.slice(levelConfig.maxStories - 1);
+    const finalModules = allowed;
+    const overflowModules = [];
 
     // 轉換為字串陣列用於顯示
     const deferredNames = deferred.map(d => typeof d === 'string' ? d : d.name);
@@ -241,24 +214,22 @@ ${issuesContent}
 
     const iterNum = iteration.replace('iter-', '');
 
-    const templateContent = generateTemplate(target, iterNum, level, levelConfig, pocAnalysis, finalModules, deferredNames, overflowModules, deferred);
+    const templateContent = generateTemplate(target, iterNum, pocAnalysis, finalModules, deferredNames, deferred);
 
     // 黃金範例路徑
     const goldSpecPath = path.join(__dirname, '../../templates/examples/spec/requirement_spec_GOLD.md');
     const hasGoldExample = fs.existsSync(goldSpecPath);
 
     anchorOutput({
-        context: `POC Step 5 | 需求規格產出 (Level: ${level.toUpperCase()})`,
+        context: `POC Step 5 | 需求規格產出`,
         task: [
             '分析並產出需求規格書',
-            '進行範疇剪枝與等級限制',
+            '進行範疇剪枝（已驗證 vs 未驗證）',
             '定義 User Stories 與驗收標準',
             '填寫具體內容 (禁止佔位符)'
         ],
         info: {
             'Pre-check': `POC ${has.poc ? 'OK' : 'WARN'} | Draft ${has.draft ? 'OK' : 'WARN'}`,
-            'Level': `${levelConfig.description}`,
-            'Story X.0 Scope': levelConfig.story0Scope,
             'Modules': finalModules.map(m => typeof m === 'string' ? m : `${m.name} ${m.verified ? '[已驗證]' : ''}`).join(', ')
         },
         guide: {
@@ -273,8 +244,7 @@ ${issuesContent}
 
 POC Verified: ${formatList(pocAnalysis.verified)}
 Deferred: ${deferredNames.join(', ') || '無'}` : `POC Verified: ${formatList(pocAnalysis.verified)}
-Deferred: ${deferredNames.join(', ') || '無'}
-Overflow: ${overflowNames.join(', ') || '無'}`
+Deferred: ${deferredNames.join(', ') || '無'}`
         },
         template: {
             title: 'requirement_spec 結構',
@@ -288,15 +258,14 @@ Overflow: ${overflowNames.join(', ') || '無'}`
         step: 'step-5'
     });
 
-    return { verdict: 'PENDING', modules: finalModules, deferred: [...deferred, ...overflowModules] };
+    return { verdict: 'PENDING', modules: finalModules, deferred: deferred };
 }
 
-function generateTemplate(target, iterNum, level, levelConfig, pocAnalysis, finalModules, deferredNames, overflowModules, deferred) {
+function generateTemplate(target, iterNum, pocAnalysis, finalModules, deferredNames, deferred) {
     return `# 📦 ${path.basename(target)} - 需求規格書
 
-**版本**: v1.0  
-**日期**: ${new Date().toISOString().split('T')[0]}  
-**Level**: ${level.toUpperCase()}  
+**版本**: v1.0
+**日期**: ${new Date().toISOString().split('T')[0]}
 **一句話願景**: [請根據專案目標填寫一句話描述]
 
 > Status: READY FOR PLAN
@@ -332,7 +301,7 @@ ${[...deferred, ...overflowModules].length > 0 ? [...deferred, ...overflowModule
 
 ### Story ${iterNum}.0: 基礎建設 [已驗證]
 
-作為 軟體開發團隊成員，我想要 建立完整的專案基礎架構（包含${levelConfig.story0Scope}），以便於 確保後續功能開發有穩定的技術基礎。
+作為 軟體開發團隊成員，我想要 建立完整的專案基礎架構（包含型別定義、基礎配置、資料契約），以便於 確保後續功能開發有穩定的技術基礎。
 
 > 驗證狀態: [已驗證] - POC 基礎結構已實作
 
@@ -455,7 +424,7 @@ ${finalModules.map((m, i) => `| ${iterNum}.${i + 1} | [函式名稱] | [Type] | 
 
 ---
 
-## 6. 可行性評估 (Level ${level.toUpperCase()})
+## 6. 可行性評估
 
 ${finalModules.filter(m => !m.verified).length > 0 ? `### 計畫開發項目風險評估\n${finalModules.filter(m => !m.verified).map(m => `**${m.name}**: 技術風險與時程影響評估...`).join('\n')}` : '✅ 所有功能已在 POC 驗證，可直接進入開發階段。'}
 
@@ -658,16 +627,17 @@ function analyzePocCoverage(target, iteration) {
 }
 
 /**
- * [B] 等級限制: 根據 Level 過濾模組
- * 
+ * [B] 已驗證分析: 根據 POC 驗證狀態標記模組
+ * （S/M/L 等級限制已移除，僅保留 verified 狀態標記）
+ *
  * 驗證邏輯（優先順序）：
  * 1. 如果有 @GEMS-VERIFIED，直接使用（最可靠）
  * 2. 如果模組名稱出現在 @GEMS-STORY 標籤中 → 已驗證
  * 3. 如果模組名稱與 @GEMS-FUNCTION 有關聯 → 已驗證
  * 4. 關鍵詞重疊檢查
- * 5. 其他 → 未驗證，Level S 下會被 DEFERRED
+ * 5. 其他 → 未驗證，但仍放入 allowed（不因等級而 DEFER）
  */
-function filterModulesByLevel(modules, levelConfig, pocAnalysis) {
+function filterModulesByLevel(modules, pocAnalysis) {
     const allowed = [];
     const deferred = [];
 
@@ -722,22 +692,7 @@ function filterModulesByLevel(modules, levelConfig, pocAnalysis) {
             moduleObj.verified = true;
         }
 
-        // 檢查是否包含禁用模式
-        const hasForbidden = levelConfig.forbiddenPatterns.some(pattern =>
-            moduleNameLower.includes(pattern.toLowerCase())
-        );
-
-        if (hasForbidden) {
-            deferred.push(moduleObj);
-            continue;
-        }
-
-        // Level S: 未驗證的功能延期
-        if (levelConfig === LEVEL_CONSTRAINTS.S && !moduleObj.verified) {
-            deferred.push(moduleObj);
-            continue;
-        }
-
+        // 所有模組都放入 allowed（等級限制已移除）
         allowed.push(moduleObj);
     }
 
@@ -802,7 +757,7 @@ function hasFile(target, iteration, pattern) {
     return false;
 }
 
-function validateSpec(content, levelConfig) {
+function validateSpec(content) {
     const errors = [];
     if (!/用戶故事|User Story/i.test(content)) errors.push('缺用戶故事');
     if (!/驗收標準|Given.*When.*Then/i.test(content)) errors.push('缺驗收標準');
@@ -818,15 +773,6 @@ function validateSpec(content, levelConfig) {
     // [防膨脹] 檢查是否有範疇聲明
     if (!/範疇聲明|Scope Declaration|DEFERRED/i.test(content)) {
         errors.push('缺範疇聲明 (需列出 DEFERRED 項目)');
-    }
-
-    // [等級限制] 檢查禁用模式
-    if (levelConfig && levelConfig.forbiddenPatterns.length > 0) {
-        for (const pattern of levelConfig.forbiddenPatterns) {
-            if (content.toLowerCase().includes(pattern.toLowerCase())) {
-                errors.push(`包含禁用模式: ${pattern} (Level 限制)`);
-            }
-        }
     }
 
     // [5.5 函式規格表] 必須存在且無佔位符
@@ -897,7 +843,7 @@ function formatList(list, limit = 10) {
 /**
  * 取得 POC Step 5 的門控規格
  */
-function getGateSpec(content, levelConfig) {
+function getGateSpec(content) {
     return {
         checks: [
             { name: '用戶故事', pattern: '/用戶故事|User Story/i', pass: /用戶故事|User Story/i.test(content), desc: '用戶故事區塊' },

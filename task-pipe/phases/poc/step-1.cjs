@@ -1215,14 +1215,7 @@ function checkDraft(draft) {
     issues.push('用詞過於模糊');
   }
 
-  // ============================================
-  // 8. 檢查 Level 是否有效
-  // ============================================
-  // 支援 **Level**: 和 **POC Level**: 兩種格式
-  const levelMatch = draft.match(/\*\*(POC )?Level\*\*:\s*([SML])/i);
-  if (!levelMatch) {
-    issues.push('POC 驗證模式 Level 未設定 (S/M/L)');
-  }
+  // 注意：Level S/M/L 等級限制已移除，不再要求 Level 欄位（runner.cjs 對齊）
 
   return issues;
 }

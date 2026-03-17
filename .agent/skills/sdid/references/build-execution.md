@@ -2,8 +2,8 @@
 
 ## 概覽
 
-不管從 Blueprint 還是 Task-Pipe 進來，到了 implementation_plan 之後就是同一套 BUILD Phase 1-4（v6）。
-差異只在 BUILD 完成後的收尾：Blueprint 走 VERIFY，Task-Pipe 走 SCAN。
+到了 implementation_plan 之後就是同一套 BUILD Phase 1-4（v6）。
+BUILD 完成後統一走 SCAN → VERIFY。
 
 ## 執行方式
 
@@ -70,11 +70,9 @@
 
 ## BUILD 完成後
 
-### Blueprint 路線
-BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD 或 VERIFY）。
-
-### Task-Pipe 路線
-BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動進入 SCAN。
+BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動偵測下一步：
+- 還有未完成的 Story → 繼續下一個 Story 的 BUILD Phase 1
+- 所有 Story 完成 → SCAN → VERIFY
 
 ## 禁止事項
 
@@ -88,8 +86,6 @@ BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動進入 SCAN
 ## Log 檔案位置
 
 所有 log 在 `.gems/iterations/iter-X/logs/`：
-- `poc-step-N-{pass|error}-*.log` — POC 結果
-- `plan-step-N-{pass|error}-*.log` — PLAN 結果
 - `build-phase-N-Story-X.Y-{pass|error}-*.log` — BUILD 結果
 - `gate-check-{pass|error}-*.log` — Blueprint Gate 結果
 - `gate-verify-{pass|error}-*.log` — Verify 結果

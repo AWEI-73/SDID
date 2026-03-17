@@ -213,10 +213,14 @@ function checkTagQuality(srcPath, story, target, iteration) {
       }
     }
 
-    // P0/P1 缺少 GEMS-FLOW（WARNING，不阻擋）
+    // P0 缺少 GEMS-FLOW → BLOCKER；P1+ 略過（不擋）
     for (const fn of storyFunctions) {
-      if ((fn.priority === 'P0' || fn.priority === 'P1') && !fn.flow) {
-        result.warnings.push({ file: fn.file, message: `${fn.name} (${fn.priority}) 缺少 GEMS-FLOW` });
+      if (fn.priority === 'P0' && !fn.flow) {
+        result.critical.push({
+          file: fn.file || 'src/',
+          message: `${fn.name} (P0) 缺少 GEMS-FLOW，P0 函式必須有 flow 標籤才能進 Phase-4 驗證`,
+          acSpec: fn.acIds ? fn.acIds.join(', ') : null
+        });
       }
     }
   } catch { /* 掃描失敗不阻擋 */ }

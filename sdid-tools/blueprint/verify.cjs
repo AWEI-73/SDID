@@ -666,7 +666,7 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
         `補齊 AC 標記後重跑: node sdid-tools/blueprint/verify.cjs --draft=${args.draft} --target=${args.target}`,
         { ...logOptions, details });
     } else {
-      console.log(`\n@WARN | ${summary}`);
+      console.log(`\n@NEEDS-FIX | ${summary}\n  → 補齊 AC 標記後重跑: node sdid-tools/blueprint/verify.cjs --draft=${args.draft} --target=${args.target}`);
     }
   } else if (s.missing > 0) {
     const summary = `Blueprint Verify — ${s.missing} 個藍圖動作尚未實作 (覆蓋率 ${s.coverage}%)`;
@@ -675,7 +675,7 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
         `補齊缺失函式後重跑: node sdid-tools/blueprint/verify.cjs --draft=${args.draft} --target=${args.target}`,
         { ...logOptions, details });
     } else {
-      console.log(`\n@WARN | ${summary}`);
+      console.log(`\n@NEEDS-FIX | ${summary}\n  → 補齊缺失函式後重跑: node sdid-tools/blueprint/verify.cjs --draft=${args.draft} --target=${args.target}`);
     }
   }
   if (s.extra > 0) {

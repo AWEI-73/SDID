@@ -13,12 +13,6 @@ function checkFormatCompleteness(draft, rawContent = '') {
   if (!draft.goal || draft.goal.length < 10) {
     issues.push({ level: 'BLOCKER', code: 'FMT-001', msg: '缺少「一句話目標」或長度不足 10 字' });
   }
-  if (!draft.requirement || draft.requirement.length < 20) {
-    issues.push({ level: 'WARN', code: 'FMT-002', msg: '「用戶原始需求」過短或缺失 (建議 50 字以上)' });
-  }
-  if (!draft.groups || draft.groups.length === 0) {
-    issues.push({ level: 'WARN', code: 'FMT-003', msg: '缺少「族群識別」表格' });
-  }
   if (Object.keys(draft.entities).length === 0) {
     // 區分「完全沒寫」和「有寫但 parser 解不到（格式錯誤）」
     const hasEntitySection = /#{2,4}\s*(?:2\.2|2\.)\s*實體定義/.test(rawContent);
@@ -75,12 +69,8 @@ function checkFormatCompleteness(draft, rawContent = '') {
     (mod.items || []).some(item => (item.type || '').toUpperCase() === 'ROUTE')
   );
   const hasRouteStructure = !!(draft.routes && draft.routes.trim().length > 0);
-  if (!hasRouteStructure) {
-    if (hasRouteActions) {
-      issues.push({ level: 'BLOCKER', code: 'FMT-012', msg: '有 ROUTE 類型動作但缺少路由結構定義。請加入 src/ 目錄樹，說明各模組的檔案路徑' });
-    } else {
-      issues.push({ level: 'WARN', code: 'FMT-012', msg: '缺少路由結構定義，建議加入 src/ 目錄樹讓 AI 知道檔案放哪' });
-    }
+  if (!hasRouteStructure && hasRouteActions) {
+    issues.push({ level: 'BLOCKER', code: 'FMT-012', msg: '有 ROUTE 類型動作但缺少路由結構定義。請加入 src/ 目錄樹，說明各模組的檔案路徑' });
   }
 
   // FMT-010: 實體欄位數量 — 每個實體至少 3 個欄位
@@ -183,10 +173,15 @@ function checkTagIntegrity(draft, targetIter) {
         issues.push({ level: 'BLOCKER', code: 'TAG-002', msg: `${prefix} 優先級格式錯誤: "${item.priority}" (應為 P0-P3)` });
       }
       if (!item.flow || item.flow.trim() === '') {
-        issues.push({ level: 'WARN', code: 'TAG-003', msg: `${prefix} 缺少流向 (flow)，將影響 Flow 品質分數` });
+        const p = (item.priority || '').toUpperCase();
+        if (p === 'P0' || p === 'P1') {
+          issues.push({ level: 'BLOCKER', code: 'TAG-003', msg: `${prefix} P0/P1 動作缺少流向 (flow)，必須填入執行步驟（如 VALIDATE→PROCESS→RETURN）` });
+        }
+        // P2/P3 不報錯，略過
       }
       if (!item.deps) {
-        issues.push({ level: 'WARN', code: 'TAG-004', msg: `${prefix} 缺少依賴欄位 (deps)，將預設為「無」` });
+        // auto-patch: 靜默補「無」，不加 issue
+        item.deps = '無';
       }
     }
   }
@@ -194,32 +189,6 @@ function checkTagIntegrity(draft, targetIter) {
   return issues;
 }
 
-/**
- * 4. Flow 步驟數檢查 — 每個 flow 應有 3-7 個步驟
- */
-function checkFlowStepCount(draft, targetIter) {
-  const issues = [];
-
-  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.iter !== targetIter) continue;
-    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-
-    for (const item of (mod.items || [])) {
-      if (!item.flow) continue;
-      const steps = item.flow.split('→').map(s => s.trim()).filter(Boolean);
-      const prefix = `[${modName}/${item.techName}]`;
-
-      if (steps.length < 3) {
-        issues.push({ level: 'WARN', code: 'FLOW-001', msg: `${prefix} flow 步驟過少 (${steps.length} 步，建議 3-7)` });
-      }
-      if (steps.length > 7) {
-        issues.push({ level: 'WARN', code: 'FLOW-002', msg: `${prefix} flow 步驟過多 (${steps.length} 步，建議拆分函式)` });
-      }
-    }
-  }
-
-  return issues;
-}
 
 /**
  * 5. 依賴無循環 — 模組間 deps 不能形成環
@@ -306,25 +275,6 @@ function checkIterationDAG(draft) {
   return issues;
 }
 
-/**
- * 7. 基礎設施拆分建議 — shared 動作數過多
- */
-function checkInfraSize(draft) {
-  const issues = [];
-
-  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-    const count = (mod.items || []).length;
-    if (count > 8) {
-      issues.push({
-        level: 'WARN', code: 'SIZE-001',
-        msg: `模組 ${modName} 有 ${count} 個動作 (>8)，建議拆分為子模組`
-      });
-    }
-  }
-
-  return issues;
-}
 
 /**
  * 8. Stub 最低資訊檢查 — iter-2+ 的 Stub 必須有描述 + 依賴 + 函式 flow 清單
@@ -339,18 +289,6 @@ function checkStubMinimum(draft, targetIter) {
     if (mod.iter === targetIter) continue;
 
     const prefix = `[Stub: ${modName}]`;
-
-    if (!mod.stubDescription || mod.stubDescription.trim() === '') {
-      issues.push({ level: 'WARN', code: 'STUB-001', msg: `${prefix} 缺少描述` });
-    }
-    // 檢查迭代規劃表中是否有對應的 deps
-    const planEntry = draft.iterationPlan.find(e => e.module === modName);
-    if (!planEntry || (planEntry.deps || []).length === 0) {
-      // 不一定是問題，shared 可能沒有 deps
-      if (modName !== 'shared') {
-        issues.push({ level: 'WARN', code: 'STUB-002', msg: `${prefix} 迭代規劃表中缺少依賴資訊` });
-      }
-    }
 
     // STUB-003: Stub 必須有函式 flow 清單（至少一個 item 有 flow 欄位）
     // expand v2.0 只做格式搬運，沒有 flow 清單就無法展開
@@ -389,16 +327,6 @@ function checkPlanActionConsistency(draft) {
     }
   }
 
-  // 動作清單有但規劃表沒有
-  for (const mod of actionModules) {
-    if (!planModules.has(mod)) {
-      issues.push({
-        level: 'WARN', code: 'CONS-002',
-        msg: `模組 "${mod}" 有動作清單但不在迭代規劃表中`
-      });
-    }
-  }
-
   return issues;
 }
 
@@ -423,13 +351,7 @@ function checkDraftStatus(rawContent) {
 
   // 匹配草稿狀態行 (v3: 藍圖狀態; v2: 草稿狀態)
   const statusMatch = rawContent.match(/\*\*(?:草稿|藍圖)狀態\*\*:\s*(.+)/);
-  if (!statusMatch) {
-    issues.push({
-      level: 'WARN', code: 'STS-001',
-      msg: '找不到「草稿狀態」或「藍圖狀態」欄位，建議加入'
-    });
-    return issues;
-  }
+  if (!statusMatch) return issues;
 
   const statusText = statusMatch[1].trim();
   // 先判斷 PENDING（[~]+PENDING 組合，或 ⏳ 符號，或純 PENDING 文字）
@@ -442,11 +364,6 @@ function checkDraftStatus(rawContent) {
     issues.push({
       level: 'BLOCKER', code: 'STS-002',
       msg: `草稿狀態為 "${statusText}"，必須完成所有釐清項目後標記為 [x] DONE 才能進入 Gate`
-    });
-  } else if (!isDone) {
-    issues.push({
-      level: 'WARN', code: 'STS-003',
-      msg: `草稿狀態不明確: "${statusText}"，建議使用 [x] DONE 或 [~] PENDING`
     });
   }
 
@@ -473,8 +390,8 @@ function checkDepsConsistency(draft, targetIter) {
 
     if (moduleDeps.length > 0 && planDeps.length === 0) {
       issues.push({
-        level: 'WARN', code: 'DEPCON-001',
-        msg: `[${moduleName}] 模組定義有依賴 [${moduleDeps.join(', ')}]，但迭代規劃表 deps 為「無」，建議同步`
+        level: 'BLOCKER', code: 'DEPCON-001',
+        msg: `[${moduleName}] 模組定義有依賴 [${moduleDeps.join(', ')}]，但迭代規劃表 deps 為「無」。請同步迭代規劃表的依賴欄位，否則 Task-Pipe 排程將出錯`
       });
     }
 
@@ -486,8 +403,8 @@ function checkDepsConsistency(draft, targetIter) {
       });
       if (allItemDepsEmpty) {
         issues.push({
-          level: 'WARN', code: 'DEPCON-002',
-          msg: `[${moduleName}] 模組依賴 [${moduleDeps.join(', ')}]，但動作清單所有 item 的 deps 都是「無」，建議標註具體依賴`
+          level: 'BLOCKER', code: 'DEPCON-002',
+          msg: `[${moduleName}] 模組依賴 [${moduleDeps.join(', ')}]，但動作清單所有 item 的 deps 都是「無」。請在動作清單的 deps 欄標註具體依賴，否則 Phase-3 掃描器無法建立正確依賴圖`
         });
       }
     }
@@ -539,13 +456,8 @@ function checkIterActionBudget(draft) {
 
     if (count > BLOCK_LIMIT) {
       issues.push({
-        level: 'WARN', code: 'BUDGET-001',
-        msg: `[${modName}] Story 有 ${count} 個動作，超過上限 ${BLOCK_LIMIT}，將影響 Story 密度分數。請拆成多個 Story（不是多個 iter），每個 Story 建議 4-6 個動作`
-      });
-    } else if (count > WARN_LIMIT) {
-      issues.push({
-        level: 'WARN', code: 'BUDGET-002',
-        msg: `[${modName}] Story 有 ${count} 個動作 (建議上限 ${WARN_LIMIT})，注意開發品質，必要時可拆為 Story-X.0 + Story-X.1`
+        level: 'BLOCKER', code: 'BUDGET-001',
+        msg: `[${modName}] Story 有 ${count} 個動作，超過硬限制 ${BLOCK_LIMIT}。請拆成多個 Story（不是多個 iter），每個 Story 建議 4-6 個動作。拆法：依前後端分開，或依資料流 read/write 分開`
       });
     }
   }
@@ -656,12 +568,7 @@ function checkEvolutionLayers(draft) {
       const techName = item.techName || '';
       if (techName.includes('[Modify]') || techName.includes('[modify]')) {
         const baseName = techName.replace(/\s*\[Modify\]/i, '').trim();
-        if (!actionEvolutionMap[baseName]) {
-          issues.push({
-            level: 'WARN', code: 'EVO-002',
-            msg: `[${modName}/${techName}] Modify 動作但找不到對應的 BASE 動作 "${baseName}"`
-          });
-        }
+        // EVO-002 已移除（Modify 找不到 BASE 不擋，交由 MOD-001 把關）
       }
     }
   }
@@ -705,126 +612,7 @@ function checkAPIActionConsistency(draft, targetIter) {
       return m ? m[1] : a.trim();
     }));
 
-    for (const item of (actionData.items || [])) {
-      const type = (item.type || '').toUpperCase();
-      if (!['SVC', 'API', 'ROUTE'].includes(type)) continue;
-      const techName = (item.techName || '').trim();
-      if (techName && !apiFnNames.has(techName)) {
-        issues.push({
-          level: 'WARN', code: 'API-002',
-          msg: `[${modName}] 動作 "${techName}" (${type}) 不在公開 API 列表中，是否為內部函式？`
-        });
-      }
-    }
-  }
-
-  return issues;
-}
-
-/**
- * 16. Flow 精確度 — 偵測泛用 flow，要求 step 名稱有業務語意
- */
-function checkFlowPrecision(draft, targetIter) {
-  const issues = [];
-
-  // 泛用 step 名稱黑名單 (全部都是這些 = 太模糊)
-  const GENERIC_STEPS = new Set([
-    'INIT', 'PROCESS', 'RETURN', 'START', 'END', 'EXECUTE',
-    'INPUT', 'OUTPUT', 'HANDLE', 'RUN', 'DO', 'FINISH',
-  ]);
-
-  // 已知合理的型別定義 flow (CONST 類型允許泛用)
-  const TYPE_FLOWS = new Set([
-    'DEFINE→FREEZE→EXPORT',
-    'DEFINE→VALIDATE→FREEZE→EXPORT',
-    'DEFINE→VALIDATE→EXPORT',
-  ]);
-
-  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.iter !== targetIter) continue;
-    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-
-    for (const item of (mod.items || [])) {
-      if (!item.flow) continue;
-      const type = (item.type || '').toUpperCase();
-      const flow = item.flow.trim();
-
-      // CONST/LIB 類型允許已知的型別定義 flow
-      if (['CONST', 'LIB'].includes(type) && TYPE_FLOWS.has(flow)) continue;
-
-      const steps = flow.split('→').map(s => s.trim().toUpperCase());
-      const genericCount = steps.filter(s => GENERIC_STEPS.has(s)).length;
-      const prefix = `[${modName}/${item.techName}]`;
-
-      // 如果所有 step 都是泛用詞彙 → WARN（進 SCORE 扣分）
-      if (genericCount === steps.length && steps.length > 0) {
-        issues.push({
-          level: 'WARN', code: 'FLOW-010',
-          msg: `${prefix} flow "${flow}" 全部是泛用步驟，缺乏業務語意，將影響 Flow 品質分數。應改為具體步驟如 VALIDATE_INPUT→SERIALIZE_DATA→FORMAT_OUTPUT→RETURN`
-        });
-      }
-      // 如果超過一半是泛用詞彙 → WARN
-      else if (genericCount > steps.length / 2) {
-        issues.push({
-          level: 'WARN', code: 'FLOW-011',
-          msg: `${prefix} flow "${flow}" 多數步驟為泛用名稱 (${genericCount}/${steps.length})，建議細化`
-        });
-      }
-    }
-  }
-
-  return issues;
-}
-
-/**
- * 17. 公開 API 簽名完整性 — 公開 API 應包含參數型別和回傳型別
- */
-function checkAPISignatureCompleteness(draft, targetIter) {
-  const issues = [];
-
-  for (const [modName, mod] of Object.entries(draft.modules)) {
-    const apiList = mod.publicAPI || [];
-    if (apiList.length === 0) continue;
-
-    // 只檢查當前 iter 的模組
-    const actionData = draft.moduleActions[modName];
-    if (!actionData || actionData.iter !== targetIter) continue;
-    if (actionData.fillLevel === 'stub' || actionData.fillLevel === 'done') continue;
-
-    for (const apiLine of apiList) {
-      const prefix = `[${modName}]`;
-
-      // 檢查是否有參數括號
-      if (!apiLine.includes('(')) {
-        issues.push({
-          level: 'WARN', code: 'SIG-001',
-          msg: `${prefix} API "${apiLine}" 缺少參數簽名，建議寫成 functionName(param: Type): ReturnType`
-        });
-        continue;
-      }
-
-      // 檢查是否有回傳型別
-      if (!apiLine.match(/\)\s*:\s*\w+/)) {
-        issues.push({
-          level: 'WARN', code: 'SIG-002',
-          msg: `${prefix} API "${apiLine}" 缺少回傳型別，建議加上 ): ReturnType`
-        });
-      }
-
-      // 檢查參數是否有型別標註
-      const paramsMatch = apiLine.match(/\(([^)]*)\)/);
-      if (paramsMatch && paramsMatch[1].trim()) {
-        const params = paramsMatch[1].split(',').map(p => p.trim());
-        for (const param of params) {
-          if (param && !param.includes(':')) {
-            issues.push({
-              level: 'WARN', code: 'SIG-003',
-              msg: `${prefix} API "${apiLine}" 參數 "${param}" 缺少型別標註`
-            });
-          }
-        }
-      }
-    }
+    // API-002 已移除（內部函式不需強制列入公開 API）
   }
 
   return issues;
@@ -872,46 +660,15 @@ function parseDefinedACs(rawContent) {
  *   ACC-002: 動作清單的 AC 編號在「驗收條件」區塊找不到定義（防止空殼 AC）
  */
 function checkACIntegrity(draft, targetIter, rawContent) {
-  const issues = [];
-  const definedACs = parseDefinedACs(rawContent);
-
-  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.iter !== targetIter) continue;
-    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-
-    for (const item of (mod.items || [])) {
-      const p = (item.priority || '').toUpperCase();
-      if (p !== 'P0' && p !== 'P1') continue;
-
-      const ac = (item.ac || item['AC'] || '').trim();
-      if (!ac || ac === '-' || ac === '無') {
-        issues.push({
-          level: 'WARN',
-          code: 'ACC-001',
-          msg: `[${modName}/${item.techName}] P0/P1 動作缺少 AC 欄位，將影響 AC 品質分數。請在動作清單加入 AC 編號（如 AC-1.0），並在「驗收條件」區塊定義 Given/When/Then`
-        });
-        continue;
-      }
-
-      // ACC-002: AC 編號有填，但驗收條件區塊找不到對應定義
-      if (rawContent && definedACs.size > 0) {
-        // 支援多個 AC（逗號分隔，如 "AC-1.0, AC-1.1"）
-        const acIds = ac.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^AC-\d+\.\d+$/i.test(s));
-        for (const acId of acIds) {
-          if (!definedACs.has(acId)) {
-            issues.push({
-              level: 'WARN',
-              code: 'ACC-002',
-              msg: `[${modName}/${item.techName}] AC 編號 "${acId}" 找不到對應定義，將影響 AC 品質分數。請在動作清單下方加入 AC 骨架行: - ${acId} — techName: Given ... / When ... / Then ...（或在獨立「驗收條件」區塊定義）`
-            });
-          }
-        }
-      }
-    }
-  }
-
-  return issues;
+  // ACC-001/002 已移除（WARN 無效，不改行為）
+  // AC 覆蓋率由 blueprint-score 計算，不在 gate 擋
+  return [];
 }
+
+/**
+ * 22. AC 品質檢查 — 已移除 (ACC-003 WARN 無效)
+ */
+function checkACQuality() { return []; }
 
 /**
  * 18. 垂直切片完整性 (VSC) v2.0
@@ -959,72 +716,7 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
     }
   }
 
-  // ── per-iter 聚合：收集每個 iter 的 type 組成 ──
-  const iterTypes = {}; // { iterNum: { backend: bool, frontend: bool, modules: [], apiOnly: bool } }
-
-  for (const [modName, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.fillLevel === 'done') continue;
-    if (isFoundationModule(modName)) continue;
-
-    const iterNum = mod.iter;
-    if (!iterTypes[iterNum]) iterTypes[iterNum] = { backend: false, frontend: false, modules: [], isStub: false, apiOnly: false };
-
-    const items = mod.items || [];
-    const isStub = mod.fillLevel === 'stub';
-    if (isStub) iterTypes[iterNum].isStub = true;
-    iterTypes[iterNum].modules.push(modName);
-    // 如果 iter 內所有模組都是純後端模組，標記豁免
-    if (isApiOnlyModule(modName)) iterTypes[iterNum].apiOnly = true;
-
-    for (const item of items) {
-      const t = (item.type || '').toUpperCase();
-      if (BACKEND_TYPES.has(t)) iterTypes[iterNum].backend = true;
-      if (FRONTEND_TYPES.has(t)) iterTypes[iterNum].frontend = true;
-    }
-  }
-
-  // ── CURRENT iter：per-iter 聚合 WARN ──
-  const currentIterData = iterTypes[targetIter];
-  if (currentIterData && !currentIterData.isStub) {
-    const { backend, frontend, modules, apiOnly } = currentIterData;
-    const modList = modules.join(', ');
-
-    // 純後端模組（GAS/API/Backend）豁免 VSC-002
-    if (backend && !frontend && !apiOnly) {
-      issues.push({
-        level: 'WARN', code: 'VSC-002',
-        msg: `iter-${targetIter} [${modList}] 只有後端 story，沒有前端層 (UI/ROUTE)。如果是刻意的純 API iter 可忽略，否則建議加入前端 story 讓使用者可操作`
-      });
-    }
-    if (frontend && !backend) {
-      issues.push({
-        level: 'WARN', code: 'VSC-003',
-        msg: `iter-${targetIter} [${modList}] 只有前端 story，沒有後端層 (SVC/API)。建議確認後端邏輯是否已在前一個 iter 完成`
-      });
-    }
-  }
-
-  // ── STUB iter：per-iter 聚合 WARN（設計草稿，不強制）──
-  for (const [iterNum, data] of Object.entries(iterTypes)) {
-    if (parseInt(iterNum) === targetIter) continue;
-    if (!data.isStub) continue;
-    const { backend, frontend, modules, apiOnly } = data;
-    const modList = modules.join(', ');
-
-    // 純後端模組豁免 VSC-004
-    if (backend && !frontend && !apiOnly) {
-      issues.push({
-        level: 'WARN', code: 'VSC-004',
-        msg: `[Stub] iter-${iterNum} [${modList}] 目前只規劃了後端 story。建議在同一個 iter 加入前端 story，或確認前端會在後續 iter 補上`
-      });
-    }
-    if (frontend && !backend) {
-      issues.push({
-        level: 'WARN', code: 'VSC-005',
-        msg: `[Stub] iter-${iterNum} [${modList}] 目前只規劃了前端 story，缺少後端層。建議補上 SVC/API story`
-      });
-    }
-  }
+  // VSC-002/003/004/005 已移除（WARN 不改行為，前後端平衡由 blueprint-score 記分）
 
   return issues;
 }
@@ -1042,108 +734,14 @@ function checkVerticalSliceCompleteness(draft, targetIter) {
  * 分級: 90+ EXCELLENT / 75-89 GOOD / 60-74 FAIR / 0-59 WEAK
  */
 
-/**
- * 22. AC 品質檢查 (M14) — P0/P1 的 AC 是否只有 happy path
- *
- * ACC-003 (WARN): P0/P1 的 AC 描述中沒有 edge/failure 關鍵字
- *
- * 偵測邏輯：
- *   - 從 rawContent 的「驗收條件」區塊，找到每個 AC 的 Given/When/Then 文字
- *   - 掃描是否含有 edge/failure 語意關鍵字
- *   - 沒有 → WARN（不 BLOCKER，不卡流程）
- *
- * 邊界/失敗關鍵字（中英文）:
- *   null, empty, invalid, 0, 負, 空, 邊界, edge, boundary,
- *   error, fail, throw, exception, 錯誤, 失敗, 不存在, 缺少, 無效
- */
-function checkACQuality(draft, targetIter, rawContent) {
-  const issues = [];
-  if (!rawContent) return issues;
-
-  // 收集 P0/P1 動作的 AC 編號
-  const p01AcIds = new Set();
-  for (const [, mod] of Object.entries(draft.moduleActions)) {
-    if (mod.iter !== targetIter) continue;
-    if (mod.fillLevel === 'stub' || mod.fillLevel === 'done') continue;
-    for (const item of (mod.items || [])) {
-      const p = (item.priority || '').toUpperCase();
-      if (p !== 'P0' && p !== 'P1') continue;
-      const ac = (item.ac || item['AC'] || '').trim();
-      if (!ac || ac === '-' || ac === '無') continue;
-      const acIds = ac.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^AC-\d+\.\d+$/i.test(s));
-      for (const id of acIds) p01AcIds.add(id);
-    }
-  }
-
-  if (p01AcIds.size === 0) return issues;
-
-  // 從 rawContent 提取每個 AC 的完整描述文字
-  // 支援格式: **AC-1.0** — ...\n- Given: ...\n- When: ...\n- Then: ...
-  const EDGE_FAILURE_KEYWORDS = [
-    // 英文
-    /\bnull\b/i, /\bempty\b/i, /\binvalid\b/i, /\bedge\b/i, /\bboundary\b/i,
-    /\berror\b/i, /\bfail/i, /\bthrow\b/i, /\bexception\b/i, /\bmissing\b/i,
-    /\bnegative\b/i, /\bzero\b/i, /\bundefined\b/i,
-    // 中文
-    /空陣列|空值|空字串/, /無效/, /錯誤/, /失敗/, /不存在/, /缺少/, /負數/, /邊界/, /例外/,
-    // v2.3 新格式子項標題
-    /^[-\s]*Edge:/im, /^[-\s]*Failure:/im,
-  ];
-
-  // 切割 rawContent 成 AC 區塊
-  const lines = rawContent.split('\n');
-  let currentAcId = null;
-  let currentAcLines = [];
-  const acBodies = {}; // { 'AC-1.0': '...full text...' }
-
-  for (const line of lines) {
-    const acMatch = line.match(/\*{0,2}(AC-\d+\.\d+)\*{0,2}/i);
-    if (acMatch) {
-      if (currentAcId) acBodies[currentAcId] = currentAcLines.join('\n');
-      currentAcId = `AC-${acMatch[1].match(/\d+\.\d+/)[0]}`;
-      currentAcLines = [line];
-    } else if (currentAcId) {
-      // 遇到下一個 AC 標題或空行後的新標題就停
-      if (/^\*{2}AC-\d+/.test(line) || /^#{2,4}\s/.test(line)) {
-        acBodies[currentAcId] = currentAcLines.join('\n');
-        currentAcId = null;
-        currentAcLines = [];
-      } else {
-        currentAcLines.push(line);
-      }
-    }
-  }
-  if (currentAcId) acBodies[currentAcId] = currentAcLines.join('\n');
-
-  // 檢查每個 P0/P1 AC 有沒有 edge/failure 關鍵字
-  for (const acId of p01AcIds) {
-    const body = acBodies[acId];
-    if (!body) continue; // 找不到 body，ACC-002 已處理
-    const hasEdgeOrFailure = EDGE_FAILURE_KEYWORDS.some(re => re.test(body));
-    if (!hasEdgeOrFailure) {
-      issues.push({
-        level: 'WARN',
-        code: 'ACC-003',
-        msg: `${acId} (P0/P1) 只有 happy path，建議補充 edge/failure case。例如: 空陣列輸入、null 參數、無效格式、邊界值（0 或負數）等`
-      });
-    }
-  }
-
-  return issues;
-}
-
 module.exports = {
   checkFormatCompleteness,
   checkPlaceholders,
   checkDraftStatus,
   checkTagIntegrity,
-  checkFlowStepCount,
-  checkFlowPrecision,
   checkAPIActionConsistency,
-  checkAPISignatureCompleteness,
   checkDependencyCycles,
   checkIterationDAG,
-  checkInfraSize,
   checkStubMinimum,
   checkPlanActionConsistency,
   checkLevelLimits,

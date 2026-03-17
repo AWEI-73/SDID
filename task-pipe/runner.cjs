@@ -733,14 +733,19 @@ function main() {
     process.exit(0);
   }
 
-  const validPhases = ['POC', 'BUILD', 'SCAN'];
+  const validPhases = ['BUILD', 'SCAN'];
   if (!validPhases.includes(options.phase)) {
-    log(`✗ Invalid phase: ${options.phase}`, 'red');
-    log(`  Valid: ${validPhases.join(', ')}`, 'yellow');
+    if (options.phase === 'POC') {
+      log(`✗ POC phase is deprecated. Design layer now uses sdid-tools blueprint gates.`, 'red');
+      log(`  → node sdid-tools/blueprint/v5/draft-gate.cjs --draft=<path> --target=<project>`, 'yellow');
+    } else {
+      log(`✗ Invalid phase: ${options.phase}`, 'red');
+      log(`  Valid: ${validPhases.join(', ')}`, 'yellow');
+    }
     process.exit(1);
   }
 
-  if (['POC', 'BUILD'].includes(options.phase) && !options.step) {
+  if (['BUILD'].includes(options.phase) && !options.step) {
     log(`✗ ${options.phase} requires --step parameter`, 'red');
     process.exit(1);
   }

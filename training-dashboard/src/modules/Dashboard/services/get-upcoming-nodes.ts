@@ -52,7 +52,9 @@ export function getUpcomingNodes(withinDays: number = 7): UpcomingNode[] {
     if (!cls) continue;
 
     const dueDate = calcNodeDate(cls.start_date, node.offset_days);
-    const due = new Date(dueDate);
+    // 用本地時間解析，避免 UTC 時區偏移
+    const [dy, dm, dd] = dueDate.split('-').map(Number);
+    const due = new Date(dy, dm - 1, dd);
     if (due < today || due > limit) continue;
 
     const daysUntil = Math.round((due.getTime() - today.getTime()) / 86400000);

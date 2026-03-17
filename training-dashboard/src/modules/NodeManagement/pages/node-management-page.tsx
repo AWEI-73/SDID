@@ -18,12 +18,22 @@ interface NodeWithDate extends ClassNode {
   daysUntil: number;
 }
 
+interface Template {
+  id: number;
+  name: string;
+  description: string | null;
+  isDefault: boolean;
+}
+
 export default function NodeManagementPage() {
   const [classes, setClasses] = useState<TrainingClass[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [nodes, setNodes] = useState<NodeWithDate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
 
   // Form state
   const [nodeName, setNodeName] = useState('');
@@ -36,6 +46,10 @@ export default function NodeManagementPage() {
       .then(r => r.json())
       .then(setClasses)
       .catch(() => setError('載入班別失敗'));
+    fetch('/api/templates')
+      .then(r => r.json())
+      .then(setTemplates)
+      .catch(() => {});
   }, []);
 
   const selectedClass = classes.find(c => c.id === selectedClassId);
@@ -51,7 +65,8 @@ export default function NodeManagementPage() {
       today.setHours(0, 0, 0, 0);
       const enriched = data.map(n => {
         const dueDate = calcNodeDate(cls.startDate, n.offsetDays);
-        const due = new Date(dueDate);
+        const [dy, dm, dd] = dueDate.split('-').map(Number);
+        const due = new Date(dy, dm - 1, dd);
         return { ...n, dueDate, daysUntil: Math.round((due.getTime() - today.getTime()) / 86400000) };
       });
       setNodes(enriched);
@@ -99,10 +114,28 @@ export default function NodeManagementPage() {
     }
   };
 
+  // 套用模板
+  const handleApplyTemplate = async () => {
+    if (!selectedClassId || !selectedTemplateId) return;
+    setApplyingTemplate(true);
+    try {
+      const res = await fetch(`/api/classes/${selectedClassId}/nodes/apply-template`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateId: selectedTemplateId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      loadNodes(selectedClassId);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setApplyingTemplate(false);
+    }
+  };
+
   // 匯出 .ics
   const handleExportIcs = async () => {
     if (!selectedClassId || !selectedClass) return;
-    const nodesForIcs = nodes.map(n => ({ name: n.name, dueDate: n.dueDate }));
     const res = await fetch(`/api/classes/${selectedClassId}/nodes/ics`);
     if (res.ok) {
       const blob = await res.blob();
@@ -132,8 +165,8 @@ export default function NodeManagementPage() {
 
       {/* 選擇班別 */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex gap-4 items-end">
-          <div className="flex-1">
+        <div className="flex gap-4 items-end flex-wrap">
+          <div className="flex-1 min-w-40">
             <label className="block text-xs text-gray-500 mb-1">選擇班別</label>
             <select
               value={selectedClassId ?? ''}
@@ -146,6 +179,30 @@ export default function NodeManagementPage() {
               ))}
             </select>
           </div>
+          {selectedClassId && templates.length > 0 && (
+            <div className="flex gap-2 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">套用模板</label>
+                <select
+                  value={selectedTemplateId ?? ''}
+                  onChange={e => setSelectedTemplateId(Number(e.target.value) || null)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value="">-- 選擇模板 --</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={handleApplyTemplate}
+                disabled={!selectedTemplateId || applyingTemplate}
+                className="px-3 py-2 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50"
+              >
+                {applyingTemplate ? '套用中...' : '套用'}
+              </button>
+            </div>
+          )}
           {selectedClassId && (
             <button
               onClick={handleExportIcs}

@@ -13,7 +13,8 @@ import { deleteNode } from './modules/NodeManagement/services/delete-node';
 import { getUpcomingNodes } from './modules/Dashboard/services/get-upcoming-nodes';
 import { generateIcs } from './modules/NodeManagement/lib/generate-ics';
 import { calcNodeDate } from './modules/NodeManagement/lib/calc-node-date';
-import { getDatabase } from './shared/storage/init-database';
+import { getTemplates } from './modules/NodeManagement/services/get-templates';
+import { applyTemplate } from './modules/NodeManagement/services/apply-template';
 
 // 初始化 DB（v2 含 class_nodes 遷移）
 initDatabaseV2();
@@ -135,15 +136,34 @@ app.get('/api/nodes/upcoming', (req, res) => {
   }
 });
 
+// GET /api/templates
+app.get('/api/templates', (_req, res) => {
+  try {
+    const templates = getTemplates();
+    res.json(templates);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// POST /api/classes/:id/nodes/apply-template
+app.post('/api/classes/:id/nodes/apply-template', (req, res) => {
+  try {
+    const nodes = applyTemplate(Number(req.params.id), Number(req.body.templateId));
+    res.status(201).json(nodes);
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
 // GET /api/classes/:id/nodes/ics
 app.get('/api/classes/:id/nodes/ics', (req, res) => {
   try {
-    const db = getDatabase();
-    const cls = db.prepare('SELECT class_name, start_date FROM training_classes WHERE id = ?').get(Number(req.params.id)) as { class_name: string; start_date: string } | undefined;
+    const cls = getClassById(Number(req.params.id));
     if (!cls) return res.status(404).json({ error: '找不到班別' });
     const nodes = getNodesByClass(Number(req.params.id));
-    const items = nodes.map(n => ({ name: n.name, dueDate: calcNodeDate(cls.start_date, n.offsetDays) }));
-    const ics = generateIcs(cls.class_name, items);
+    const items = nodes.map(n => ({ name: n.name, dueDate: calcNodeDate(cls.startDate, n.offsetDays) }));
+    const ics = generateIcs(cls.className, items);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="nodes-${req.params.id}.ics"`);
     res.send(ics);

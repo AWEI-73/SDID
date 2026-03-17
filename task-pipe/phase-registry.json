@@ -1,90 +1,6 @@
 {
     "version": "1.0.0",
     "description": "Phase Registry - 單一真相來源，定義所有階段及其元資訊",
-    "POC": {
-        "steps": [
-            "1",
-            "2",
-            "3",
-            "4",
-            "5"
-        ],
-        "prefix": "step",
-        "definitions": {
-            "1": {
-                "name": "Draft Generation",
-                "file": "step-1.cjs",
-                "description": "產生需求草稿",
-                "actions": [
-                    "Check requirement ambiguity",
-                    "Mark [NEEDS CLARIFICATION]"
-                ],
-                "requires": [],
-                "produces": [
-                    "requirement_draft"
-                ],
-                "checkFile": "poc/requirement_draft_{iteration}.md"
-            },
-            "2": {
-                "name": "Environment Check",
-                "file": "step-2.cjs",
-                "description": "環境檢查",
-                "actions": [
-                    "Verify project structure"
-                ],
-                "requires": [
-                    "requirement_draft"
-                ],
-                "produces": []
-            },
-            "3": {
-                "name": "Contract & POC",
-                "file": "step-3.cjs",
-                "description": "建立資料契約與 POC",
-                "actions": [
-                    "Design data contract",
-                    "Generate @GEMS-CONTRACT"
-                ],
-                "requires": [],
-                "produces": [
-                    "contract"
-                ],
-                "checkFile": "poc/*Contract.ts"
-            },
-            "4": {
-                "name": "POC Quality",
-                "file": "step-4.cjs",
-                "description": "POC 品質檢查",
-                "actions": [
-                    "Create UI prototype",
-                    "Generate POC.html"
-                ],
-                "requires": [
-                    "contract"
-                ],
-                "produces": [
-                    "poc_html"
-                ],
-                "checkFile": "poc/*POC.html"
-            },
-            "5": {
-                "name": "Spec Generation",
-                "file": "step-5.cjs",
-                "description": "產生需求規格",
-                "actions": [
-                    "Generate requirement spec",
-                    "Verify independent testability"
-                ],
-                "requires": [
-                    "poc_html"
-                ],
-                "produces": [
-                    "requirement_spec"
-                ],
-                "checkFile": "poc/requirement_spec_{iteration}.md"
-            }
-        }
-    },
     "BUILD": {
         "phases": [
             "1",
@@ -200,30 +116,6 @@
         "default": ["1", "2", "3", "4"]
     },
     "flowSequence": [
-        {
-            "phase": "POC",
-            "step": "1"
-        },
-        {
-            "phase": "POC",
-            "step": "2"
-        },
-        {
-            "phase": "POC",
-            "step": "3"
-        },
-        {
-            "phase": "POC",
-            "step": "4"
-        },
-        {
-            "phase": "POC",
-            "step": "5"
-        },
-        {
-            "phase": "SPEC_TO_PLAN",
-            "step": "run"
-        },
         {
             "phase": "BUILD",
             "step": "1"

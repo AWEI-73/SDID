@@ -136,14 +136,28 @@ function loadTypescript(projectRoot) {
 }
 
 function isFunctionNode(ts, node) {
-  return ts.isFunctionDeclaration(node)
+  if (ts.isFunctionDeclaration(node)
     || ts.isMethodDeclaration(node)
     || ts.isFunctionExpression(node)
     || ts.isArrowFunction(node)
-    || ts.isInterfaceDeclaration(node)   // interface ExtractorInterfaces
-    || ts.isTypeAliasDeclaration(node)   // type Foo = ...
-    || ts.isClassDeclaration(node)       // class Foo
-    || ts.isVariableStatement(node);     // catch all const / let / var exports
+    || ts.isInterfaceDeclaration(node)
+    || ts.isTypeAliasDeclaration(node)
+    || ts.isClassDeclaration(node)) {
+    return true;
+  }
+  if (ts.isVariableStatement(node)) {
+    // 排除解構賦值（e.g. const [x, setX] = useState(...)）
+    // 這類 pattern 不是函式定義，不需要 GEMS 標籤
+    const decls = node.declarationList?.declarations;
+    if (!decls || decls.length === 0) return false;
+    const firstDecl = decls[0];
+    // 如果 binding 是 ArrayBindingPattern（解構），跳過
+    if (ts.isArrayBindingPattern(firstDecl.name)) return false;
+    // 如果 binding 是 ObjectBindingPattern（物件解構），跳過
+    if (ts.isObjectBindingPattern(firstDecl.name)) return false;
+    return true;
+  }
+  return false;
 }
 
 function getFunctionName(ts, node, sourceFile) {

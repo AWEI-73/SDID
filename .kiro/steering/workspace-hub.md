@@ -3,7 +3,7 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-16 16:01:34 UTC
+**更新**: 2026-03-17 09:08:12 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
@@ -33,17 +33,19 @@ ARCHITECTURE.md v6.1，更新 2026-03-16
 
 **Worktrees**:
 - `main` → C:/Users/user/Desktop/SDID
+- `claude/agitated-edison` → C:/Users/user/Desktop/SDID/.claude/worktrees/agitated-edison
+- `claude/fervent-dewdney` → C:/Users/user/Desktop/SDID/.claude/worktrees/fervent-dewdney
 - `claude/peaceful-lamport` → C:/Users/user/Desktop/SDID/.claude/worktrees/peaceful-lamport
 
 **最近 commits**:
-- f34124e fix: remove stale PLAN phase references in phase-registry-loader
-- 647b0f7 chore(cleanup): remove dead PLAN phases + fix CLI loop v6 alignment
-- 7e79125 fix(phase-2): align comments with ac-runner v3.0 vitest architecture
-- 177f28a docs(architecture): update v6.1 for ac-runner vitest orchestrator
-- c0511c0 feat(ac-runner): upgrade to vitest orchestrator + CYNEFIN action-level analysis
-- 5e26718 fix(ac-runner): v2.0 — story-scope 過濾 + 格式異常升級為 ERROR
-- 2993f79 chore: pre-v6 snapshot — BUILD 8-phase to 4-layer refactor start
-- eb1591e fix(runner): 修正 dry-run 模式的 project-type.cjs 路徑 → lib/shared/
+- 6faacc8 fix(framework): 5 issues from iter-2 post-mortem
+- 9ff560f feat(training-dashboard): complete iter-2 build (Stories 2.0-2.3, all Phase 1-4 pass)
+- 02370fd feat(quality-gates): add POC TDD LITE gate, HTML quality gate, and PLAN quality gate
+- 8406c8e fix(contract-quality-gate): 修正 AC 飄移 bug + 加入 TDD LITE 交叉驗證
+- abf3d4e refactor(task-pipe): remove S/M/L level size-constraint gates
+- 3ee1932 feat(loop.cjs): align SPEC_TO_PLAN with Blueprint quality gates
+- be35ce4 feat(loop): align Task-Pipe PLAN phase with Blueprint quality gates
+- 87e9bb5 feat(training-dashboard): add training plan management system (iter-1)
 
 ## 專案狀態（SDID 管理中）
 
@@ -52,10 +54,10 @@ ARCHITECTURE.md v6.1，更新 2026-03-16
 | 訓練資源管理 | iter-4 | GATE | @BLOCK | — |
 | ExamForge | iter-11 | DONE | @PASS | — |
 | my_workflow | iter-4 | BUILD-1 | @BLOCK | — |
-| test-blueprint-v6 | iter-1 | DONE | @PASS | — |
 | test-design-scoring | iter-3 | CONTRACT | @PASS | — |
+| training-dashboard | iter-2 | DONE | @PASS | — |
 
-**無 .gems（非 SDID 管理）**: noteforge, OpenSpec-main, sdid-core
+**無 .gems（非 SDID 管理）**: OpenSpec-main, sdid-core
 
 ## 關鍵路徑
 ```

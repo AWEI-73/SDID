@@ -16,10 +16,14 @@
  * @returns ISO8601 日期字串 (e.g. "2026-04-06")
  */
 export function calcNodeDate(startDate: string, offsetDays: number): string {
-  // [STEP] PARSE
-  const d = new Date(startDate);
+  // [STEP] PARSE — 用本地時間解析，避免 UTC 時區偏移問題
+  const [year, month, day] = startDate.split('-').map(Number);
+  const d = new Date(year, month - 1, day); // 本地時間，不走 UTC
   // [STEP] OFFSET
   d.setDate(d.getDate() + offsetDays);
-  // [STEP] FORMAT
-  return d.toISOString().split('T')[0];
+  // [STEP] FORMAT — 用本地時間格式化，不用 toISOString()
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }

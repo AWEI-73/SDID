@@ -261,10 +261,9 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
     }
   }
 
-  // POC log 識別 — Task-Pipe 路線
-  // poc-step-N-pass → 下一個 step，poc-step-5-pass → PLAN（機械轉換）
-  // poc-spec-to-plan-pass → BUILD（spec-to-plan 完成，直接進 BUILD）
-  const pocPassLogs = logs.filter(f => /^poc-step-\d+-pass-/.test(f));
+  // POC log 識別 — Task-Pipe 路線（只在沒有 gate-check-pass 時才走此路線）
+  // 有 gate-check-pass 代表已進入 Blueprint 流程，poc-step log 是舊殘留，忽略
+  const pocPassLogs = has('gate-check-pass-') ? [] : logs.filter(f => /^poc-step-\d+-pass-/.test(f));
 
   // spec-to-plan 完成 → 直接進 BUILD
   if (has('poc-spec-to-plan-pass-')) {
@@ -281,8 +280,8 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
     }
     return { phase: 'POC', step: String(maxPocStep + 1), story: null };
   }
-  // poc-step-N-fix/error → 重試同一個 step
-  const pocErrorLogs = logs.filter(f => /^poc-step-\d+-(fix|error)-/.test(f));
+  // poc-step-N-fix/error → 重試同一個 step（同樣只在無 gate-check-pass 時）
+  const pocErrorLogs = has('gate-check-pass-') ? [] : logs.filter(f => /^poc-step-\d+-(fix|error)-/.test(f));
   if (pocErrorLogs.length > 0 && pocPassLogs.length === 0) {
     const maxPocStep = Math.max(...pocErrorLogs.map(f => {
       const m = f.match(/^poc-step-(\d+)-/);
@@ -360,7 +359,12 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
       return { phase: 'CYNEFIN_CHECK', step: null, story: null };
     }
     // Contract Gate: cynefin-check-pass 後必須有 contract-pass 才能進 PLAN
-    if (!has('contract-pass-')) {
+    if (!has('contract-pass-') && !has('contract-gate-pass-')) {
+      // POC_HTML: draft-gate pass 存在 + poc html 存在 + poc-gate log 不存在 → 需要跑 poc-gate
+      const pocHtml = findPocHtml(projectRoot, iterNum);
+      if (pocHtml && !has('poc-gate-pass-')) {
+        return { phase: 'POC_HTML', step: null, story: null };
+      }
       return { phase: 'CONTRACT', step: null, story: null };
     }
     // contract.ts 比最新 contract-pass log 新 → contract 已變動，需重新 gate
@@ -430,6 +434,10 @@ function detectFullState(projectRoot, iter, storyOpt) {
     if (state) {
       if (state.status === 'completed' || state.status === 'abandoned') {
         return { phase: 'COMPLETE', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, reason: `${iter} ${state.status}` };
+      }
+      // flow.currentNode === 'COMPLETE' も COMPLETE として扱う
+      if (state.flow?.currentNode === 'COMPLETE') {
+        return { phase: 'COMPLETE', step: null, story: null, route, iter, draftPath, plannedStories, completedStories, projectRoot, reason: `${iter} flow.currentNode=COMPLETE` };
       }
       if (state.flow?.currentNode && state.flow.currentNode !== 'COMPLETE') {
         const p = sm.parseNode(state.flow.currentNode);
@@ -527,6 +535,10 @@ function buildNextCommand(st) {
       return `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${cp} --target=${projectRoot} --iter=${iterNum}`;
     }
     case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
+    case 'POC_HTML': {
+      const pocHtml = findPocHtml(projectRoot, iterNum) || `<project>/.gems/design/poc_iter-${iterNum}.html`;
+      return `node sdid-tools/blueprint/v5/poc-gate.cjs --poc=${pocHtml} --target=${projectRoot} --iter=${iterNum}`;
+    }
     case 'PLAN': {
       return `node task-pipe/tools/spec-to-plan.cjs --target=${ta.replace('--target=', '')} --iteration=${iter || `iter-${iterNum}`}`;
     }

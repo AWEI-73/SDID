@@ -231,11 +231,9 @@ function getNextCommand(phase, step, story, level = 'M') {
 
     let cmd = `node task-pipe/runner.cjs --phase=${next.phase} --step=${next.step}`;
 
-    // BUILD 需要 --story
-    if (next.phase === 'BUILD') {
-        if (story) {
-            cmd += ` --story=${story}`;
-        }
+    // BUILD 需要 --story（包含 BUILD 內部各 phase 之間的跳轉）
+    if (next.phase === 'BUILD' && story) {
+        cmd += ` --story=${story}`;
     }
 
     return cmd;

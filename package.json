@@ -1,0 +1,21 @@
+{
+  "name": "sdid",
+  "version": "1.0.0",
+  "description": "> AI 驗收協議系統 | 核心哲學：**腳本決定，AI 執行。Gate 比記憶重要。**",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AWEI-73/SDID.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AWEI-73/SDID/issues"
+  },
+  "homepage": "https://github.com/AWEI-73/SDID#readme"
+}

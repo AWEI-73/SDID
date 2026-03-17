@@ -190,66 +190,53 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
       JSON.stringify(functionsJson, null, 2)
     );
 
-    // [New] 產出 schema.json (IndexedDB support)
+    // DB schema — 只產 DB_SCHEMA.md（人讀），不再產 schema.json
     const schema = generateSchema(srcDir);
-    fs.writeFileSync(path.join(docsPath, 'schema.json'), JSON.stringify(schema, null, 2));
-
-    // 另外產出 DB_SCHEMA.md 供閱讀
     generateSchemaMarkdown(schema, docsPath);
 
-    // [New] 產出 tech-stack.json
+    // Tech stack
     const techStack = generateTechStack(target);
-    fs.writeFileSync(path.join(docsPath, 'tech-stack.json'), JSON.stringify(techStack, null, 2));
 
-    // 另外產出 TECH_STACK.md 供閱讀
-    generateTechStackMarkdown(techStack, docsPath);
-
-    // 產出簡易 system-blueprint.json
-    const blueprint = {
-      name: path.basename(target),
-      type: 'project',
-      generatedAt: new Date().toISOString(),
-      stats: {
-        functions: scanResult.functions.length,
-        p0: scanResult.stats.p0,
-        p1: scanResult.stats.p1,
-        p2: scanResult.stats.p2,
-        p3: scanResult.stats.p3,
-        entities: Object.keys(schema).length,
-        techStack: Object.keys(techStack.dependencies || {}).length
-      },
-      note: '由 task-pipe 內建掃描產出 (含 IndexedDB/TechStack 支援)'
-    };
-
-    fs.writeFileSync(
-      path.join(docsPath, 'system-blueprint.json'),
-      JSON.stringify(blueprint, null, 2)
-    );
-
-    // v8.0: 產出 Semantic Contract (contract.json + CONTRACT.md)
+    // CONTRACT.md（人讀）+ stories 分組（給 project-overview 用）
+    let storiesByStory = {};
     try {
       const { generateContract, formatContractMarkdown } = require('../../lib/scan/contract-generator.cjs');
       const contract = generateContract(target, srcDir, iteration);
-
-      fs.writeFileSync(
-        path.join(docsPath, 'contract.json'),
-        JSON.stringify(contract, null, 2)
-      );
-
-      fs.writeFileSync(
-        path.join(docsPath, 'CONTRACT.md'),
-        formatContractMarkdown(contract)
-      );
-
-      console.log(`[SCAN] Contract generated: ${contract.summary.functions} functions, ${contract.summary.stories} stories`);
+      fs.writeFileSync(path.join(docsPath, 'CONTRACT.md'), formatContractMarkdown(contract));
+      storiesByStory = contract.stories || {};
+      console.log(`[SCAN] CONTRACT.md generated: ${contract.summary.functions} functions, ${contract.summary.stories} stories`);
     } catch (e) {
-      console.log(`[SCAN] Contract generation skipped: ${e.message}`);
+      console.log(`[SCAN] CONTRACT.md skipped: ${e.message}`);
     }
 
-    const produced = ['functions.json', 'system-blueprint.json', 'schema.json', 'tech-stack.json', 'contract.json', 'CONTRACT.md'];
-    if (scannerVersion === '7.0') {
-      produced.push('function-index.json');
-    }
+    // project-overview.json — 整合 stats + tech-stack + stories 分組
+    const overview = {
+      name: path.basename(target),
+      generatedAt: new Date().toISOString(),
+      stats: {
+        functions: scanResult.functions.length,
+        P0: scanResult.stats.p0,
+        P1: scanResult.stats.p1,
+        P2: scanResult.stats.p2,
+        P3: scanResult.stats.p3,
+        tables: Object.keys(schema).length,
+        stories: Object.keys(storiesByStory).length
+      },
+      techStack: {
+        dependencies: techStack.dependencies || {},
+        devDependencies: techStack.devDependencies || {}
+      },
+      stories: storiesByStory
+    };
+    fs.writeFileSync(path.join(docsPath, 'project-overview.json'), JSON.stringify(overview, null, 2));
+
+    // 清理舊產物（向後相容：刪掉已整合的檔案）
+    ['system-blueprint.json', 'schema.json', 'tech-stack.json', 'TECH_STACK.md', 'contract.json', 'function-index.json'].forEach(f => {
+      const p = path.join(docsPath, f);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    });
+
+    const produced = ['functions.json', 'project-overview.json', 'DB_SCHEMA.md', 'CONTRACT.md'];
 
     // SCAN 完成 → 標記 iteration 為 completed，讓 loop 下次正確偵測到新 iter
     try {
@@ -322,60 +309,138 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
 
 // --- Helper Functions ---
 
+/**
+ * 掃描 schema 來源（優先順序）：
+ *   1. src/**\/*.sql — 獨立 SQL 檔案（最可靠）
+ *   2. src/**\/*.ts/js 裡的 backtick CREATE TABLE 字串常數（fallback）
+ *   3. @GEMS-FIELD 標籤（向後相容）
+ */
 function generateSchema(srcDir) {
-  const typesPath = path.join(srcDir, 'types', 'index.ts');
   const entities = {};
 
-  if (!fs.existsSync(typesPath)) return entities;
+  function collectFiles(dir, exts, results = []) {
+    if (!fs.existsSync(dir)) return results;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) collectFiles(full, exts, results);
+      else if (exts.some(e => entry.name.endsWith(e))) results.push(full);
+    }
+    return results;
+  }
 
-  const content = fs.readFileSync(typesPath, 'utf-8');
-  const lines = content.split('\n');
+  const projectRoot = path.dirname(srcDir);
 
-  let parsingEntity = null;
+  // 1. 優先掃 .sql 檔案（src/ 和 project root 下）
+  const sqlFiles = [
+    ...collectFiles(srcDir, ['.sql']),
+    ...collectFiles(projectRoot, ['.sql']).filter(f => !f.startsWith(srcDir))
+  ];
+  for (const file of sqlFiles) {
+    let content;
+    try { content = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+    Object.assign(entities, parseAllCreateTables(content, path.relative(srcDir, file)));
+  }
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.includes('@GEMS-FIELD:')) {
+  // 2. Fallback：掃 .ts/.js 裡的 backtick SQL 字串（只補 .sql 沒抓到的）
+  const tsFiles = collectFiles(srcDir, ['.ts', '.js', '.tsx']);
+  for (const file of tsFiles) {
+    let content;
+    try { content = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+    const sqlPattern = /`([\s\S]*?CREATE\s+TABLE[\s\S]*?)`/gi;
+    let match;
+    while ((match = sqlPattern.exec(content)) !== null) {
+      const parsed = parseAllCreateTables(match[1], path.relative(srcDir, file));
+      for (const [k, v] of Object.entries(parsed)) {
+        if (!entities[k]) entities[k] = v;
+      }
+    }
+  }
+
+  // 3. 舊的 @GEMS-FIELD 標籤掃描（向後相容）
+  const typesPath = path.join(srcDir, 'types', 'index.ts');
+  if (fs.existsSync(typesPath)) {
+    const content = fs.readFileSync(typesPath, 'utf-8');
+    let parsingEntity = null;
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.includes('@GEMS-FIELD:')) continue;
       const tagContent = trimmed.split('@GEMS-FIELD:')[1].trim();
       const parts = tagContent.split('|').map(s => s.trim());
-
       if (parts.length === 2 && /^[A-Z]/.test(parts[0])) {
-        // Entity: Name | Desc
         const [name, rawDesc] = parts;
         parsingEntity = name;
-        entities[parsingEntity] = {
-          description: rawDesc.replace(/\*\/\s*$/, '').trim(),
-          fields: []
-        };
-      } else if (parts.length >= 3 && parsingEntity) {
-        // Field
-        const [name, type, ...rest] = parts;
-        let constraint = '-';
-        let desc = '-';
-        if (rest.length === 1) {
-          desc = rest[0].replace(/\*\/\s*$/, '').trim();
-        } else if (rest.length >= 2) {
-          constraint = rest[0];
-          desc = rest[1].replace(/\*\/\s*$/, '').trim();
+        if (!entities[parsingEntity]) {
+          entities[parsingEntity] = { description: rawDesc.replace(/\*\/\s*$/, '').trim(), fields: [] };
         }
+      } else if (parts.length >= 3 && parsingEntity) {
+        const [name, type, ...rest] = parts;
+        let constraint = '-', desc = '-';
+        if (rest.length === 1) desc = rest[0].replace(/\*\/\s*$/, '').trim();
+        else if (rest.length >= 2) { constraint = rest[0]; desc = rest[1].replace(/\*\/\s*$/, '').trim(); }
+        if (!entities[parsingEntity].fields) entities[parsingEntity].fields = [];
         entities[parsingEntity].fields.push({ name, type, constraint, description: desc });
       }
     }
   }
+
   return entities;
 }
 
+/**
+ * 從一段 SQL 文字中解析所有 CREATE TABLE，回傳 { tableName: { ... } }
+ */
+function parseAllCreateTables(sql, sourceFile) {
+  const result = {};
+  const tablePattern = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s*\(([\s\S]*?)\)\s*;?/gi;
+  let match;
+  while ((match = tablePattern.exec(sql)) !== null) {
+    const tableName = match[1];
+    const body = match[2];
+    const columns = [];
+    for (const rawLine of body.split('\n')) {
+      const line = rawLine.trim().replace(/,\s*$/, '');
+      if (!line || /^(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK|CONSTRAINT)\s*\(/i.test(line)) continue;
+      const colMatch = line.match(/^(\w+)\s+(\w+)(.*)?$/);
+      if (!colMatch) continue;
+      const [, colName, colType, rest = ''] = colMatch;
+      columns.push({ name: colName, type: colType.toUpperCase(), constraints: rest.trim() });
+    }
+    result[tableName] = {
+      description: `SQLite table — ${tableName}`,
+      sourceFile: sourceFile || '',
+      columns
+    };
+  }
+  return result;
+}
+
 function generateSchemaMarkdown(schema, docsPath) {
-  let md = '# Database Schema (IndexedDB)\n';
+  let md = '# Database Schema\n';
   md += `> Generated on ${new Date().toLocaleString()}\n\n`;
 
   for (const [entityName, data] of Object.entries(schema)) {
-    md += `## ${entityName} (${data.description})\n\n`;
-    md += `| Field | Type | Constraints | Description |\n`;
-    md += `| :--- | :--- | :--- | :--- |\n`;
-    data.fields.forEach(f => {
-      md += `| **${f.name}** | \`${f.type}\` | ${f.constraint} | ${f.description} |\n`;
-    });
+    const sourceNote = data.sourceFile ? ` — \`${data.sourceFile}\`` : '';
+    md += `## ${entityName}${sourceNote}\n\n`;
+    md += `> ${data.description}\n\n`;
+
+    // SQLite CREATE TABLE 掃描結果（columns）
+    if (data.columns && data.columns.length > 0) {
+      md += `| Column | Type | Constraints |\n`;
+      md += `| :--- | :--- | :--- |\n`;
+      data.columns.forEach(c => {
+        md += `| \`${c.name}\` | \`${c.type}\` | ${c.constraints || ''} |\n`;
+      });
+    }
+
+    // 舊 @GEMS-FIELD 格式（fields）
+    if (data.fields && data.fields.length > 0) {
+      md += `| Field | Type | Constraints | Description |\n`;
+      md += `| :--- | :--- | :--- | :--- |\n`;
+      data.fields.forEach(f => {
+        md += `| **${f.name}** | \`${f.type}\` | ${f.constraint} | ${f.description} |\n`;
+      });
+    }
+
     md += `\n---\n\n`;
   }
   fs.writeFileSync(path.join(docsPath, 'DB_SCHEMA.md'), md);

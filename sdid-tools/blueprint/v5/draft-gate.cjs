@@ -435,19 +435,57 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
       guided.forEach(g => console.log(`  @GUIDED [${g.code}] ${g.msg}`));
     }
     console.log('');
+    // 偵測 poc.html 是否存在
+    const pocHtmlDir = args.target ? path.join(args.target, '.gems', 'iterations', `iter-${iterNum}`, 'poc') : null;
+    let pocHtmlPath = null;
+    let pocHtmlExists = false;
+    if (pocHtmlDir && fs.existsSync(pocHtmlDir)) {
+      const htmlFiles = fs.readdirSync(pocHtmlDir).filter(f => f.endsWith('.html') || f.endsWith('POC.html'));
+      if (htmlFiles.length > 0) {
+        pocHtmlExists = true;
+        pocHtmlPath = relTarget
+          ? `${relTarget}/.gems/iterations/iter-${iterNum}/poc/${htmlFiles[0]}`
+          : `.gems/iterations/iter-${iterNum}/poc/${htmlFiles[0]}`;
+      }
+    }
+    const pocHtmlTarget = pocHtmlPath || (relTarget
+      ? `${relTarget}/.gems/iterations/iter-${iterNum}/poc/${d.module}POC.html`
+      : `.gems/iterations/iter-${iterNum}/poc/${d.module}POC.html`);
+
     console.log(`@CONTEXT_SCOPE`);
     console.log(`  Draft: ${relDraft}`);
     console.log(`  Module: ${d.module} | Actions: ${d.actions.length} | P0/P1 ACs: ${d.acDefs.filter(a => a.tag !== 'SKIP').length}`);
     console.log(`  Action types: ${[...new Set(d.actions.map(a => a.type))].join(', ')}`);
+    console.log(`  POC HTML: ${pocHtmlExists ? `✅ ${pocHtmlPath}` : `❌ 尚未產出`}`);
     console.log('');
-    console.log(`@TASK`);
-    console.log(`  ACTION: WRITE_CONTRACT`);
-    console.log(`  FILE: ${contractPath}`);
-    console.log(`  EXPECTED: 從 draft 推導 contract_iter-${iterNum}.ts（@GEMS-CONTRACT + @GEMS-API + @GEMS-STORY: + @GEMS-AC）`);
-    console.log(`  REFERENCE: task-pipe/templates/contract-golden.template.v3.ts`);
-    console.log(`  EXAMPLE: task-pipe/templates/examples/contract-iter-1-ecotrack.example.v3.ts`);
-    console.log('');
-    console.log(`NEXT: ${nextContractCmd}`);
+    const pocGateCmd = `node sdid-tools/blueprint/v5/poc-gate.cjs --poc=${pocHtmlTarget}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
+    if (!pocHtmlExists) {
+      console.log(`@TASK-1`);
+      console.log(`  ACTION: WRITE_POC_HTML`);
+      console.log(`  FILE: ${pocHtmlTarget}`);
+      console.log(`  EXPECTED: 產出互動式 POC HTML，包含 @GEMS-VERIFIED 標籤標註已/未實作功能`);
+      console.log(`  REFERENCE: task-pipe/templates/examples/poc-golden.html`);
+      console.log('');
+      console.log(`@TASK-2`);
+      console.log(`  ACTION: WRITE_CONTRACT`);
+      console.log(`  FILE: ${contractPath}`);
+      console.log(`  EXPECTED: 從 draft 推導 contract_iter-${iterNum}.ts（@GEMS-CONTRACT + @GEMS-API + @GEMS-STORY: + @GEMS-AC）`);
+      console.log(`  REFERENCE: task-pipe/templates/contract-golden.template.v3.ts`);
+      console.log(`  EXAMPLE: task-pipe/templates/examples/contract-iter-1-ecotrack.example.v3.ts`);
+      console.log('');
+      console.log(`NEXT (poc 完成後): ${pocGateCmd}`);
+      console.log(`NEXT (跳過 poc):   ${nextContractCmd}`);
+    } else {
+      console.log(`@TASK`);
+      console.log(`  ACTION: WRITE_CONTRACT`);
+      console.log(`  FILE: ${contractPath}`);
+      console.log(`  EXPECTED: 從 draft + poc @GEMS-VERIFIED 推導 contract_iter-${iterNum}.ts`);
+      console.log(`  REFERENCE: task-pipe/templates/contract-golden.template.v3.ts`);
+      console.log(`  EXAMPLE: task-pipe/templates/examples/contract-iter-1-ecotrack.example.v3.ts`);
+      console.log('');
+      console.log(`NEXT (驗證 poc): ${pocGateCmd}`);
+      console.log(`NEXT (跳過 poc): ${nextContractCmd}`);
+    }
   } else {
     console.log(`═══════════════════════════════════════════════════════════`);
     console.log(`@BLOCKER | draft-gate v5.1 | ${blockers.length} item(s) to fix`);

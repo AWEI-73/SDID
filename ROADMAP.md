@@ -1,5 +1,5 @@
 # SDID 快速導航
-> 自動生成 — 2026-03-16 16:01:34 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
+> 自動生成 — 2026-03-17 09:08:12 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
 
 ## 框架路線
 ARCHITECTURE.md v6.1
@@ -22,14 +22,14 @@ ARCHITECTURE.md v6.1
 - iter: iter-4 | phase: BUILD-1
 - 下一步: `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=my_workflow --iteration=iter-4`
 
-### test-blueprint-v6 `@PASS`
-- iter: iter-1 | phase: DONE
-
 ### test-design-scoring `@PASS`
 - iter: iter-3 | phase: CONTRACT
 - 下一步: `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-3/contract_iter-3.ts --target=test-design-scoring --iter=3`
 
-_非 SDID 管理: noteforge, OpenSpec-main, sdid-core_
+### training-dashboard `@PASS`
+- iter: iter-2 | phase: DONE
+
+_非 SDID 管理: OpenSpec-main, sdid-core_
 
 ## 工具快速參考
 

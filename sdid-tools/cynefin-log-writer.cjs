@@ -185,14 +185,18 @@ function determineResult(modules) {
           });
         }
       } else if (mod.domain === 'Complicated') {
-        // Complicated + !costly: 建議但不阻擋
+        // Complicated + !costly: 同樣擋住，AI 不理 WARNING
         if (currentIters < suggestedIters) {
-          warnings.push({
+          blockers.push({
             module: mod.name,
             issue: {
-              level: 'WARNING',
-              description: `迭代預算建議: 模組 "${mod.name}" 有 ${actionCount} 個動作，建議 ${suggestedIters} iter（目前 ${currentIters}）`,
-              suggestions: [`考慮增加迭代數以降低單一 iter 風險`],
+              level: 'BLOCKER',
+              description: `迭代預算不足: Complicated 模組 "${mod.name}" 有 ${actionCount} 個動作，建議拆為 ${suggestedIters} iter（目前 ${currentIters}）`,
+              suggestions: [
+                `將模組拆分為 ${suggestedIters} 個 iter，每個 iter 最多 ${maxPerIter} 個動作`,
+                `P0 動作優先進第一個 iter，P1/P2 動作排入後續 iter`,
+              ],
+              fixTarget: '迭代規劃表 + 模組動作清單',
             }
           });
         }

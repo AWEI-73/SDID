@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { parseCsv } from './lib/parse-csv';
 import { createClass } from '../classes';
+import { getDb } from '../../core/db';
 import type { CsvRow } from './types';
 
 const router = Router();
@@ -15,12 +16,19 @@ router.post('/preview', (req, res) => {
 router.post('/confirm', (req, res) => {
   const { rows } = req.body as { rows: CsvRow[] };
   if (!Array.isArray(rows)) return res.status(400).json({ error: 'rows array required' });
-  const created = rows.map(row => createClass({
-    ...row,
-    days: row.days ? parseInt(row.days) : 0,
-    capacity: row.capacity ? parseInt(row.capacity) : 0,
-  }));
-  res.status(201).json({ count: created.length, classes: created });
+  try {
+    const db = getDb();
+    const created = db.transaction(() => {
+      return rows.map(row => createClass({
+        ...row,
+        days: row.days ? parseInt(row.days) : 0,
+        capacity: row.capacity ? parseInt(row.capacity) : 0,
+      }));
+    })();
+    res.status(201).json({ count: created.length, classes: created });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 export default router;

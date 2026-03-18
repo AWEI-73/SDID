@@ -3,6 +3,7 @@ import cors from 'cors';
 import { classesRouter } from './features/classes';
 import { nodesRouter, updateNode, deleteNode } from './features/nodes';
 import { importRouter } from './features/import';
+import { dashboardRouter } from './features/dashboard';
 import { Router } from 'express';
 
 const app = express();
@@ -25,5 +26,6 @@ nodeRouter.delete('/:id', (req, res) => {
 });
 app.use('/api/nodes', nodeRouter);
 app.use('/api/import', importRouter);
+app.use('/api/dashboard', dashboardRouter);
 
 export default app;

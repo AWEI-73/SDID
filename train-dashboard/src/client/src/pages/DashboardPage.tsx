@@ -13,7 +13,10 @@ export default function DashboardPage() {
   const [classes, setClasses] = useState<ClassItem[]>([])
   const [upcoming, setUpcoming] = useState<UpcomingNode[]>([])
   const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState<'start_date' | 'year_term' | 'name' | 'status'>('start_date')
   const [error, setError] = useState<string | null>(null)
+
+  const sorted = [...classes].sort((a, b) => a[sortBy].localeCompare(b[sortBy]))
 
   useEffect(() => {
     fetch(`/api/dashboard/classes?search=${search}`)
@@ -47,12 +50,24 @@ export default function DashboardPage() {
       )}
 
       <div>
-        <input
-          className="border rounded px-3 py-1.5 text-sm mb-3 w-64"
-          placeholder="搜尋班別名稱或代號..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+        <div className="flex gap-2 mb-3">
+          <input
+            className="border rounded px-3 py-1.5 text-sm w-64"
+            placeholder="搜尋班別名稱或代號..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <select
+            className="border rounded px-3 py-1.5 text-sm"
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as typeof sortBy)}
+          >
+            <option value="start_date">排序：開始日期</option>
+            <option value="year_term">排序：年度期別</option>
+            <option value="name">排序：班別名稱</option>
+            <option value="status">排序：狀態</option>
+          </select>
+        </div>
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-gray-100 text-left">
@@ -66,7 +81,7 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {classes.map(cls => (
+            {sorted.map(cls => (
               <tr key={cls.id} className="hover:bg-gray-50">
                 <td className="p-2 border">{cls.year_term}</td>
                 <td className="p-2 border">{cls.code}</td>

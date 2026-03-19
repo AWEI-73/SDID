@@ -491,7 +491,6 @@ function validate_l8_gems_completeness(code) {
     // 檢查必要欄位
     if (!/GEMS:/.test(tag)) issues.push('缺少 GEMS 主標籤');
     if (!/GEMS-FLOW:/.test(tag)) issues.push('缺少 GEMS-FLOW');
-    if (!/GEMS-TEST:/.test(tag)) issues.push('缺少 GEMS-TEST');
     
     // 檢查 P0/P1 是否有 STEP 錨點
     const priorityMatch = tag.match(/\|\s*P([0-3])\s*\|/);

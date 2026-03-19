@@ -81,10 +81,7 @@ function autoPatchContract(content) {
     return `${prefix}-${ver}`;
   });
 
-  // 4. @GEMS-AC-SKIP 別名容錯
-  patched = patched.replace(/\/\/\s*@GEMS-AC-SKIP\s*:/g, '// @GEMS-AC-SKIP:');
-
-  // 5. interface 缺少 @GEMS-CONTRACT 標頭 → 自動補（只補第一個 interface）
+  // 4. interface 缺少 @GEMS-CONTRACT 標頭 → 自動補（只補第一個 interface）
   //    條件：有 interface 但完全沒有 @GEMS-CONTRACT
   const hasContract = /\/\/\s*@GEMS-CONTRACT:?\s*\w+/.test(patched);
   if (!hasContract) {

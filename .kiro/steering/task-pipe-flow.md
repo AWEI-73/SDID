@@ -91,7 +91,7 @@ node task-pipe/runner.cjs --phase=BUILD --step=2 --story=Story-X.Y --target=.
 ```bash
 node task-pipe/runner.cjs --phase=BUILD --step=3 --story=Story-X.Y --target=.
 ```
-- 路由整合、barrel export、SKIP[INTEGRATION] AC
+- 路由整合、barrel export、模組間整合驗證
 - Level S 跳過此 Phase
 
 ### Phase 4: 標籤品質+Fillback層
@@ -186,7 +186,7 @@ Gate 通過後，在 `contract_iter-N.ts` **最頂端**寫入封版標頭（Laye
 
 **規則**：
 - Gate 通過後立即加頭，代表「此版本契約已定案」
-- 若後續需修改 `@GEMS-AC-EXPECT`：在 AC 區塊上方加 `// [SPEC-FIX] YYYY-MM-DD: <原因>`
+- 若後續需修改 `@GEMS-TDD` 測試規格：在測試檔上方加 `// [SPEC-FIX] YYYY-MM-DD: <原因>`，並同步更新 contract.ts 的對應 @GEMS-TDD 路徑（若有異動）
 - `@SPEC-CHANGES` 欄位記錄本次 Gate 相比前版的規格異動（無則填 `(none)`）
 
 ## 🏷️ GEMS 標籤 (v5.0)
@@ -232,7 +232,7 @@ Gate 通過後，在 `contract_iter-N.ts` **最頂端**寫入封版標頭（Laye
 ├── .gems/
 │   ├── design/                     # 設計文件集中（v6）
 │   │   ├── blueprint.md            # 可選，全局設計索引
-│   │   └── draft_iter-N.md         # Per-iter Draft（功能需求 + AC 定義）
+│   │   └── draft_iter-N.md         # Per-iter Draft（功能需求 + TDD 測試需求）
 │   ├── logs/                       # MICRO-FIX 全局 log
 │   └── iterations/
 │       └── iter-N/

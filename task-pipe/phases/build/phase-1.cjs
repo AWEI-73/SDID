@@ -1378,15 +1378,6 @@ function generatePlanSpecsBlock(planSpec, manifest, story) {
         lines.push(` * GEMS-DEPS: [TODO.deps (待填寫)]`);
       }
       lines.push(` * GEMS-DEPS-RISK: ${fn.depsRisk || 'LOW'}`);
-      if (fn.test) {
-        lines.push(` * GEMS-TEST: ${fn.test}`);
-      } else {
-        const testLine = fn.priority === 'P0' ? '✓ Unit | ✓ Integration | ✓ E2E' :
-          fn.priority === 'P1' ? '✓ Unit | ✓ Integration | - E2E' :
-            '✓ Unit | - Integration | - E2E';
-        lines.push(` * GEMS-TEST: ${testLine}`);
-      }
-      lines.push(` * GEMS-TEST-FILE: ${fn.testFile || '{module}.test.ts'} (內含 describe('${fn.name}'))`);
       lines.push(` */`);
       lines.push('```');
       lines.push('');

@@ -50,13 +50,13 @@ Layer 0: Blueprint（可選，全局索引）
     └── blueprint-gate v5（驗 blueprint.md 格式）
 
 Layer 1: Per-iter Draft（每個 iter 獨立設計）
-  .gems/design/draft_iter-N.md — 功能需求 + AC 定義
+  .gems/design/draft_iter-N.md — 功能需求 + TDD 測試需求
     └── draft-gate v5
     ├── @PASS → 推導 contract
     └── @BLOCKER → 修復 draft 重試
 
 Layer 2: Per-iter Contract（每個 iter 獨立，屬於 iter）
-  .gems/iterations/iter-N/contract_iter-N.ts — TypeScript interfaces + STORY-ITEM + AC
+  .gems/iterations/iter-N/contract_iter-N.ts — TypeScript interfaces + STORY-ITEM + @GEMS-TDD
     └── contract-gate v5 + @CONTRACT-LOCK 封版
     └── spec-to-plan.cjs → contract @GEMS-STORIES → implementation_plan（機械轉換）
     └── 產出: iter-N/plan/implementation_plan_Story-X.Y.md
@@ -107,8 +107,8 @@ task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<project>
 | Phase | 名稱 | 驗收條件 |
 |-------|------|---------|
 | 1 | 骨架映射層 | 讀 implementation_plan + contract_iter-N.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3） |
-| 2 | AC 驗收層 | ac-runner v3.0：讀 cynefin-report.json → needsTest:true → 生成 vitest test → vitest run；needsTest:false → 直接執行模式；SKIP 跳過 |
-| 3 | 整合層 | 路由整合、barrel export、SKIP[INTEGRATION] AC，Level S 跳過 |
+| 2 | TDD 驗收層 | 讀 contract_iter-N.ts 找 @GEMS-TDD 標籤：有 → vitest --run（測試在 contract 階段就寫好，Phase 1 RED，Phase 2 GREEN）；無 → tsc --noEmit（DB/UI 層只驗型別）|
+| 3 | 整合層 | 路由整合、barrel export，Level S 跳過 |
 | 4 | 標籤品質+Fillback層 | GEMS 標籤品質複查（P0-P3 全覆蓋），產出 Fillback + iteration_suggestions |
 
 > Level S 豁免 Phase 3
@@ -121,10 +121,10 @@ task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<project>
 | 工具 | 職責 |
 |------|------|
 | `blueprint/v5/blueprint-gate.cjs` | Blueprint 全局設計文件格式驗證 |
-| `blueprint/v5/draft-gate.cjs` | Per-iter Draft 功能需求 + AC 定義驗證 |
+| `blueprint/v5/draft-gate.cjs` | Per-iter Draft 功能需求 + TDD 測試需求驗證 |
 | `blueprint/v5/contract-gate.cjs` | Per-iter Contract v3 型別邊界 + @CONTRACT-LOCK 封版 |
-| `blueprint/verify.cjs` | 最終驗證 draft vs 實作，AC 未覆蓋 → @WARN |
-| `blueprint/contract-writer.cjs` | Contract 推導撰寫 + 驗證，@GEMS-AC 住在 contract_iter-N.ts 中 |
+| `blueprint/verify.cjs` | 最終驗證 draft vs 實作一致性 |
+| `blueprint/contract-writer.cjs` | Contract 推導撰寫 + 驗證（v4 舊版，v5 改用 contract-gate.cjs）|
 | `plan-to-scaffold.cjs` | Plan → .ts/.tsx 骨架生成（type-aware） |
 | `poc-to-scaffold.cjs` | consolidation-log → .ts/.tsx 骨架生成（POC-FIX 落地） |
 | `poc-fix/micro-fix-gate.cjs` | 局部驗收，GEMS 標籤 + import 範圍，寫 log |
@@ -182,7 +182,7 @@ SDID 的 artifact/data flow 是嚴格的 DAG，execution 層的 gate retry 是 s
         │          └─►│  @GEMS-CONTRACT (entities)               │   │  │
         │             │  @GEMS-API                               │   │  │
         │             │  @GEMS-STORY-ITEM (plan 錨點)            │   │  │
-        │             │  @GEMS-AC (住在 contract 中)             │   │  │
+        │             │  @GEMS-TDD (測試檔路徑，計算邏輯才加)     │   │  │
         │             └──────────────────────────────────────────┘   │  │
         │                          │                                  │  │
         │             ┌────────────┘                                  │  │
@@ -251,7 +251,7 @@ iter-2:                              draft-2 → contract-2 → plan-2 → BUILD
 |----------|--------|--------|-----------|
 | `design/blueprint.md` | AI（5 輪對話） | blueprint-gate, draft-gate | 否 |
 | `design/draft_iter-N.md` | AI（對話/迭代） | draft-gate, VERIFY | 否 |
-| `iter-N/contract_iter-N.ts` | AI（從 draft 推導） | contract-gate, spec-to-plan, ac-runner | 否 |
+| `iter-N/contract_iter-N.ts` | AI（從 draft 推導） | contract-gate, spec-to-plan, Phase 2 | 否 |
 | `iter-N/plan/impl_plan_Story-X.Y.md` | spec-to-plan | BUILD Phase 1 | 否 |
 | `src/` 骨架 | BUILD Phase 1 | BUILD Phase 2-4 | 否 |
 | `iter-N/build/Fillback_Story-X.Y.md` | BUILD Phase 4 | VERIFY（參考） | 否 |
@@ -304,34 +304,29 @@ Log 前綴推斷（`inferStateFromLogs`）:
 
 ---
 
-## AC 追蹤鏈
+## TDD 追蹤鏈（v7.0）
 ```
 draft_iter-N.md
-  AC-9.2: Given/When/Then
+  Story-X.Y: 功能需求描述
     │
-    ├── draft-gate + contract-gate 驗證
+    ├── draft-gate + cynefin-check（分析計算複雜度）
     │
-    contract_iter-N.ts 中的 @GEMS-AC 定義
-    │  （v6: @GEMS-AC 住在 contract 中）
+    contract_iter-N.ts
+    │  TDD Contract Subagent：needsTest:true action
+    │  → 寫測試檔（RED）
+    │  → 加 @GEMS-TDD: src/modules/.../xxx.test.ts
     │
-    ├── spec-to-plan
+    ├── spec-to-plan → implementation_plan
     │
-    Plan 中標記 // AC-9.2
+    ├── BUILD Phase 1（骨架建立）
+    │   測試檔已存在，import 失敗 → RED 狀態
     │
-    ├── BUILD Phase 1（骨架對應）
+    ├── BUILD Phase 2（TDD 驗收層）
+    │   有 @GEMS-TDD → vitest --run（修實作讓測試 GREEN，不能動測試檔）
+    │   無 @GEMS-TDD → tsc --noEmit（DB/UI 層只驗型別）
     │
-    實作函式帶 // AC-9.2
-    │
-    ├── BUILD Phase 2（ac-runner v3.0）
-    │   讀 cynefin-report.json actions[].needsTest
-    │   needsTest:true → 生成 iter-N/ac-tests/ac-iter-N.test.ts → vitest run
-    │   needsTest:false → 直接執行 CALC AC（向後相容）
-    │
-    ├── BUILD Phase 4 / SCAN
-    │   fn.acIds = ["AC-9.2"]（函式索引記錄）
-    │
-    └── blueprint-verify.cjs
-        Plan AC vs 實作 acIds 比對 → @PASS / @WARN
+    └── BUILD Phase 4 / SCAN
+        GEMS 標籤品質複查 + Fillback
 ```
 
 ---
@@ -343,7 +338,7 @@ draft_iter-N.md
 └── .gems/
     ├── design/                   # 設計文件集中（v6 新增）
     │   ├── blueprint.md          # 可選，全局設計索引
-    │   ├── draft_iter-1.md       # Per-iter Draft（功能需求 + AC 定義）
+    │   ├── draft_iter-1.md       # Per-iter Draft（功能需求 + TDD 測試需求）
     │   ├── draft_iter-2.md
     │   └── poc_iter-N.html       # 可選，UI 原型
     ├── logs/                     # MICRO-FIX 全局 log（不屬於任何 iter）
@@ -357,8 +352,6 @@ draft_iter-N.md
     │       │   └── consolidation-log.md
     │       ├── plan/
     │       │   └── implementation_plan_Story-X.Y.md
-    │       ├── ac-tests/             # ac-runner v3.0 生成（needsTest:true）
-    │       │   └── ac-iter-N.test.ts
     │       ├── build/
     │       │   ├── Fillback_Story-X.Y.md
     │       │   └── iteration_suggestions_Story-X.Y.json
@@ -367,7 +360,7 @@ draft_iter-N.md
     │           ├── draft-gate-{pass|error}-{ts}.log
     │           ├── contract-gate-{pass|error}-{ts}.log
     │           ├── cynefin-check-{pass|fail}-{ts}.log
-    │           ├── cynefin-report-{ts}.json  # action-level needsTest 供 ac-runner 讀取
+    │           ├── cynefin-report-{ts}.json  # action-level needsTest 供 TDD Contract Subagent 讀取
     │           ├── pocfix-active-{ts}.log
     │           ├── pocfix-pass-{ts}.log
     │           ├── build-phase-N-Story-X.Y-{pass|error}-{ts}.log

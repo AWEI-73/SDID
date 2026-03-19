@@ -313,8 +313,6 @@ function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
       ` * GEMS-FLOW: ${fn.flow || 'TODO'}`,
       ` * GEMS-DEPS: ${fn.deps || '無'}`,
       ` * GEMS-DEPS-RISK: ${fn.depsRisk || 'LOW'}`,
-      ` * GEMS-TEST: ${fn.test || '✓ Unit | - Integration | - E2E'}`,
-      ` * GEMS-TEST-FILE: ${fn.testFile || 'TODO.test.ts'}`,
       ' */',
       ...acLines,
     ];

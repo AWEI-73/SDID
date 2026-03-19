@@ -125,8 +125,6 @@ function generateScaffoldFromLog(logPath, targetDir, options = {}) {
           lines.push(` * GEMS-FLOW: Render`);
           lines.push(` * GEMS-DEPS: 無`);
           lines.push(` * GEMS-DEPS-RISK: LOW`);
-          lines.push(` * GEMS-TEST: - Unit | - Integration | - E2E`);
-          lines.push(` * GEMS-TEST-FILE: TODO.test.ts`);
           lines.push(' */');
           lines.push(`export default function ${compName}() {`);
           lines.push(`  throw new Error('Not implemented — POC-FIX iter-${parsed.iter}');`);
@@ -145,8 +143,6 @@ function generateScaffoldFromLog(logPath, targetDir, options = {}) {
       lines.push(` * GEMS-FLOW: TODO`);
       lines.push(` * GEMS-DEPS: 無`);
       lines.push(` * GEMS-DEPS-RISK: LOW`);
-      lines.push(` * GEMS-TEST: ✓ Unit | - Integration | - E2E`);
-      lines.push(` * GEMS-TEST-FILE: TODO.test.ts`);
       lines.push(' */');
 
       if (type === 'API') {

@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 3: 整合層 (v6.0)
+ * BUILD Phase 3: 整合層 (v7.0)
  * 合併原 Phase 6+7 的跨模組整合檢查
  *
  * 職責:
  * - 路由整合（Page 組件已掛載）
  * - 模組匯出（barrel export 完整）
- * - SKIP[INTEGRATION] AC 呼叫（如果 ac.ts 有 INTEGRATION 類型的 SKIP）
  * - UI Bind 驗證（Vanilla JS 專案）
  */
 'use strict';
@@ -127,11 +126,6 @@ function run(options) {
   }
 
   // ============================================
-  // 4. SKIP[INTEGRATION] AC 呼叫（可選）
-  // ============================================
-  const integrationAcNote = runIntegrationAc(target, iteration, iterNum, story, relativeTarget);
-
-  // ============================================
   // 全部通過
   // ============================================
   writeCheckpoint(target, iteration, story, '3', {
@@ -145,7 +139,6 @@ function run(options) {
     `路由: ${allPages.length > 0 ? `${allPages.length} 頁面已整合` : '無頁面'}`,
     `匯出: ${exportIssues.warnings.length > 0 ? `${exportIssues.warnings.length} 警告` : 'OK'}`,
     uiBindNote,
-    integrationAcNote
   ].filter(Boolean).join(' | ');
 
   emitPass({
@@ -155,34 +148,6 @@ function run(options) {
   }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-3', story });
 
   return { verdict: 'PASS' };
-}
-
-/**
- * 執行 SKIP[INTEGRATION] 類型的 AC（可選）
- */
-function runIntegrationAc(target, iteration, iterNum, story, relativeTarget) {
-  const pocDir = path.join(target, `.gems/iterations/${iteration}/poc`);
-  if (!fs.existsSync(pocDir)) return '';
-
-  const files = fs.readdirSync(pocDir);
-  const acFile = files.find(f => f === 'ac.ts' || f.endsWith('_ac.ts'));
-  if (!acFile) return '';
-
-  const acPath = path.join(pocDir, acFile);
-  const content = fs.readFileSync(acPath, 'utf8');
-
-  // 找 SKIP[INTEGRATION] 的 AC
-  const integrationAcs = [];
-  const pattern = /\/\/\s*(AC-[\d.]+)\s*SKIP\[INTEGRATION\]/g;
-  let m;
-  while ((m = pattern.exec(content)) !== null) {
-    integrationAcs.push(m[1]);
-  }
-
-  if (integrationAcs.length === 0) return '';
-
-  console.log(`\n📋 SKIP[INTEGRATION] AC: ${integrationAcs.join(', ')} — 整合層人工確認`);
-  return `INTEGRATION AC: ${integrationAcs.length} 個`;
 }
 
 /**

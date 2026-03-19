@@ -21,9 +21,9 @@
 
 | Phase | 名稱 | 內容 |
 |-------|------|------|
-| 1 | 骨架映射層 | 讀 implementation_plan + contract.ts + ac.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3） |
-| 2 | AC 驗收層 | ac-runner 讀 cynefin-report.json 的 actions[]：needsTest:true → 生成 vitest test 到 `.gems/iterations/iter-N/ac-tests/` 並執行；needsTest:false → 直接執行（v2.0 相容模式）；SKIP AC 跳過；cynefin-report.json 不存在 → 全部走直接執行 fallback |
-| 3 | 整合層 | 路由整合、barrel export、SKIP[INTEGRATION] AC（Level S 跳過） |
+| 1 | 骨架映射層 | 讀 implementation_plan + contract_iter-N.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3） |
+| 2 | TDD 驗收層 | 讀 contract_iter-N.ts 找 @GEMS-TDD：有 → vitest --run（測試在 contract 階段寫好，Phase 1 RED，Phase 2 GREEN，不能動測試檔）；無 → tsc --noEmit（DB/UI 層只驗型別）|
+| 3 | 整合層 | 路由整合、barrel export（Level S 跳過） |
 | 4 | 標籤品質+Fillback層 | GEMS 標籤品質複查（全覆蓋）+ 產出 Fillback + iteration_suggestions |
 
 > Level S 走 Phase 1→2→4（跳過 Phase 3）
@@ -45,10 +45,10 @@
 - 只讀 @TASK 指定的 FILE 和 error log
 - **例外**：@TASK 的 EXPECTED 含型別名稱但 FILE 裡找不到定義時，允許讀 `contract_iter-N.ts` 查型別簽名（僅此一個檔案，不讀 plan）
 
-### Phase 2 找不到 ac.ts
-- 若 ac.ts 不存在但 contract.ts 存在：Phase 2 會 WARN 並 fallback 到 contract.ts
-- 若兩者都不存在：Phase 2 直接 BLOCK
-- 正常流程：contract-writer @PASS 後 ac.ts 會自動分離，不應出現 fallback
+### Phase 2 找不到 contract.ts 或 @GEMS-TDD
+- 若 contract.ts 不存在：Phase 2 直接 BLOCK（contract-gate 應已通過）
+- 若 contract.ts 存在但無 @GEMS-TDD：Phase 2 只跑 tsc --noEmit（正常，DB/UI Story）
+- 若 @GEMS-TDD 指向的測試檔不存在：Phase 2 BLOCK + 提示在 contract 階段補寫測試檔
 
 ### 收到 @TACTICAL_FIX
 - 讀 output 指定的 error log

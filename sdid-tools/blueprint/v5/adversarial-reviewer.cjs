@@ -45,11 +45,11 @@ function parseContract(content) {
     result.interfaces[name] = fields;
   }
 
-  // Extract @GEMS-AC
-  const acLines = content.split('\n').filter(l => l.includes('@GEMS-AC'));
-  for (const line of acLines) {
-    const m = line.match(/AC-(\d+\.\d+)\s*\[(\w+)\]/);
-    if (m) result.acDefs.push({ id: `AC-${m[1]}`, tag: m[2] });
+  // v7.0: Extract @GEMS-TDD paths（取代舊 @GEMS-AC 機制）
+  const tddLines = content.split('\n').filter(l => l.includes('@GEMS-TDD:'));
+  for (const line of tddLines) {
+    const m = line.match(/\/\/\s*@GEMS-TDD:\s*(.+)/);
+    if (m) result.acDefs.push({ id: m[1].trim(), tag: 'TDD' });
   }
 
   // Extract @GEMS-STORY-ITEM
@@ -142,11 +142,12 @@ function checkDrift(contract, source, storyFilter) {
     }
   }
 
-  // DR-S03: CALC AC 是否有對應 AC marker 在源碼
-  const calcAcs = contract.acDefs.filter(a => a.tag === 'CALC');
-  for (const ac of calcAcs) {
-    if (!source.acMarkers.has(ac.id)) {
-      D('DR-S03', `${ac.id} [CALC] 在源碼中找不到 // ${ac.id} 標記`, null);
+  // DR-S03: v7.0 — @GEMS-TDD 測試檔是否存在（BUILD 後驗收）
+  for (const tdd of contract.acDefs) {
+    // acDefs 現在存放 @GEMS-TDD 路徑（相對於 project root）
+    // target 需要從外部傳入；此處做基礎格式驗證
+    if (!tdd.id.startsWith('src/') || !tdd.id.endsWith('.test.ts')) {
+      W('DR-S03', `@GEMS-TDD 路徑格式異常（應為 src/.../*.test.ts）: ${tdd.id}`, null);
     }
   }
 

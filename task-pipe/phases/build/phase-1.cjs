@@ -119,8 +119,7 @@ mkdir -p ${planPath}
   if (planValidation.warnings.length > 0) {
     console.log(`⚠️  Plan Schema: ${planValidation.warnings.length} warning(s) — ${planValidation.warnings.map(w => w.rule).join(', ')}`);
     if (planValidation.warnings.some(w => w.rule === 'AC_FIELD')) {
-      console.log(`   ℹ️  AC_FIELD warning: plan-generator 的 AC 欄位為機械佔位符（○○），`);
-      console.log(`      Phase 2 ac-runner 執行時會從 contract.ts 自動對齊，此 warning 可忽略。`);
+      console.log(`   ℹ️  AC_FIELD warning: plan-generator 的 AC 欄位為機械佔位符（○○），可忽略。`);
     }
   }
 

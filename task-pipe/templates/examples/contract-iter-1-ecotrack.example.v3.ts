@@ -102,13 +102,6 @@ export interface IDashboardService {
   getTrendData(orgId: string, months: number): Promise<Array<{ month: string; totalCo2e: number }>>;
 }
 
-// ─── AC 驗收條件 ─────────────────────────────────────────────
-
-// @GEMS-AC: AC-0.0
-// @GEMS-AC-SKIP: TypeScript 編譯驗證，非 runtime 測試
-
-// @GEMS-AC: AC-0.1
-// @GEMS-AC-SKIP: TypeScript 介面驗證，非 runtime 測試
-
-// @GEMS-AC: AC-0.2
-// @GEMS-AC-SKIP: UI 路由殼，人工 POC 驗收
+// ─── TDD 測試路徑（v7.0）────────────────────────────────────
+// 此 iter-1 為 Foundation（骨架/型別定義層），無純計算邏輯
+// → 所有 Story 不加 @GEMS-TDD，Phase 2 只跑 tsc --noEmit

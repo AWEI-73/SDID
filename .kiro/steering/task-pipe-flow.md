@@ -2,7 +2,7 @@
 inclusion: always
 ---
 
-# SDID Flow v6 - AI 協作開發框架
+# SDID Flow v7.0 - AI 協作開發框架
 
 **核心理念**: 腳本 print → AI 讀取 → AI 執行 → 重複直到 @PASS
 
@@ -15,7 +15,8 @@ inclusion: always
 
 ```
 主流程:
-  Draft → draft-gate → Contract → contract-gate → spec-to-plan → BUILD Phase 1-4 → SCAN → VERIFY
+  Draft → draft-gate → CYNEFIN-CHECK → [needsTest:true → TDD Contract Subagent → Design Reviewer]
+       → Contract → contract-gate → spec-to-plan → BUILD Phase 1-4 → SCAN → VERIFY
     ↑
   可選前置（需求模糊時才進）:
   Blueprint 5輪對話 → blueprint.md → blueprint-gate → [自動銜接回 Draft 這步]

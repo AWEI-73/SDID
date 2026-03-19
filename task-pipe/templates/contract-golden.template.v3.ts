@@ -39,7 +39,7 @@
 // ─── Stories ─────────────────────────────────────────────────
 
 // @GEMS-STORY: Story-{N}.0 | {moduleName} | {Story 描述} | {Story 類型: Foundation/CRUD/CALC/UI}
-// @GEMS-STORY-ITEM: {techName} | {TYPE} | P{0-3} | {FLOW: STEP1→STEP2→RETURN} | {DEPS: [dep1]} | AC-{N}.0
+// @GEMS-STORY-ITEM: {techName} | {TYPE} | P{0-3} | {FLOW: STEP1→STEP2→RETURN} | {DEPS: [dep1]}
 
 // ─── Enums ───────────────────────────────────────────────────
 
@@ -89,4 +89,4 @@
 // @GEMS-STORY: Story-{N}.0 | {Module} | {描述} | Foundation
 // （無 @GEMS-TDD — Phase 2 只跑 tsc --noEmit）
 
-// 參考範例: task-pipe/templates/examples/ac-golden.ts
+// 參考範例: task-pipe/templates/examples/contract-golden.ts

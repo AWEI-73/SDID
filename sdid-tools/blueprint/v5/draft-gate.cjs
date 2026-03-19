@@ -11,7 +11,7 @@
  * Auto-patch 項目:
  *   - UI+ROUTE 複合類型 → 拆成兩行
  *   - 子 section 動作（## Story-X.Y 動作）→ 合併到頂層 ## 動作清單
- *   - 缺少 ## AC 骨架 → 補空骨架行（P0/P1 動作各補一行）
+ *   - 缺少 ## TDD 測試需求 → 補空節（[TDD] 動作各補一行提示）
  *
  * 用法:
  *   node sdid-tools/blueprint/v5/draft-gate.cjs --draft=<path> [--blueprint=<path>] [--target=<project>]
@@ -130,47 +130,43 @@ function autoPatch(raw) {
     patches.push(`拆分複合類型: ${splitLines.join(', ')}`);
   }
 
-  // 3. 補缺少的 ## AC 骨架
-  const hasAcSection = /##\s*AC\s*骨架/.test(patched);
-  if (!hasAcSection) {
-    // 找 P0/P1 動作，補對應 AC 骨架行
-    const acLines = [];
+  // 3. 補缺少的 ## TDD 測試需求（v7.0）
+  const hasTddSection = /##\s*TDD\s*測試需求/.test(patched);
+  if (!hasTddSection) {
+    // 找 [TDD] 標記動作，補對應提示行
+    const tddLines = [];
     const tableM = patched.match(/##\s*動作清單\s*\n\|[^\n]+\n\|[-|\s]+\n((?:\|[^\n]+\n?)+)/);
     if (tableM) {
       const rows = tableM[1].split('\n').filter(l => l.startsWith('|'));
       for (const r of rows) {
         const cols = r.split('|').map(c => c.trim()).filter(Boolean);
         if (cols.length >= 8) {
-          const priority = cols[4];
           const techName = cols[2];
-          const acRef = cols[7];
-          if (/^P[01]$/.test(priority)) {
-            const acId = (acRef.match(/AC-\d+\.\d+/) || [])[0];
-            if (acId) {
-              // 偵測 SKIP 標記（UI/MANUAL 類型）
-              const actionType = (cols[1] || '').toUpperCase();
-              const isSkippable = ['UI', 'ROUTE'].includes(actionType);
-              const acTag = isSkippable ? 'SKIP: UI' : 'CALC';
-              acLines.push(`- ${acId} [${acTag}] — ${techName}: Given / When / Then`);
-            }
+          const tddTag = (cols[7] || '').trim();
+          if (/\[TDD\]/i.test(tddTag)) {
+            tddLines.push(`- ${techName}: Given / When / Then`);
           }
         }
       }
     }
-    const acSection = '\n## AC 骨架\n\n' + (acLines.length > 0 ? acLines.join('\n') : '- (無 P0/P1 動作)') + '\n';
+    const tddComment = tddLines.length > 0
+      ? tddLines.join('\n')
+      : '<!-- 無 [TDD] action → Phase 2 只跑 tsc --noEmit -->';
+    const tddSection = '\n## TDD 測試需求\n\n' + tddComment + '\n';
     // 插在 ## 模組 API 摘要 前，或末尾
     if (/##\s*模組\s*API\s*摘要/.test(patched)) {
-      patched = patched.replace(/##\s*模組\s*API\s*摘要/, acSection + '\n## 模組 API 摘要');
+      patched = patched.replace(/##\s*模組\s*API\s*摘要/, tddSection + '\n## 模組 API 摘要');
     } else {
-      patched = patched.trimEnd() + acSection;
+      patched = patched.trimEnd() + tddSection;
     }
-    patches.push(`補充 ## AC 骨架（${acLines.length} 行）`);
+    patches.push(`補充 ## TDD 測試需求（${tddLines.length} 個 [TDD] action）`);
   }
 
-  // 4. AC 骨架中的 SKIP 標記容錯：SKIP:UI / SKIP-UI / UI-SKIP → SKIP: UI
-  patched = patched.replace(/\[SKIP[:\-]?\s*UI\]/gi, '[SKIP: UI]');
-  patched = patched.replace(/\[UI[:\-]?\s*SKIP\]/gi, '[SKIP: UI]');
-  patched = patched.replace(/\[@GEMS-AC-SKIP\]/gi, '[SKIP: UI]');
+  // 4. 舊版 ## AC 骨架 → 自動重命名（向後相容）
+  if (/##\s*AC\s*骨架/.test(patched)) {
+    patched = patched.replace(/##\s*AC\s*骨架/g, '## TDD 測試需求');
+    patches.push('## AC 骨架 → ## TDD 測試需求（向後相容重命名）');
+  }
 
   return { patched, patches };
 }
@@ -209,14 +205,15 @@ function parseDraft(raw) {
     }
   }
 
-  const acLines = raw.split('\n').filter(l => /^\s*-\s*AC-\d+\.\d+/.test(l));
-  for (const line of acLines) {
-    const m = line.match(/AC-(\d+\.\d+)\s*\[(\w+)\]\s*—\s*(\w+):\s*(.+)/);
-    if (m) {
-      d.acDefs.push({ id: `AC-${m[1]}`, tag: m[2], techName: m[3], gwt: m[4].trim() });
-    } else {
-      const idM = line.match(/AC-(\d+\.\d+)/);
-      if (idM) d.acDefs.push({ id: `AC-${idM[1]}`, tag: null, techName: null, gwt: null });
+  // v7.0: TDD 測試需求 section 的行（Given/When/Then 格式）
+  const tddSection = raw.match(/##\s*TDD\s*測試需求\s*\n([\s\S]*?)(?=\n##|$)/);
+  if (tddSection) {
+    const tddLines = tddSection[1].split('\n').filter(l => /^\s*-\s/.test(l) && !/<!--/.test(l));
+    for (const line of tddLines) {
+      const m = line.match(/^\s*-\s*(\w+):\s*(.+)/);
+      if (m) {
+        d.acDefs.push({ id: m[1], tag: 'TDD', techName: m[1], gwt: m[2].trim() });
+      }
     }
   }
 
@@ -269,21 +266,17 @@ function checkDraft(d, raw, blueprint) {
     if (!item.flow || item.flow.trim() === '')
       B('DR-013', `${prefix} 缺少流向（flow），用 → 分隔步驟`);
     const p = (item.priority || '').toUpperCase();
-    const ac = (item.ac || '').trim();
-    if ((p === 'P0' || p === 'P1') && (!ac || ac === '-' || ac === '無'))
-      B('DR-016', `${prefix} P0/P1 動作缺少 AC 欄位`);
-    const acIds = (ac || '').match(/AC-\d+\.\d+/g);
-    if (acIds) acIds.forEach(id => acRefs.add(id));
+    const tddTag = (item.ac || '').trim();
+    if ((p === 'P0' || p === 'P1') && (!tddTag || tddTag === '-' || tddTag === '無'))
+      B('DR-016', `${prefix} P0/P1 動作缺少 TDD 欄位（應填 [TDD] / [DB] / [UI]）`);
+    // v7.0: TDD 欄位不再有 AC-X.Y 引用，跳過 acRefs 收集
   }
 
-  // 大項 5: AC 骨架存在（auto-patch 已補，這裡只驗引用有定義）
-  const definedAcIds = new Set(d.acDefs.map(a => a.id));
-  for (const ref of acRefs) {
-    if (ref && !definedAcIds.has(ref) && !/SKIP|MANUAL/i.test(ref))
-      B('DR-020', `AC "${ref}" 在動作清單引用但 ## AC 骨架 找不到定義`);
-  }
+  // 大項 5: TDD 測試需求 section 存在（auto-patch 已補，v7.0 不再驗 AC 引用）
+  // 只確認 section 本身存在（已由 auto-patch 處理，這裡不 BLOCK）
 
-  // 大項 6: Placeholder 未替換  const placeholders = new Set();
+  // 大項 6: Placeholder 未替換
+  const placeholders = new Set();
   let inCode = false, inComment = false;
   for (const line of raw.split('\n')) {
     if (line.trim().startsWith('```')) { inCode = !inCode; continue; }
@@ -297,12 +290,10 @@ function checkDraft(d, raw, blueprint) {
     B('DR-030', `發現未替換佔位符: ${[...placeholders].slice(0, 5).join(', ')}`);
 
   // @GUIDED: 語意問題（不 BLOCK，給具體指引）
-  // AC 骨架有定義但缺 Given/When/Then → 指引補齊
-  // SKIP: UI / SKIP: MANUAL 類型豁免 Given/When/Then 要求
-  for (const ac of d.acDefs) {
-    if (ac.tag === 'SKIP' || ac.tag === 'MANUAL' || (ac.tag || '').startsWith('SKIP')) continue;
-    if (!ac.gwt || (!ac.gwt.includes('Given') && !ac.gwt.includes('When')))
-      G('DR-G01', `${ac.id} AC 骨架缺少 Given/When/Then，格式: Given <前提> / When <操作> / Then <可觀察結果>`);
+  // TDD 測試需求有定義但缺 Given/When/Then → 指引補齊
+  for (const tdd of d.acDefs) {
+    if (!tdd.gwt || (!tdd.gwt.includes('Given') && !tdd.gwt.includes('When')))
+      G('DR-G01', `${tdd.techName} TDD 測試需求缺少 Given/When/Then，格式: Given <前提> / When <操作> / Then <可觀察結果（具體值）>`);
   }
 
   // @GUIDED: Foundation iter 提示（不 BLOCK）
@@ -328,6 +319,21 @@ function checkDraft(d, raw, blueprint) {
   }
 
   return { blockers, guided };
+}
+
+// ── Gold template hints per error code ──
+function getDraftFixHint(code) {
+  const hints = {
+    'DR-001': `**迭代**: iter-1\n**模組**: ModuleName\n**目標**: 一句話說明本迭代要完成什麼`,
+    'DR-003': `## 動作清單\n| 描述 | 類型 | 技術名 | 簽名 | 優先級 | 流向 | 依賴 | TDD |\n|------|------|--------|------|--------|------|------|-----|\n| 建立班級 | SVC | createClass | (data)→Class | P1 | VALIDATE→INSERT→RETURN | - | [DB] |`,
+    'DR-010': `技術名 = camelCase 函式名，例如: createClass, parseCSV`,
+    'DR-011': `合法類型: CONST / LIB / API / SVC / HOOK / UI / ROUTE / SCRIPT / CALC / CREATE / READ / MODIFY / DELETE`,
+    'DR-012': `優先級格式: P0 / P1 / P2 / P3`,
+    'DR-013': `流向格式: STEP1→STEP2→STEP3，例如: VALIDATE→INSERT→RETURN`,
+    'DR-016': `P0/P1 動作必須有 TDD 欄位，填 [TDD]（純計算）/ [DB]（資料庫操作）/ [UI]（前端元件）`,
+    'DR-020': `## TDD 測試需求\n- createClass: Given 有效資料 / When 呼叫 createClass / Then 回傳含 id 的新建物件`,
+  };
+  return hints[code] || null;
 }
 
 // ── Main ──
@@ -409,6 +415,8 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
         logLines.push(`  ACTION: FIX_DRAFT`);
         logLines.push(`  FILE: ${relDraft}`);
         logLines.push(`  EXPECTED: [${b.code}] ${b.msg}`);
+        const hint = getDraftFixHint(b.code);
+        if (hint) logLines.push(`  HINT:\n${hint.split('\n').map(l => '    ' + l).join('\n')}`);
         logLines.push(``);
       });
     }
@@ -469,7 +477,7 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
       console.log(`@TASK-2`);
       console.log(`  ACTION: WRITE_CONTRACT`);
       console.log(`  FILE: ${contractPath}`);
-      console.log(`  EXPECTED: 從 draft 推導 contract_iter-${iterNum}.ts（@GEMS-CONTRACT + @GEMS-API + @GEMS-STORY: + @GEMS-AC）`);
+      console.log(`  EXPECTED: 從 draft 推導 contract_iter-${iterNum}.ts（@GEMS-CONTRACT + @GEMS-API + @GEMS-STORY: + @GEMS-TDD 路徑）`);
       console.log(`  REFERENCE: task-pipe/templates/contract-golden.template.v3.ts`);
       console.log(`  EXAMPLE: task-pipe/templates/examples/contract-iter-1-ecotrack.example.v3.ts`);
       console.log('');

@@ -1,5 +1,5 @@
 ﻿# SDID 系統架構文件
-> 版本: v6.1 | 更新: 2026-03-16
+> 版本: v7.0 | 更新: 2026-03-19
 > 定位: SDID 全系統的完整架構接線圖，供 AI session 快速定向
 
 ---
@@ -196,7 +196,7 @@ SDID 的 artifact/data flow 是嚴格的 DAG，execution 層的 gate retry 是 s
         │  [src/ 骨架]◄─────────────┘  [contract_iter-N.ts] Phase 2  │  │
         │  (Phase 1 產出)               驗收                          │  │
         │             │                │                              │  │
-        │             ▼                ▼ CALC AC PASS                 │  │
+        │             ▼                ▼ TDD GREEN                    │  │
         │  [src/ 完整實作]   [Fillback_Story-X.Y.md]                  │  │
         │  (Phase 2-4)       [iteration_suggestions.json]             │  │
         │             │      iter-N/build/                            │  │
@@ -452,7 +452,7 @@ node sdid-monitor/server.cjs   # http://localhost:3737
 
 ```typescript
 /**
- * GEMS: functionName | P[0-3] | ✓✓ | (args)→Result | Story-X.X | 描述
+ * GEMS: functionName | P[0-3] | (args)→Result | Story-X.X | 描述
  * GEMS-FLOW: Step1→Step2→Step3
  * GEMS-DEPS: [Type.Name (說明)]
  * GEMS-DEPS-RISK: LOW | MEDIUM | HIGH

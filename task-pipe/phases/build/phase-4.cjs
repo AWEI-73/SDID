@@ -5,7 +5,7 @@
  *
  * 職責:
  * - GEMS 標籤品質複查（P0-P3 全覆蓋，不是第一次強制）
- * - AC 覆蓋率確認（源碼 // AC-X.Y 錨點 vs ac.ts 定義）
+ * - TDD 覆蓋率確認（@GEMS-TDD 指定的測試檔是否存在）
  * - 自動產出 Fillback_Story-X.Y.md + iteration_suggestions_Story-X.Y.json
  * - 判斷是否進入下一個 Story 或完成 iteration
  */
@@ -147,7 +147,7 @@ function run(options) {
   const isIterationComplete = plannedStories.every(s => completedStories.includes(s) || s === story);
 
   const tagSummary = `標籤: ${tagIssues.total} 個 | P0: ${tagIssues.p0} P1: ${tagIssues.p1} P2: ${tagIssues.p2} P3: ${tagIssues.p3}`;
-  const acSummary = acCoverage.total > 0 ? `AC: ${acCoverage.covered}/${acCoverage.total}` : '';
+  const acSummary = acCoverage.total > 0 ? `TDD: ${acCoverage.covered}/${acCoverage.total} 測試檔` : '';
 
   if (isIterationComplete) {
     // 寫 pass log 讓 state-machine 推進
@@ -229,39 +229,31 @@ function checkTagQuality(srcPath, story, target, iteration) {
 }
 
 /**
- * AC 覆蓋率確認
+ * v7.0: TDD 覆蓋率確認
+ * 讀 contract_iter-N.ts 的 @GEMS-TDD 路徑，確認測試檔是否存在
  */
 function checkAcCoverage(target, iteration, srcPath, story) {
   const result = { total: 0, covered: 0, uncovered: [] };
 
-  const pocDir = path.join(target, `.gems/iterations/${iteration}/poc`);
-  if (!fs.existsSync(pocDir)) return result;
-
-  const files = fs.readdirSync(pocDir);
-  const acFile = files.find(f => f === 'ac.ts' || f.endsWith('_ac.ts'))
-    || files.find(f => f.startsWith('contract_') && f.endsWith('.ts'));
-  if (!acFile) return result;
+  const iterNum = iteration.replace('iter-', '');
+  const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
+  if (!fs.existsSync(contractPath)) return result;
 
   try {
-    const content = fs.readFileSync(path.join(pocDir, acFile), 'utf8');
-    const acIds = new Set();
-    const pattern = /\/\/\s*(AC-[\d.]+)/g;
+    const content = fs.readFileSync(contractPath, 'utf8');
+    const tddPaths = [];
+    const pattern = /\/\/\s*@GEMS-TDD:\s*(.+)/g;
     let m;
-    while ((m = pattern.exec(content)) !== null) acIds.add(m[1]);
+    while ((m = pattern.exec(content)) !== null) {
+      const p = m[1].trim();
+      if (!tddPaths.includes(p)) tddPaths.push(p);
+    }
 
-    result.total = acIds.size;
-
-    // 掃描 src 確認 AC 錨點
-    if (scanGemsTags && fs.existsSync(srcPath)) {
-      const scanResult = scanGemsTags(srcPath);
-      const taggedAcIds = new Set();
-      for (const fn of scanResult.functions) {
-        if (fn.acIds) fn.acIds.forEach(id => taggedAcIds.add(id));
-      }
-      for (const id of acIds) {
-        if (taggedAcIds.has(id)) result.covered++;
-        else result.uncovered.push(id);
-      }
+    result.total = tddPaths.length;
+    for (const p of tddPaths) {
+      const fullPath = path.join(target, p);
+      if (fs.existsSync(fullPath)) result.covered++;
+      else result.uncovered.push(p);
     }
   } catch { }
 
@@ -284,12 +276,12 @@ function autoGenerateOutputs(target, iteration, story, buildPath, storyContext, 
     }));
 
     if (acCoverage.uncovered.length > 0) {
-      acCoverage.uncovered.forEach(id => {
+      acCoverage.uncovered.forEach(p => {
         qualityIssues.push({
-          type: 'AC_NOT_TAGGED',
+          type: 'TDD_MISSING',
           severity: 'WARNING',
-          ac: id,
-          message: `${id} — 源碼未標記 // ${id} 錨點`
+          path: p,
+          message: `測試檔不存在: ${p}`
         });
       });
     }
@@ -318,7 +310,7 @@ function autoGenerateOutputs(target, iteration, story, buildPath, storyContext, 
             : ['Story 實作完成']),
       technicalDebt: [],
       suggestions: qualityIssues.length === 0
-        ? [{ type: 'QUALITY', message: `${story} 標籤與 AC 品質良好，建議繼續下一個 Story` }]
+        ? [{ type: 'QUALITY', message: `${story} 標籤與 TDD 品質良好，建議繼續下一個 Story` }]
         : [],
       qualityIssues: qualityIssues.length > 0 ? qualityIssues : undefined,
       nextIteration: {
@@ -346,22 +338,22 @@ function autoGenerateOutputs(target, iteration, story, buildPath, storyContext, 
       '',
     ];
 
-    // Foundation Story（CONST/型別/骨架）沒有 CALC AC，統計無意義
+    // Foundation Story（CONST/型別/骨架）通常沒有 TDD，統計可能為 0
     const isFoundation = story.endsWith('.0') || (storyContext && storyContext.storyType === 'Foundation');
-    const hasCalcAc = acCoverage.total > 0;
+    const hasTdd = acCoverage.total > 0;
 
-    if (isFoundation && !hasCalcAc) {
+    if (isFoundation && !hasTdd) {
       fillback.push(`## Foundation Story — 不適用`);
-      fillback.push(`此 Story 為骨架/型別定義層，無 CALC AC，標籤統計與 AC 覆蓋不適用。`);
+      fillback.push(`此 Story 為骨架/型別定義層，無 @GEMS-TDD，標籤統計與 TDD 覆蓋不適用。`);
       fillback.push(`驗收方式：TypeScript 編譯通過（tsc --noEmit）+ Phase 1 骨架映射完整。`);
       fillback.push('');
     } else {
       fillback.push(`## 標籤統計`);
       fillback.push(`- P0: ${tagIssues.p0} | P1: ${tagIssues.p1} | P2: ${tagIssues.p2} | P3: ${tagIssues.p3}`);
       fillback.push('');
-      fillback.push(`## AC 覆蓋`);
-      fillback.push(`- 總計: ${acCoverage.total} | 已標記: ${acCoverage.covered}`);
-      if (acCoverage.uncovered.length > 0) fillback.push(`- 未標記: ${acCoverage.uncovered.join(', ')}`);
+      fillback.push(`## TDD 覆蓋`);
+      fillback.push(`- 總計: ${acCoverage.total} | 已存在: ${acCoverage.covered}`);
+      if (acCoverage.uncovered.length > 0) fillback.push(`- 缺少: ${acCoverage.uncovered.join(', ')}`);
       fillback.push('');
     }
 

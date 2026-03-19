@@ -18,15 +18,13 @@
  *   @GEMS-VIEW            — 前端 View 型別
  *   @GEMS-API             — 公開 API 簽名
  *   @GEMS-ENUM            — 列舉型別
- *   @GEMS-AC              — 驗收條件（ac-runner 機械驗收）
- *   @GEMS-AC-SKIP         — 跳過 ac-runner（UI/外部依賴）
+ *   @GEMS-TDD             — 指向測試檔路徑（Phase 2 執行 vitest，純計算/業務邏輯才加）
  *
- * Gate 規則 (contract-writer.cjs):
- *   STORY-001: 必須有 @GEMS-STORIES 區塊
- *   STORY-002: 每個 Story 必須有對應 @GEMS-STORY-ITEM
- *   STORY-003: STORY-ITEM 格式必須是 "- 描述 | TYPE | P[0-3]"
- *   STORY-004: 至少一個 Story
- *   CONTRACT-001~007: Entity/API 格式驗證
+ * Gate 規則 (contract-gate.cjs v5):
+ *   CG-001: 必須有 @GEMS-STORY: 單行格式
+ *   CG-002: 必須有 @GEMS-CONTRACT: EntityName
+ *   @GUIDED CG-G01: @GEMS-TDD 路徑格式建議（src/ 開頭，.test.ts 結尾）
+ *   @GUIDED CG-G04: @GEMS-AC-* 標籤已 deprecated，請改用 @GEMS-TDD
  */
 
 // @CONTRACT-LOCK: 2026-01-15 | Gate: iter-1
@@ -154,38 +152,19 @@ export interface IDashboardService {
   getTrendData(orgId: string, months: number): Promise<Array<{ month: string; totalCo2e: number }>>;
 }
 
-// ─── AC 驗收條件 ─────────────────────────────────────────────
+// ─── TDD 測試路徑（v7.0）────────────────────────────────────
+// 純計算/業務邏輯（CYNEFIN needsTest:true）才加 @GEMS-TDD
+// DB CRUD / UI / 外部 API 不加（Phase 2 只跑 tsc --noEmit）
 
-// @GEMS-AC: AC-2.0
-// @GEMS-AC-FN: calcEmission
-// @GEMS-AC-MODULE: modules/DataEntry/services/calc-emission
-// @GEMS-AC-INPUT: [1000, "elec-tw-2024"]
-// @GEMS-AC-EXPECT: 494
+// Story-2.0 calcEmission 是純計算（Complicated），加 @GEMS-TDD
+// @GEMS-STORY: Story-2.0 | DataEntry | 碳排資料登錄 | CRUD+CALC
+// @GEMS-TDD: src/modules/DataEntry/lib/__tests__/calc-emission.test.ts
 
-// @GEMS-AC: AC-2.1
-// @GEMS-AC-FN: calcEmission
-// @GEMS-AC-MODULE: modules/DataEntry/services/calc-emission
-// @GEMS-AC-INPUT: [0, "elec-tw-2024"]
-// @GEMS-AC-EXPECT: 0
+// Story-3.0 getScopeSummary 需要 DB，不加 @GEMS-TDD（tsc only）
+// @GEMS-STORY: Story-3.0 | Dashboard | 儀表板統計 | READ+CALC
 
-// @GEMS-AC: AC-2.2
-// @GEMS-AC-FN: calcEmission
-// @GEMS-AC-MODULE: modules/DataEntry/services/calc-emission
-// @GEMS-AC-INPUT: [1000, "non-existent-factor"]
-// @GEMS-AC-EXPECT-THROW: ValidationError
+// Story-1.0 UI 層，不加 @GEMS-TDD
+// @GEMS-STORY: Story-1.0 | shared | 組織管理 CRUD | CRUD
 
-// @GEMS-AC: AC-3.0
-// @GEMS-AC-FN: getScopeSummary
-// @GEMS-AC-MODULE: modules/Dashboard/services/get-scope-summary
-// @GEMS-AC-SKIP: 需要 DB 查詢 | 純聚合邏輯可 mock 驗
-
-// @GEMS-AC: AC-3.1
-// @GEMS-AC-FN: getTrendData
-// @GEMS-AC-MODULE: modules/Dashboard/services/get-trend-data
-// @GEMS-AC-SKIP: 需要 DB 查詢 | 純聚合邏輯可 mock 驗
-
-// @GEMS-AC: AC-1.0
-// @GEMS-AC-SKIP: UI 互動，人工 POC 驗收
-
-// @GEMS-AC: AC-0.0
-// @GEMS-AC-SKIP: TypeScript 編譯驗證，非 runtime 測試
+// Story-0.0 Foundation（型別定義），不加 @GEMS-TDD
+// @GEMS-STORY: Story-0.0 | shared | 專案骨架 + 核心型別 | Foundation

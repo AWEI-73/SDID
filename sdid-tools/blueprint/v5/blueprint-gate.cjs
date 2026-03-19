@@ -405,7 +405,7 @@ Blueprint Gate v5.0 — 全局骨架品質門控
     console.log(`@TASK`);
     console.log(`  ACTION: WRITE_DRAFT`);
     console.log(`  FILE: <project>/.gems/iterations/iter-${iterNum}/poc/draft_iter-${iterNum}.md`);
-    console.log(`  EXPECTED: 依 Blueprint iter-${iterNum} 規劃產出 per-iter draft（動作清單 + AC 骨架）`);
+    console.log(`  EXPECTED: 依 Blueprint iter-${iterNum} 規劃產出 per-iter draft（動作清單 + TDD 測試需求）`);
     console.log(`  REFERENCE: task-pipe/templates/draft-iter-golden.template.v5.md`);
     console.log(`  EXAMPLE: task-pipe/templates/examples/draft-iter-1-ecotrack.example.v5.md`);
     console.log('');

@@ -484,7 +484,7 @@ export async function handler({ project, iter, story, forceStart }) {
       // M23: Per-step Subagent 提示 — 每個 Phase 建議用獨立 subagent 執行，context 隔離
       const subagentHints = {
         1: { complexity: 'HIGH', model: 'full', reason: '骨架映射層：需讀 plan + contract + ac，context 重，建議獨立 subagent' },
-        2: { complexity: 'MEDIUM', model: 'full', reason: 'AC 驗收層：需執行 ac-runner，邏輯密集，建議獨立 subagent' },
+        2: { complexity: 'MEDIUM', model: 'full', reason: 'TDD 驗收層：有 @GEMS-TDD 則執行 vitest，否則 tsc --noEmit，建議獨立 subagent' },
         3: { complexity: 'LOW', model: 'lite', reason: '整合層：路由/barrel export，機械性任務，可用輕量模型' },
         4: { complexity: 'LOW', model: 'lite', reason: '標籤品質層：GEMS tag 複查 + Fillback，機械性任務，可用輕量模型' },
       };
@@ -624,13 +624,14 @@ export async function handler({ project, iter, story, forceStart }) {
     case 'CYNEFIN_CHECK': {
       // Cynefin 語意域分析 — AI 手動執行，不走 runner
       const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
-      const pocPath = path.join(iterPath, 'poc');
+      const designPath = path.join(projectRoot, '.gems', 'design');
       let inputFile = null;
-      if (fs.existsSync(pocPath)) {
-        const files = fs.readdirSync(pocPath);
-        inputFile = files.find(f => f.startsWith('requirement_draft_')) || files.find(f => f.startsWith('requirement_spec_'));
+      if (fs.existsSync(designPath)) {
+        const files = fs.readdirSync(designPath);
+        inputFile = files.find(f => f.startsWith(`draft_iter-${iterNum}`) && f.endsWith('.md'))
+          || files.find(f => f.startsWith('draft_iter-') && f.endsWith('.md'));
       }
-      const inputPath = inputFile ? path.join(pocPath, inputFile) : `${iterPath}/poc/requirement_draft_iter-${iterNum}.md`;
+      const inputPath = inputFile ? path.join(designPath, inputFile) : path.join(designPath, `draft_iter-${iterNum}.md`);
 
       lines.push(`🔍 CYNEFIN-CHECK: 語意域分析`);
       lines.push('');
@@ -653,7 +654,7 @@ export async function handler({ project, iter, story, forceStart }) {
         if (state.contractDirty) {
           lines.push(`🔄 CONTRACT: contract.ts 已變動，重新 gate 驗證`);
         } else {
-          lines.push(`🚀 執行: blueprint-contract-writer.cjs (gate 驗證)`);
+          lines.push(`🚀 執行: blueprint/v5/contract-gate.cjs (gate 驗證)`);
         }
         const writerArgs = [
           `--contract=${contractPath}`,
@@ -661,7 +662,7 @@ export async function handler({ project, iter, story, forceStart }) {
           `--iter=${iterNum}`,
         ];
         if (state.draftPath) writerArgs.push(`--draft=${state.draftPath}`);
-        result = await runCli('blueprint/contract-writer.cjs', writerArgs);
+        result = await runCli('blueprint/v5/contract-gate.cjs', writerArgs);
         break;
       }
 
@@ -777,4 +778,30 @@ export async function handler({ project, iter, story, forceStart }) {
   lines.push('@FORBIDDEN ❌ 禁呼叫 spec-gen/scanner 等工具 | ❌ 禁讀框架腳本推斷邏輯 | ✅ 只照 @TASK 修復');
 
   return { content: [{ type: 'text', text: lines.join('\n') }] };
+}
+
+// ─── CLI 直接執行入口 ──────────────────────────────────────────────────────────
+import { fileURLToPath } from 'node:url';
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2);
+  const get = (flag) => {
+    const entry = args.find(a => a.startsWith(`--${flag}=`));
+    return entry ? entry.split('=').slice(1).join('=') : undefined;
+  };
+  const project = get('project');
+  if (!project) {
+    console.error('Usage: node loop.mjs --project=<path> [--iter=N] [--story=Story-X.Y] [--forceStart=PHASE]');
+    process.exit(1);
+  }
+  const iter = get('iter') ? parseInt(get('iter'), 10) : undefined;
+  const story = get('story');
+  const forceStart = get('forceStart');
+  try {
+    const result = await handler({ project, iter, story, forceStart });
+    const text = result?.content?.[0]?.text ?? '';
+    console.log(text);
+  } catch (err) {
+    console.error('sdid-loop error:', err.message);
+    process.exit(1);
+  }
 }

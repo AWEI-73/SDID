@@ -1,6 +1,6 @@
 ---
 name: sdid
-description: SDID v6 是結構化全端開發框架，涵蓋 Blueprint 5輪需求設計、Draft-Contract 主流程、BUILD Phase 1-4 v6 自動化建置。以下情境必須觸發：(1) 出現「SDID」「sdid-loop」「.gems/」「GEMS 標籤」「GEMS-FLOW」「GEMS-DEPS」「implementation_plan」「iter-N」「cynefin」等框架專有詞彙；(2) 建新專案且需結構化流程（Blueprint/Draft）；(3) 繼續 SDID 專案開發（BUILD 斷點、Phase 重跑、Story 續跑）；(4) 說「小修/micro fix/quick fix」且有明確模組脈絡；(5) 驗證第三方 API 或特化演算法的 POC；(6) 說「快速建/練習專案/小專案」要直接開發。不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作、一般 Docker/CI/CD 操作。
+description: SDID v7.0 是結構化全端開發框架，涵蓋 Blueprint 5輪需求設計、Draft-Contract 主流程、BUILD Phase 1-4 v7 自動化建置（TDD 驗收）。以下情境必須觸發：(1) 出現「SDID」「sdid-loop」「.gems/」「GEMS 標籤」「GEMS-FLOW」「GEMS-DEPS」「implementation_plan」「iter-N」「cynefin」等框架專有詞彙；(2) 建新專案且需結構化流程（Blueprint/Draft）；(3) 繼續 SDID 專案開發（BUILD 斷點、Phase 重跑、Story 續跑）；(4) 說「小修/micro fix/quick fix」且有明確模組脈絡；(5) 驗證第三方 API 或特化演算法的 POC；(6) 說「快速建/練習專案/小專案」要直接開發。不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作、一般 Docker/CI/CD 操作。
 ---
 
 # SDID — 路由器
@@ -111,11 +111,9 @@ spec-to-plan → BUILD Phase 1-4
 > 完整規則在 [cynefin-check.md](references/cynefin-check.md)，此處只提示時機。
 
 ```
-Draft 完成 → CYNEFIN-CHECK → @PASS
-    → [TDD Contract Subagent]（needsTest:true → 寫 @GEMS-TDD 測試檔 → RED 驗證）
-    → [Design Reviewer Subagent]（contract 語意審查，取代 AI 自評）
-    → CONTRACT @PASS → spec-to-plan → BUILD Phase 1-4 → SCAN → VERIFY
-```
+Draft 完成 → CYNEFIN-CHECK → @PASS → TDD Contract Subagent（needsTest:true → 寫 @GEMS-TDD 測試檔）
+  → Design Reviewer Subagent → CONTRACT-GATE → @PASS → spec-to-plan → BUILD Phase 1-4 → SCAN → VERIFY
+> **v6 路徑**：draft 放 `.gems/design/draft_iter-N.md`，contract 放 `.gems/iterations/iter-N/contract_iter-N.ts`。
 
 **三節點說明（缺一不可）：**
 
@@ -123,7 +121,7 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 |------|---------|------|---------|
 | CYNEFIN-CHECK | `sdid-tools/cynefin-log-writer.cjs` | 語意域分析，展開隱含複雜度 | `cynefin-check-pass-*.log` |
 | CONTRACT | v5: `sdid-tools/blueprint/v5/contract-gate.cjs`<br>v4: `sdid-tools/blueprint/contract-writer.cjs` | 從 draft 推導型別邊界，收斂 draft 的模糊 type | `contract-pass-*.log` + `contract_iter-N.ts` |
-| PLAN | `sdid-tools/blueprint/draft-to-plan.cjs` | 機械轉換 draft → implementation_plan，骨架注入 contract 型別 | `gate-plan-pass-*.log` |
+| PLAN | `task-pipe/tools/spec-to-plan.cjs` | 機械轉換 contract → implementation_plan，骨架注入 contract 型別 | `gate-plan-pass-*.log` |
 
 > **v6 路徑**：draft 放 `.gems/design/draft_iter-N.md`，contract 放 `.gems/iterations/iter-N/contract_iter-N.ts`。
 > contract.ts 是單一規格來源（source of truth）。draft 的 type 欄位只是路由提示，contract 的 @GEMS-API/@GEMS-CONTRACT 才是最終型別定義。
@@ -180,14 +178,6 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 - 禁止讀取 src/*、.gems/*（設計階段不需要看程式碼）
 - **Terminal**: 5輪對話完成 + Enhanced Draft 產出 → 自動進入 CYNEFIN-CHECK → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
 
-### DESIGN-TASKPIPE 模式
-- 讀 [references/taskpipe-design.md](references/taskpipe-design.md) 取得規則
-- 引導使用者建立 `{project}/.gems/design/draft_iter-N.md`
-- Draft 完成後進入主流程：
-  - **MCP 可用時**：呼叫 MCP `sdid-loop` tool（`project=[path]`）
-  - **MCP 不可用時**：依序手動執行 draft-gate → CYNEFIN-CHECK → CONTRACT → spec-to-plan → BUILD Phase 1-4（參考 task-pipe-flow.md 的指令）
-- **Terminal**: Draft 產出 → 自動進入 CYNEFIN-CHECK → CONTRACT → spec-to-plan → BUILD-AUTO，不等待使用者確認
-
 ### BUILD-AUTO 模式
 - 讀 [references/build-execution.md](references/build-execution.md) 取得 BUILD 規則
 - **BUILD-AUTO = BUILD Phase 1-4 v6**
@@ -203,36 +193,6 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
   - DB/UI/外部依賴的 Story 不加 @GEMS-TDD，Phase 2 只跑 tsc --noEmit
   - 舊 @GEMS-AC-* 標籤已 deprecated（v7.0），contract-gate 會輸出 @GUIDED 提示
 - **Terminal**: 所有 Phase `@PASS` → 回報完成的 Story 與 Phase 數量，停止，等待使用者下一指令
-
-### QUICKSTART 模式
-- 用一句話確認使用者要建什麼，然後引導建立 `draft_iter-N.md`
-- 如果使用者已經描述清楚，跳過確認直接建立 draft，然後：
-  - **MCP 可用時**：呼叫 MCP `sdid-loop` tool
-  - **MCP 不可用時**：依序手動執行主流程各步驟（參考 task-pipe-flow.md）
-- **Terminal**: 所有 Phase `@PASS` → 回報完成的專案名稱、Story 與 Phase 數量，停止，等待使用者下一指令
-
-### RERUN-PHASE 模式
-- 使用者要求重跑特定 Phase（如「重跑 Phase 2」「Phase 3 重跑」「跑 BUILD step 2」）
-- **MCP 可用時**：呼叫 MCP `sdid-loop` tool，帶 `forceStart` 參數：
-  ```
-  sdid-loop(project: "<專案路徑>", forceStart: "BUILD-<N>", story: "<Story-X.Y>")
-  ```
-  例：`sdid-loop(project: "my-app", forceStart: "BUILD-2", story: "Story-1.0")`
-- **MCP 不可用時**：直接執行對應的 runner 指令：
-  ```bash
-  node task-pipe/runner.cjs --phase=BUILD --step=<N> --story=<Story-X.Y> --target=<project>
-  ```
-- 如果使用者沒指定 story/iteration，從 `.gems/iterations/` 和 `project-memory.json` 自動偵測
-- 收到 `@BLOCK` + `@TASK` → 按 @TASK 修復 → 重跑同一個 Phase
-- **Terminal**: `@PASS` → 回報完成的 Phase/Step，問使用者是否繼續下一步，停止等待回應
-
----
-
-## 全授權模式
-
-使用者說「全部授權」「自己跑」「你決定」→ 不問使用者，自主執行。
-各模式的全授權差異在各自的 reference 內說明。
-
 ---
 
 ## 禁止事項
@@ -252,6 +212,7 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 | [blueprint-design.md](references/blueprint-design.md) | Blueprint 5 輪對話規則 | 進入 DESIGN-BLUEPRINT / BLUEPRINT-CONTINUE 時 |
 | [taskpipe-design.md](references/taskpipe-design.md) | 需求明確時的快速入口（引導建立 draft） | 進入 DESIGN-TASKPIPE 時 |
 | [build-execution.md](references/build-execution.md) | BUILD Phase 1-4 v6 + 錯誤處理 | 進入 BUILD-AUTO 時 |
+
 | [micro-fix.md](references/micro-fix.md) | MICRO-FIX 執行規則 | 進入 MICRO-FIX 時 |
 | [poc-fix.md](references/poc-fix.md) | POC-FIX 四階段執行規則 | 進入 POC-FIX 模式時 |
 | [cynefin-check.md](references/cynefin-check.md) | 進 PLAN 前語意域分析（強制執行） | Draft 完成後進 PLAN 前 |
@@ -259,5 +220,9 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 | [action-type-mapping.md](references/action-type-mapping.md) | 動作類型映射 | Blueprint Round 5 或 PLAN Step 4 時 |
 | [design-quality-gate.md](references/design-quality-gate.md) | DESIGN 階段語意評分規則 | Blueprint R4/R5、DRAFT 組裝後、CONTRACT 完成後、POC.HTML 完成後 |
 | [tdd-contract-prompt.md](references/tdd-contract-prompt.md) | TDD Contract Subagent prompt（CYNEFIN @PASS 後寫 @GEMS-TDD 測試檔） | CYNEFIN @PASS → CONTRACT 寫入前 |
-| [design-reviewer-prompt.md](references/design-reviewer-prompt.md) | Design Reviewer Subagent prompt template | TDD 驗證完成後，dispatch subagent 做 contract 語意審查時 |
+| [design-reviewer-prompt.md](references/design-reviewer-prompt.md) | Design Reviewer Subagent prompt（CONTRACT 語意審查） | CONTRACT 語意擴充完成後、contract-gate 前 |
 | [SDID_ARCHITECTURE.md](references/SDID_ARCHITECTURE.md) | 框架全局說明（給人看，AI 不需每次讀） | 需要框架全貌時 |
+| [blueprint-design.md](references/blueprint-design.md) | Blueprint 5 輪對話規則 | 進入 DESIGN-BLUEPRINT / BLUEPRINT-CONTINUE 時 |
+| [taskpipe-design.md](references/taskpipe-design.md) | 需求明確時的快速入口（引導建立 draft） | 進入 DESIGN-TASKPIPE 時 |
+| [build-execution.md](references/build-execution.md) | BUILD Phase 1-4 v6 + 錯誤處理 | 進入 BUILD-AUTO 時 |
+| [micro-fix.md](references/micro-fix.md) | MICRO-FIX 執行規則 | 進入 MICRO-FIX 時 |

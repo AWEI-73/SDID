@@ -1,6 +1,6 @@
 ---
 name: sdid
-description: SDID v6 是結構化全端開發框架，涵蓋 Blueprint 5輪需求設計、Draft-Contract 主流程、BUILD Phase 1-4 v6 自動化建置。以下情境必須觸發：(1) 出現「SDID」「sdid-loop」「.gems/」「GEMS 標籤」「GEMS-FLOW」「GEMS-DEPS」「implementation_plan」「iter-N」「cynefin」等框架專有詞彙；(2) 建新專案且需結構化流程（Blueprint/Draft）；(3) 繼續 SDID 專案開發（BUILD 斷點、Phase 重跑、Story 續跑）；(4) 說「小修/micro fix/quick fix」且有明確模組脈絡；(5) 驗證第三方 API 或特化演算法的 POC；(6) 說「快速建/練習專案/小專案」要直接開發。不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作、一般 Docker/CI/CD 操作。
+description: SDID v7.0 是結構化全端開發框架，涵蓋 Blueprint 5輪需求設計、Draft-Contract 主流程、BUILD Phase 1-4 v7 自動化建置（TDD 驗收）。以下情境必須觸發：(1) 出現「SDID」「sdid-loop」「.gems/」「GEMS 標籤」「GEMS-FLOW」「GEMS-DEPS」「implementation_plan」「iter-N」「cynefin」等框架專有詞彙；(2) 建新專案且需結構化流程（Blueprint/Draft）；(3) 繼續 SDID 專案開發（BUILD 斷點、Phase 重跑、Story 續跑）；(4) 說「小修/micro fix/quick fix」且有明確模組脈絡；(5) 驗證第三方 API 或特化演算法的 POC；(6) 說「快速建/練習專案/小專案」要直接開發。不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作、一般 Docker/CI/CD 操作。
 ---
 
 # SDID — 路由器
@@ -121,7 +121,7 @@ Draft 完成 → CYNEFIN-CHECK → @PASS → TDD Contract Subagent（needsTest:t
 |------|---------|------|---------|
 | CYNEFIN-CHECK | `sdid-tools/cynefin-log-writer.cjs` | 語意域分析，展開隱含複雜度 | `cynefin-check-pass-*.log` |
 | CONTRACT | v5: `sdid-tools/blueprint/v5/contract-gate.cjs`<br>v4: `sdid-tools/blueprint/contract-writer.cjs` | 從 draft 推導型別邊界，收斂 draft 的模糊 type | `contract-pass-*.log` + `contract_iter-N.ts` |
-| PLAN | `sdid-tools/blueprint/draft-to-plan.cjs` | 機械轉換 draft → implementation_plan，骨架注入 contract 型別 | `gate-plan-pass-*.log` |
+| PLAN | `task-pipe/tools/spec-to-plan.cjs` | 機械轉換 contract → implementation_plan，骨架注入 contract 型別 | `gate-plan-pass-*.log` |
 
 > **v6 路徑**：draft 放 `.gems/design/draft_iter-N.md`，contract 放 `.gems/iterations/iter-N/contract_iter-N.ts`。
 > contract.ts 是單一規格來源（source of truth）。draft 的 type 欄位只是路由提示，contract 的 @GEMS-API/@GEMS-CONTRACT 才是最終型別定義。

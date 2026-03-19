@@ -450,11 +450,11 @@ modules/[module-name]/
       planSpecs: planSpecsBlock || null,
       task: [
         `讀取 ${planFile}（PLAN 階段已確定技術棧與檔案結構）`,
-        acInfo.hasAc ? `讀取 ${acInfo.acFile}（AC 規格，骨架函式需對應 AC-X.Y 標記）` : null,
+        acInfo.hasAc ? `讀取 ${acInfo.acFile}（contract 規格 + @GEMS-TDD 路徑，Phase 2 會執行這些測試）` : null,
         isFoundation ? '初始化橫向分層結構（依 PLAN 定義）' : '建立模組垂直分片結構（依 PLAN 定義）',
         '依序實作每個 Item 的功能程式碼',
         '加入 GEMS 標籤（P0-P3 全部覆蓋，參考 PLAN_SPECS 區塊）',
-        acInfo.acIds.length > 0 ? `在對應函式下方加入 // AC-X.Y 錨點（${acInfo.acIds.join(', ')}）` : null,
+        acInfo.acIds.length > 0 ? `@GEMS-TDD 測試檔在 Phase 2 執行（${acInfo.acIds.join(', ')}），骨架函式名稱/簽名需與測試 import 一致` : null,
         projectType !== 'gas' ? '執行 getDiagnostics() 確認 0 errors' : 'GAS 專案略過型別檢查',
         isFoundation ? '⚠️ 只建立 Plan 定義的檔案，禁止預建後續 Story 的模組目錄或檔案' : null,
         isFoundation ? '⚠️ src/modules/ 只建空目錄，不要在裡面建任何子模組' : null
@@ -756,11 +756,11 @@ src/modules/[module-name]/
     planSpecs: planSpecsBlock || null,
     task: [
       `讀取 ${planFile}（參考 PLAN Step 2.5 架構審查結果與語言要求）`,
-      acInfo.hasAc ? `讀取 ${acInfo.acFile}（AC 規格，骨架函式需對應 AC-X.Y 標記）` : null,
+      acInfo.hasAc ? `讀取 ${acInfo.acFile}（contract 規格 + @GEMS-TDD 路徑，Phase 2 會執行這些測試）` : null,
       '檢查並建立環境 (package.json, tsconfig.json) 若不存在',
       '依序實作每個 Item 的功能程式碼',
       '加入 GEMS 標籤（P0-P3 全部覆蓋，參考 PLAN_SPECS 區塊）',
-      acInfo.acIds.length > 0 ? `在對應函式下方加入 // AC-X.Y 錨點（${acInfo.acIds.join(', ')}）` : null,
+      acInfo.acIds.length > 0 ? `@GEMS-TDD 測試檔在 Phase 2 執行（${acInfo.acIds.join(', ')}），骨架函式名稱/簽名需與測試 import 一致` : null,
       projectType !== 'gas' ? '執行 getDiagnostics() 確認 0 errors' : '確認程式碼完成',
       isFoundation ? '⚠️ 只建立 Plan 定義的檔案，禁止預建後續 Story 的模組目錄或檔案' : null,
       isFoundation ? '⚠️ src/modules/ 只建空目錄，不要在裡面建任何子模組' : null
@@ -870,33 +870,25 @@ function mapCheckToTask(check, target, srcDir, planFile, story) {
 }
 
 /**
- * v6.0: 讀取 ac.ts（或 contract.ts）取得 AC ID 清單
- * 供骨架映射層使用，讓 AI 知道要對應哪些 AC
+ * v7.0: 讀取 contract_iter-N.ts，取得 @GEMS-TDD 路徑清單
+ * 供骨架映射層使用，讓 AI 知道 Phase 2 會執行哪些測試檔（骨架簽名需與 import 一致）
  */
 function readAcSpec(target, iteration) {
-  const pocDir = path.join(target, `.gems/iterations/${iteration}/poc`);
-  if (!fs.existsSync(pocDir)) return { hasAc: false, acFile: null, acIds: [] };
+  const iterNum = iteration.replace('iter-', '');
+  const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
+  if (!fs.existsSync(contractPath)) return { hasAc: false, acFile: null, acIds: [] };
 
-  const files = fs.readdirSync(pocDir);
-  // 優先找 ac.ts
-  let acFile = files.find(f => f === 'ac.ts' || f.endsWith('_ac.ts'));
-  if (!acFile) {
-    // fallback: contract.ts
-    acFile = files.find(f => f.startsWith('contract_') && f.endsWith('.ts'));
-  }
-  if (!acFile) return { hasAc: false, acFile: null, acIds: [] };
-
-  const fullPath = path.join(pocDir, acFile);
   try {
-    const content = fs.readFileSync(fullPath, 'utf8');
-    // 提取 AC-X.Y 格式的 ID
-    const acIds = [];
-    const pattern = /\/\/\s*(AC-[\d.]+)/g;
+    const content = fs.readFileSync(contractPath, 'utf8');
+    // 提取 @GEMS-TDD 路徑
+    const tddPaths = [];
+    const pattern = /\/\/\s*@GEMS-TDD:\s*(.+)/g;
     let m;
     while ((m = pattern.exec(content)) !== null) {
-      if (!acIds.includes(m[1])) acIds.push(m[1]);
+      const p = m[1].trim();
+      if (!tddPaths.includes(p)) tddPaths.push(p);
     }
-    return { hasAc: true, acFile: path.relative(target, fullPath), acIds };
+    return { hasAc: tddPaths.length > 0, acFile: path.relative(target, contractPath), acIds: tddPaths };
   } catch {
     return { hasAc: false, acFile: null, acIds: [] };
   }

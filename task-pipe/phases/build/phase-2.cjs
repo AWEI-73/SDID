@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 2: AC 驗收層 (v6.2)
+ * BUILD Phase 2: TDD 驗收層 (v7.0)
  *
- * 定位：骨架確認 + happy path 不爆（不是品質保證）
+ * 定位：跑測試（TDD）或型別檢查（tsc）
  *
  * 驗收策略:
- *   ac-runner v3.0: 讀 cynefin-report.json actions[].needsTest 決定驗收方式
- *   CALC（needsTest:false）→ ac-runner 直接執行（純計算，無 side effect）
- *   CALC+SETUP（needsTest:true）→ ac-runner 生成 vitest test → vitest run（有狀態流程）
- *   SKIP → 跳過（UI/人工/外部 API-DB 依賴，無法本地跑）
- *   全 SKIP → PASS（輸出 @GUIDED 建議，不 BLOCK）
+ *   contract_iter-N.ts 有 @GEMS-TDD → vitest --run（測試在 contract 階段就寫好）
+ *   沒有 @GEMS-TDD → tsc --noEmit（DB/UI/外部依賴層，只驗型別）
  *
- * 原則: 引導為主，不強制。
+ * TDD 原則:
+ *   - 測試是規格，不能動測試檔
+ *   - Phase 1 骨架是 RED 狀態（測試 failing）
+ *   - Phase 2 修實作讓測試 GREEN
+ *
+ * 取代舊 ac-runner 機制（v6.x @GEMS-AC-* 標籤已 deprecated）
  */
 'use strict';
 
@@ -22,24 +24,143 @@ const { emitPass, emitBlock } = require('../../lib/shared/log-output.cjs');
 const { getNextCmd } = require('../../lib/shared/next-command-helper.cjs');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 
-// ── 找 AC 規格檔 ──
-function findAcFile(target, iteration) {
+// ── 找 contract 檔 ──
+function findContractFile(target, iteration) {
   const iterDir = path.join(target, `.gems/iterations/${iteration}`);
-  const pocDir = path.join(iterDir, 'poc');
-  for (const searchDir of [pocDir, iterDir]) {
-    if (!fs.existsSync(searchDir)) continue;
-    const files = fs.readdirSync(searchDir);
-    const acTs = files.find(f => f === 'ac.ts' || f.endsWith('_ac.ts'));
-    if (acTs) return { file: path.join(searchDir, acTs), fallback: false };
+  if (!fs.existsSync(iterDir)) return null;
+  const files = fs.readdirSync(iterDir);
+  const contract = files.find(f => f.startsWith('contract_') && f.endsWith('.ts'));
+  return contract ? path.join(iterDir, contract) : null;
+}
+
+// ── 從 contract 提取 @GEMS-TDD 路徑（支援多個）──
+function extractTddPaths(contractContent) {
+  const matches = [...contractContent.matchAll(/\/\/\s*@GEMS-TDD:\s*(.+)/g)];
+  return matches.map(m => m[1].trim()).filter(Boolean);
+}
+
+// ── 跑 vitest ──
+function runVitest(target, tddPaths, options) {
+  const { story, iteration, level, relativeTarget, iterNum } = options;
+
+  // 過濾出存在的測試檔
+  const existingPaths = tddPaths.filter(p => {
+    const abs = path.join(target, p);
+    return fs.existsSync(abs);
+  });
+
+  const missingPaths = tddPaths.filter(p => !existingPaths.includes(p));
+
+  if (missingPaths.length > 0) {
+    console.log(`\n⚠️  測試檔不存在（contract 階段應已建立）:`);
+    missingPaths.forEach(p => console.log(`   ✗ ${p}`));
   }
-  // fallback: contract.ts
-  for (const searchDir of [iterDir, pocDir]) {
-    if (!fs.existsSync(searchDir)) continue;
-    const files = fs.readdirSync(searchDir);
-    const contract = files.find(f => f.startsWith('contract_') && f.endsWith('.ts'));
-    if (contract) return { file: path.join(searchDir, contract), fallback: true };
+
+  if (existingPaths.length === 0) {
+    emitBlock({
+      scope: `BUILD Phase 2 | ${story}`,
+      summary: `@GEMS-TDD 指定的測試檔均不存在，請在 contract 階段建立測試檔`,
+      details: tddPaths.map(p => `  ✗ ${p}`).join('\n'),
+      nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+    return { verdict: 'BLOCKER' };
   }
-  return null;
+
+  console.log(`\n🧪 TDD 驗收層 | ${story}`);
+  existingPaths.forEach(p => console.log(`   ✓ ${p}`));
+  console.log('');
+
+  const testArgs = existingPaths.join(' ');
+  const cmd = `npx vitest run ${testArgs}`;
+
+  try {
+    const output = execSync(cmd, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      cwd: target
+    });
+    console.log(output);
+
+    emitPass({
+      scope: `BUILD Phase 2 | ${story}`,
+      summary: `TDD PASS — ${existingPaths.length} 個測試檔全部通過`,
+      nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+    return { verdict: 'PASS' };
+
+  } catch (err) {
+    const output = (err.stdout || '') + (err.stderr || '');
+    console.log(output);
+
+    // 提取失敗測試摘要
+    const failLines = output.split('\n')
+      .filter(l => /✗|FAIL|×|AssertionError|Error/.test(l))
+      .map(l => l.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+
+    emitBlock({
+      scope: `BUILD Phase 2 | ${story}`,
+      summary: `TDD FAIL — 測試未通過，修實作讓測試 GREEN（不能動測試檔）`,
+      details: failLines.join('\n') || output.split('\n').slice(-20).join('\n'),
+      nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+    console.log('💡 測試是規格，不能修改測試檔。修改實作讓測試通過後重跑。');
+    return { verdict: 'BLOCKER' };
+  }
+}
+
+// ── 跑 tsc --noEmit ──
+function runTsc(target, options) {
+  const { story, iteration, level, relativeTarget, iterNum } = options;
+
+  console.log(`\n🔍 型別檢查 | ${story}`);
+  console.log(`   （無 @GEMS-TDD — DB/UI 層，只跑 tsc --noEmit）\n`);
+
+  // 找 tsconfig
+  const tsconfigPath = path.join(target, 'tsconfig.json');
+  if (!fs.existsSync(tsconfigPath)) {
+    console.log(`⏭  跳過 tsc：tsconfig.json 不存在`);
+    emitPass({
+      scope: `BUILD Phase 2 | ${story}`,
+      summary: 'SKIP — 無 tsconfig.json',
+      nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+    return { verdict: 'PASS', skipped: true };
+  }
+
+  try {
+    const output = execSync('npx tsc --noEmit', {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      cwd: target
+    });
+    if (output) console.log(output);
+
+    emitPass({
+      scope: `BUILD Phase 2 | ${story}`,
+      summary: 'tsc --noEmit PASS — 無型別錯誤',
+      nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+    return { verdict: 'PASS' };
+
+  } catch (err) {
+    const output = (err.stdout || '') + (err.stderr || '');
+    console.log(output);
+
+    const errorLines = output.split('\n')
+      .filter(l => /error TS/.test(l))
+      .slice(0, 20)
+      .join('\n');
+
+    emitBlock({
+      scope: `BUILD Phase 2 | ${story}`,
+      summary: `tsc --noEmit FAIL — 型別錯誤，修復後重跑`,
+      details: errorLines || output.split('\n').slice(-20).join('\n'),
+      nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+    return { verdict: 'BLOCKER' };
+  }
 }
 
 function run(options) {
@@ -58,89 +179,25 @@ function run(options) {
     return { verdict: 'BLOCKER' };
   }
 
-  const acResult = findAcFile(target, iteration);
-  if (!acResult) {
+  const contractFile = findContractFile(target, iteration);
+  if (!contractFile) {
     emitBlock({
       scope: `BUILD Phase 2 | ${story}`,
-      summary: 'ac.ts 與 contract.ts 均不存在，無法執行 AC 驗收',
+      summary: `contract_iter-${iterNum}.ts 不存在，無法執行 Phase 2`,
       nextCmd: `確認 contract-gate 已通過後重跑`
     }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
     return { verdict: 'BLOCKER' };
   }
 
-  const { file: acFile, fallback: acFallback } = acResult;
-  const acContent = fs.readFileSync(acFile, 'utf8');
-  const acIds = [...acContent.matchAll(/\/\/\s*@GEMS-AC:\s*(AC-[\d.]+)/g)].map(m => m[1]);
+  const contractContent = fs.readFileSync(contractFile, 'utf8');
+  const tddPaths = extractTddPaths(contractContent);
 
-  if (acIds.length === 0) {
-    console.log(`\n⏭  AC 驗收跳過: contract 無 @GEMS-AC 標記`);
-    console.log(`  @GUIDED: 建議在 contract.ts 補 @GEMS-AC 區塊（純計算用 CALC，有狀態流程用 CALC+SETUP，UI/外部依賴用 SKIP）`);
-    console.log(`  REFERENCE: task-pipe/templates/examples/ac-golden.ts`);
-    emitPass({
-      scope: `BUILD Phase 2 | ${story}`,
-      summary: 'SKIP — contract 無 @GEMS-AC 標記',
-      nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
-    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
-    return { verdict: 'PASS', skipped: true };
-  }
+  const sharedOptions = { story, iteration, level, relativeTarget, iterNum };
 
-  console.log(`\n🧪 AC 驗收層 | ${story}`);
-  console.log(`   AC 規格: ${path.relative(target, acFile)}${acFallback ? ' (fallback: contract.ts)' : ''}`);
-  console.log(`   AC 數量: ${acIds.length} 個\n`);
-
-  return runAcRunner(options, { acFile, iterNum, relativeTarget });
-}
-
-function runAcRunner(options, { acFile, iterNum, relativeTarget }) {
-  const { target, iteration = 'iter-1', story, level = 'M' } = options;
-
-  const acRunnerPath = path.resolve(__dirname, '../../../sdid-tools/ac-runner.cjs');
-  if (!fs.existsSync(acRunnerPath)) {
-    emitBlock({
-      scope: `BUILD Phase 2 | ${story}`,
-      summary: 'ac-runner.cjs 不存在',
-      nextCmd: '確認 sdid-tools/ac-runner.cjs 存在'
-    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
-    return { verdict: 'BLOCKER' };
-  }
-
-  const cmd = `node "${acRunnerPath}" --contract="${acFile}" --target="${target}" --iter=${iterNum} --story=${story}`;
-
-  try {
-    const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
-    console.log(output);
-
-    if (output.includes('@SKIP | ac-runner |')) {
-      const skipReason = (output.match(/@SKIP \| ac-runner \| (.+)/) || [])[1] || '無 CALC AC';
-      console.log(`\n⏭  AC 驗收跳過: ${skipReason}`);
-      console.log(`  @GUIDED: 有狀態流程用 @GEMS-AC-SETUP（CYNEFIN needsTest:true → vitest），UI/外部依賴用 @GEMS-AC-SKIP`);
-      emitPass({
-        scope: `BUILD Phase 2 | ${story}`,
-        summary: `SKIP — ${skipReason}`,
-        nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
-      }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
-      return { verdict: 'PASS', skipped: true };
-    }
-
-    const acSummary = (output.match(/@PASS \| ac-runner \| (.+)/) || [])[1] || 'AC 全部通過';
-    emitPass({
-      scope: `BUILD Phase 2 | ${story}`,
-      summary: acSummary,
-      nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
-    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
-    return { verdict: 'PASS' };
-
-  } catch (err) {
-    const output = (err.stdout || '') + (err.stderr || '');
-    console.log(output);
-    const failSummary = (output.match(/@BLOCKER \| ac-runner \| (.+)/) || [])[1] || 'AC 驗收失敗';
-    emitBlock({
-      scope: `BUILD Phase 2 | ${story}`,
-      summary: failSummary,
-      nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
-    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
-    console.log('💡 若確認是規格錯誤，在 AC 上方加 // [SPEC-FIX] YYYY-MM-DD: <原因> 後重跑');
-    return { verdict: 'BLOCKER', acOutput: output };
+  if (tddPaths.length > 0) {
+    return runVitest(target, tddPaths, sharedOptions);
+  } else {
+    return runTsc(target, sharedOptions);
   }
 }
 

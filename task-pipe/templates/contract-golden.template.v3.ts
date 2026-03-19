@@ -23,8 +23,7 @@
  *   @GEMS-VIEW            — 前端 View 型別
  *   @GEMS-API             — 公開 API 簽名
  *   @GEMS-ENUM            — 列舉型別
- *   @GEMS-AC              — 驗收條件（ac-runner 機械驗收）
- *   @GEMS-AC-SKIP         — 跳過 ac-runner
+ *   @GEMS-TDD             — 測試檔路徑（有此標籤 → Phase 2 跑 vitest；無則只跑 tsc）
  *
  * @CONTEXT_SCOPE:
  *   BUILD_READ: contract_iter-{N}.ts, implementation_plan_Story-{X}.{Y}.md
@@ -72,43 +71,22 @@
 //   {methodName}({params}): Promise<{ReturnType}>;
 // }
 
-// ─── AC 驗收條件 ─────────────────────────────────────────────
+// ─── TDD 測試檔（有純計算邏輯的 Story 才需要）────────────────
 //
-// AC 分三種模式（由 CYNEFIN actions[] 的 needsTest 決定驗收方式）：
+// 規則：
+//   有 @GEMS-TDD → Phase 2 跑 vitest --run（測試必須在 contract 階段就寫好）
+//   沒有 @GEMS-TDD → Phase 2 只跑 tsc --noEmit（DB/UI/外部依賴層）
 //
-// [CALC] 純計算函式 — needsTest:false → ac-runner 直接執行
-//   適用：無 side effect、無前置狀態依賴的純邏輯函式
-//
-// [CALC+SETUP] 有狀態流程 — needsTest:true → ac-runner 生成 vitest test
-//   適用：需前置資料，但可用 production function 本地建立
-//   SETUP 步驟在 vitest test 內執行（先 addTransaction 再 getTransactions）
-//   判斷依據：CYNEFIN domain=Complicated/Complex 或 hiddenSteps >= 2
-//
-// [SKIP] 無法自動驗收 — 開發者自行負責
-//   適用：UI 互動、需要外部 API/DB（無法本地跑）
+// 測試在 contract 階段就要寫好（真正的 TDD：先測試後實作）
+// Phase 1 建骨架時測試是 failing 狀態（RED）
+// Phase 2 修實作讓測試過（GREEN），不能動測試檔
 
-// [CALC] 純計算範例
-// @GEMS-AC: AC-{N}.0
-// @GEMS-AC-FN: {functionName}
-// @GEMS-AC-MODULE: modules/{Module}/services/{file-name}
-// @GEMS-AC-INPUT: [{testInput}]
-// @GEMS-AC-EXPECT: {expectedOutput}
+// 有純計算邏輯的 Story
+// @GEMS-STORY: Story-{N}.1 | {Module} | {描述} | CALC
+// @GEMS-TDD: src/modules/{Module}/lib/__tests__/{function-name}.test.ts
 
-// [CALC] 回傳值含不確定欄位（如 id）
-// @GEMS-AC: AC-{N}.1
-// @GEMS-AC-FN: {functionName}
-// @GEMS-AC-MODULE: modules/{Module}/services/{file-name}
-// @GEMS-AC-INPUT: [{testInput}]
-// @GEMS-AC-EXPECT: (result) => result.id && result.id.length > 0
+// DB/UI/外部依賴的 Story（不加 @GEMS-TDD）
+// @GEMS-STORY: Story-{N}.0 | {Module} | {描述} | Foundation
+// （無 @GEMS-TDD — Phase 2 只跑 tsc --noEmit）
 
-// [CALC+SETUP] 有狀態流程（CYNEFIN needsTest:true → vitest orchestrator）
-// @GEMS-AC: AC-{N}.2
-// @GEMS-AC-FN: {functionName}
-// @GEMS-AC-MODULE: modules/{Module}/services/{file-name}
-// @GEMS-AC-SETUP: [{"fn":"{setupFn}","module":"{setupModule}","args":[{setupArgs}]}]
-// @GEMS-AC-INPUT: [{testInput}]
-// @GEMS-AC-EXPECT: (result) => {booleanExpression}
-
-// [SKIP] 無法自動驗收
-// @GEMS-AC: AC-{N}.3
-// @GEMS-AC-SKIP: {跳過原因：UI 互動 / 需要外部 API-DB 無法本地跑}
+// 參考範例: task-pipe/templates/examples/ac-golden.ts

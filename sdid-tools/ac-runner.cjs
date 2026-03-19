@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 /**
  * AC Runner v3.0 — vitest orchestrator
+ *
+ * @deprecated v7.0 — 此工具已 deprecated，不再由 BUILD Phase 2 呼叫。
+ *   新機制：contract_iter-N.ts 使用 @GEMS-TDD 標籤指向測試檔路徑。
+ *   Phase 2 直接跑 vitest --run（有 @GEMS-TDD）或 tsc --noEmit（無 @GEMS-TDD）。
+ *   保留此檔案供舊版 iter 向後相容，新專案請勿使用 @GEMS-AC-* 標籤。
+ *   參考: task-pipe/templates/examples/ac-golden.ts（已更新為 TDD 範例）
+ *
  * 讀取 contract_iter-N.ts 的 @GEMS-AC 標記
  * 讀 cynefin-report.json → needsTest:true 的 AC 生成 vitest test → vitest run
  * needsTest:false 的 CALC AC 走舊的直接執行模式（向後相容）
@@ -384,6 +391,55 @@ function compileAndLoad(target, filePath, fnName) {
         if (typeof fn !== 'function') return { error: `tsc 編譯後模組沒有 export function ${fnName}` };
         return { fn, filePath, loader: 'tsc-compile' };
       }
+    }
+
+    // 策略 C: fallback — 搜尋 workspace root 下其他專案的 tsc/esbuild
+    const workspaceRoot = path.resolve(target, '..');
+    const fallbackBins = [];
+    try {
+      for (const entry of fs.readdirSync(workspaceRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const candidateTsc = path.join(workspaceRoot, entry.name, 'node_modules', '.bin', 'tsc');
+        const candidateEsbuild = path.join(workspaceRoot, entry.name, 'node_modules', '.bin', 'esbuild');
+        if (fs.existsSync(candidateEsbuild)) fallbackBins.push({ type: 'esbuild', bin: candidateEsbuild });
+        else if (fs.existsSync(candidateTsc)) fallbackBins.push({ type: 'tsc', bin: candidateTsc });
+      }
+    } catch {}
+
+    for (const { type, bin } of fallbackBins) {
+      try {
+        if (type === 'esbuild') {
+          const outFile = path.join(tmpDir, 'module.cjs');
+          execSync(
+            `"${bin}" "${filePath}" --bundle=true --platform=node --format=cjs --outfile="${outFile}"`,
+            { cwd: target, stdio: 'pipe' }
+          );
+          const mod = require(outFile);
+          const fn = mod[fnName] || mod.default?.[fnName];
+          if (typeof fn === 'function') return { fn, filePath, loader: 'esbuild-fallback' };
+        } else {
+          const tscOutDir = path.join(tmpDir, 'tsc-out-fallback');
+          fs.mkdirSync(tscOutDir, { recursive: true });
+          execSync(
+            `"${bin}" "${filePath}" --outDir "${tscOutDir}" --module commonjs --target ES2020 --skipLibCheck --esModuleInterop --declaration false --noEmit false`,
+            { cwd: target, stdio: 'pipe' }
+          );
+          const baseName = path.basename(filePath, path.extname(filePath)) + '.js';
+          const findJs = (dir) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) { const r = findJs(path.join(dir, entry.name)); if (r) return r; }
+              else if (entry.name === baseName) return path.join(dir, entry.name);
+            }
+            return null;
+          };
+          const jsFile = findJs(tscOutDir);
+          if (jsFile) {
+            const mod = require(jsFile);
+            const fn = mod[fnName] || mod.default?.[fnName];
+            if (typeof fn === 'function') return { fn, filePath, loader: 'tsc-fallback' };
+          }
+        }
+      } catch {}
     }
 
     return { error: `TypeScript 編譯失敗：target 沒有 esbuild 或 tsc 可用`, filePath };

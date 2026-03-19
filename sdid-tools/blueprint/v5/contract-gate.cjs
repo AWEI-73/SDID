@@ -121,39 +121,30 @@ function checkContract(content, iterNum) {
   // 大項 3: @CONTRACT-LOCK（通過後自動注入，這裡只在 BLOCKER 時提示）
   // 不驗 @CONTRACT-LOCK，因為 @PASS 時會自動注入
 
-  // @GUIDED: 語意問題（不 BLOCK）
-  // any/unknown 型別
-  if (/:\s*any\b|:\s*unknown\b/.test(content))
-    G('CG-G01', '發現 any/unknown 型別，建議替換為具體型別（不影響 gate 通過，但 BUILD 時 AC 驗收可能失敗）');
+  // @GUIDED: @GEMS-TDD 路徑格式驗證（不 BLOCK，只提示）
+  const tddMatches = [...content.matchAll(/\/\/\s*@GEMS-TDD:\s*(.+)/g)];
+  const badTddPaths = tddMatches
+    .map(m => m[1].trim())
+    .filter(p => !p.startsWith('src/') || !p.endsWith('.test.ts'));
+  if (badTddPaths.length > 0)
+    G('CG-G01', `@GEMS-TDD 路徑建議以 src/ 開頭並以 .test.ts 結尾: ${badTddPaths.join(', ')}`);
 
-  // @GEMS-API 方法缺回傳型別
+  // @GUIDED: any/unknown 型別
+  if (/:\s*any\b|:\s*unknown\b/.test(content))
+    G('CG-G02', '發現 any/unknown 型別，建議替換為具體型別');
+
+  // @GUIDED: @GEMS-API 方法缺回傳型別
   const apiMethods = [...content.matchAll(/(\w+)\s*\([^)]*\)\s*;/g)];
   const missingReturn = apiMethods.filter(m => {
     const line = m[0];
     return !line.includes(':') || line.match(/\)\s*;$/);
   });
   if (missingReturn.length > 0)
-    G('CG-G02', `部分 @GEMS-API 方法可能缺少回傳型別，建議補齊 ): Promise<ReturnType>`);
+    G('CG-G03', `部分 @GEMS-API 方法可能缺少回傳型別，建議補齊 ): Promise<ReturnType>`);
 
-  // @GEMS-AC 存在但缺 FN/MODULE/INPUT/EXPECT
-  const acBlocks = [...content.matchAll(/\/\/\s*@GEMS-AC:\s*(AC-[\d.]+)/g)];
-  const incompleteAcs = [];
-  for (const m of acBlocks) {
-    const acId = m[1];
-    const pos = m.index;
-    const snippet = content.slice(pos, pos + 400);
-    const hasSkip = /\/\/\s*@GEMS-AC-SKIP:/.test(snippet);
-    if (!hasSkip) {
-      const hasFn = /\/\/\s*@GEMS-AC-FN:/.test(snippet);
-      const hasMod = /\/\/\s*@GEMS-AC-MODULE:/.test(snippet);
-      const hasInput = /\/\/\s*@GEMS-AC-INPUT:/.test(snippet);
-      const hasExpect = /\/\/\s*@GEMS-AC-EXPECT/.test(snippet);
-      if (!hasFn || !hasMod || !hasInput || !hasExpect)
-        incompleteAcs.push(acId);
-    }
-  }
-  if (incompleteAcs.length > 0)
-    G('CG-G03', `${incompleteAcs.join(', ')} 缺少 @GEMS-AC-FN/@GEMS-AC-MODULE/@GEMS-AC-INPUT/@GEMS-AC-EXPECT，ac-runner 無法機械驗收`);
+  // @GUIDED: 偵測舊 AC 標籤（deprecated）
+  if (/\/\/\s*@GEMS-AC:/.test(content))
+    G('CG-G04', '@GEMS-AC 標籤已 deprecated（v7.0），請改用 @GEMS-TDD 指向測試檔路徑。參考: task-pipe/templates/examples/ac-golden.ts');
 
   return { blockers, guided };
 }

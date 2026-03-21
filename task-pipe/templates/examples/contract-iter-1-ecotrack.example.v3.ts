@@ -20,10 +20,10 @@
 // ─── Stories ─────────────────────────────────────────────────
 
 // @GEMS-STORY: Story-0.0 | shared | 專案骨架 + 核心型別 + 環境配置 + 路由框架 | Foundation
-// @GEMS-STORY-ITEM: CoreTypes | CONST | P0 | DEFINE→FREEZE→EXPORT | 無 | AC-0.0
-// @GEMS-STORY-ITEM: ENV_CONFIG | CONST | P2 | LOAD→VALIDATE→EXPORT | 無 | -
-// @GEMS-STORY-ITEM: IServiceContracts | CONST | P1 | DEFINE→VALIDATE→EXPORT | [CoreTypes] | AC-0.1
-// @GEMS-STORY-ITEM: AppRouter | ROUTE | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [CoreTypes] | AC-0.2
+// @GEMS-STORY-ITEM: CoreTypes | CONST | P0 | DEFINE→FREEZE→EXPORT | 無
+// @GEMS-STORY-ITEM: ENV_CONFIG | CONST | P2 | LOAD→VALIDATE→EXPORT | 無
+// @GEMS-STORY-ITEM: IServiceContracts | CONST | P1 | DEFINE→VALIDATE→EXPORT | [CoreTypes]
+// @GEMS-STORY-ITEM: AppRouter | ROUTE | P1 | CHECK_AUTH→LOAD_LAYOUT→RENDER_ROUTES | [CoreTypes]
 
 // ─── Enums ───────────────────────────────────────────────────
 

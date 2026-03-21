@@ -18,6 +18,7 @@
  * 標籤清單:
  *   @GEMS-STORIES         — Story 清單（plan-generator 直讀）
  *   @GEMS-STORY-ITEM      — 每個 Story 的動作清單（含技術名稱+FLOW+DEPS）
+ *   @GEMS-WHY             — STORY-ITEM 的業務意圖（goal/guard/fail/POC-first），跟在 STORY-ITEM 後
  *   @GEMS-CONTRACT        — Entity 定義（後端邊界）
  *   @GEMS-TABLE           — DB 表對應
  *   @GEMS-VIEW            — 前端 View 型別
@@ -39,7 +40,9 @@
 // ─── Stories ─────────────────────────────────────────────────
 
 // @GEMS-STORY: Story-{N}.0 | {moduleName} | {Story 描述} | {Story 類型: Foundation/CRUD/CALC/UI}
-// @GEMS-STORY-ITEM: {techName} | {TYPE} | P{0-3} | {FLOW: STEP1→STEP2→RETURN} | {DEPS: [dep1]}
+// @GEMS-STORY-ITEM: {techName} | {TYPE} | P{0-3} | {FLOW: STEP1(域)→STEP2(域)→RETURN} | {DEPS: [dep1]}
+// @GEMS-WHY: goal={函式目標} | guard={前置條件} | fail={錯誤碼(原因)}
+// （Foundation 層無業務邏輯者不加 @GEMS-WHY；有 ★Complex 節點者加 ★POC-first={節點}(原因)）
 
 // ─── Enums ───────────────────────────────────────────────────
 

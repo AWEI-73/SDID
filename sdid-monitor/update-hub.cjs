@@ -21,8 +21,8 @@ const OUT_FILE = path.join(__dirname, 'hub.json');
 
 // ─── SDID 框架目錄（本身不是被管理的 project）────────────────
 const FRAMEWORK_DIRS = new Set([
-  'task-pipe', 'sdid-tools', '.agent', 'sdid-monitor',
-  'sdid-tools', 'github_project',
+  'sdid-core', 'sdid-tools', 'sdid-monitor', 'task-pipe',
+  '.agent', 'github_project',
 ]);
 
 // ─── helpers ──────────────────────────────────────────────────
@@ -241,6 +241,43 @@ function scanIters(itersPath) {
   return result;
 }
 
+// ─── 掃描框架目錄（不依賴 .gems/，看工具本身健康狀態）──────────
+
+function countCodeFiles(p) {
+  let n = 0;
+  try {
+    for (const e of fs.readdirSync(p, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue;
+      if (e.isDirectory()) { n += countCodeFiles(path.join(p, e.name)); continue; }
+      if (/\.(cjs|ts|js)$/.test(e.name) && !/\.d\.ts$/.test(e.name)) n++;
+    }
+  } catch {}
+  return n;
+}
+
+function scanFrameworkDir(dirName, dirPath) {
+  const topTools = dirEntries(dirPath)
+    .filter(e => !e.isDirectory() && /\.cjs$/.test(e.name))
+    .map(e => e.name);
+
+  const lastCommit = safeExec(
+    `git log -1 --format=%cd --date=short -- ${dirName}/`
+  );
+
+  const depsJson = safeJSON(path.join(dirPath, '.gems', 'docs', 'deps.json'));
+
+  return {
+    name:       dirName,
+    fileCount:  countCodeFiles(dirPath),
+    tools:      topTools,
+    lastCommit: lastCommit || null,
+    deps: depsJson ? {
+      edges:    depsJson.summary?.totalEdges      ?? 0,
+      circular: Array.isArray(depsJson.circular)  ? depsJson.circular.length : 0,
+    } : null,
+  };
+}
+
 // ─── 掃描單一 project ────────────────────────────────────────
 
 function scanProject(projName, projPath) {
@@ -283,15 +320,14 @@ function scan() {
 
     const projPath = path.join(WORKSPACE_ROOT, e.name);
     try {
-      const data = scanProject(e.name, projPath);
       if (FRAMEWORK_DIRS.has(e.name)) {
-        framework[e.name] = data;
+        framework[e.name] = scanFrameworkDir(e.name, projPath);
       } else {
-        projects[e.name] = data;
+        projects[e.name] = scanProject(e.name, projPath);
       }
     } catch (err) {
       const bucket = FRAMEWORK_DIRS.has(e.name) ? framework : projects;
-      bucket[e.name] = { name: e.name, hasGems: false, error: err.message };
+      bucket[e.name] = { name: e.name, error: err.message };
     }
   }
 
@@ -579,13 +615,17 @@ function generateMarkdown(hub) {
   }
   lines.push('');
 
-  // ── 3. SDID 框架目錄 ──
-  lines.push(`## SDID 框架`);
-  lines.push(`這些是框架本身，不是被管理的 project，通常不需要大量掃描：`);
+  // ── 3. SDID 框架健康 ──
+  lines.push(`## SDID 框架健康`);
   lines.push('');
-  const fwNames = Object.keys(hub.framework).sort();
-  for (const name of fwNames) {
-    lines.push(`- \`${name}/\``);
+  const fwEntries = Object.values(hub.framework).sort((a, b) => a.name.localeCompare(b.name));
+  for (const fw of fwEntries) {
+    if (fw.error) { lines.push(`- \`${fw.name}/\` ⚠ ${fw.error}`); continue; }
+    const depStr = fw.deps
+      ? ` | ${fw.deps.edges} 邊${fw.deps.circular > 0 ? ` ⚠ ${fw.deps.circular} circular` : ' ✅'}`
+      : '';
+    const tools = fw.tools?.length ? ` | 入口: ${fw.tools.join(', ')}` : '';
+    lines.push(`- \`${fw.name}/\` ${fw.fileCount} 支 | 最後異動: ${fw.lastCommit || '—'}${depStr}${tools}`);
   }
   lines.push('');
 

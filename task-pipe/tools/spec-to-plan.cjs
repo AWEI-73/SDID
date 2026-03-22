@@ -25,6 +25,7 @@ function parseArgs() {
   return args;
 }
 
+/** GEMS: specToPlan | P0 | detectSource(Clear)→generatePlans(Complicated)→anchorResult(Clear)→RETURN:PlanResult | Story-4.0 */
 function main() {
   const args = parseArgs();
   if (!args.target) {

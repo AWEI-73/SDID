@@ -205,6 +205,7 @@ function findSourceFiles(dir, files = []) {
 // ============================================
 // 主程式
 // ============================================
+/** GEMS: microFixGate | P1 | scanFiles(Clear)→checkFileTags(Clear)→checkImports(Complicated)→writeGateLog(Clear)→RETURN:GateResult | Story-2.0 */
 function main() {
   const args = parseArgs();
 

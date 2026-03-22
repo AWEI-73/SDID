@@ -68,6 +68,7 @@ function inferType(targetFile, gemsId) {
 // ============================================
 // 骨架生成（對齊 plan-to-scaffold 格式）
 // ============================================
+/** GEMS: generateScaffoldFromLog | P1 | loadLog(Clear)→parseConsolidationLog(Complicated)→generateBody(Clear)→writeFiles(Clear)→RETURN:ScaffoldResult | Story-4.0 */
 function generateScaffoldFromLog(logPath, targetDir, options = {}) {
   const { dryRun = false } = options;
   const result = { generated: [], skipped: [], errors: [] };

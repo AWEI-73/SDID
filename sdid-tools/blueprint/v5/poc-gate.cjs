@@ -91,6 +91,7 @@ function matchesFunction(item, fns) {
 }
 
 // ── 主要 gate 邏輯 ──
+/** GEMS: checkPoc | P1 | parseHtml(Pure)→checkRequired(Pure)→validateFunctions(Pure)→RETURN:GateResult | Story-2.0 */
 function checkPoc(html) {
   const blockers = [];
   const guided = [];

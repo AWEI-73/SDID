@@ -28,6 +28,7 @@ try {
   formatUIBindResult = uiBindMod.formatResult;
 } catch { /* 可選 */ }
 
+/** GEMS: buildPhase3 | P1 | loadAcTests(IO)→runIntegration(IO)→validateBehavior(Pure)→RETURN:PhaseResult | Story-4.0 */
 function run(options) {
   const { target, iteration = 'iter-1', story, level = 'M' } = options;
   const relativeTarget = path.relative(process.cwd(), target) || '.';

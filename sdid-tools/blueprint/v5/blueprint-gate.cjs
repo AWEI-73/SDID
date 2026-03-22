@@ -177,6 +177,7 @@ function parseBlueprint(raw) {  const bp = {
 }
 
 // ── Checkers ──
+/** GEMS: checkBlueprint | P0 | validateSections(Pure)→checkPlaceholders(Pure)→checkStoryItems(Pure)→RETURN:GateResult | Story-2.0 */
 function checkBlueprint(bp, raw) {
   const issues = [];
   const B = (code, msg) => issues.push({ level: 'BLOCKER', code, msg });

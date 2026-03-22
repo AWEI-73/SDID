@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
+/** GEMS: checkFormatCompleteness | P1 | checkRequired(Pure)→checkTypes(Pure)→checkStyles(Pure)→RETURN:Issues | Story-2.0 */
 function checkFormatCompleteness(draft, rawContent = '') {
   const issues = [];
 

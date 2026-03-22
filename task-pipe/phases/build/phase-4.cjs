@@ -31,6 +31,7 @@ try {
   scanGemsTags = mod.scanGemsTags;
 } catch { /* 可選 */ }
 
+/** GEMS: buildPhase4 | P1 | collectOutputs(IO)→writeEmitJson(IO)→updateState(IO)→RETURN:PhaseResult | Story-4.0 */
 function run(options) {
   const { target, iteration = 'iter-1', story, level = 'M' } = options;
   const relativeTarget = path.relative(process.cwd(), target) || '.';

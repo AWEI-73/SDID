@@ -34,6 +34,7 @@ function load(filePath) {
   return parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+/** GEMS: parse | P1 | normalizeContent(Pure)→parseSections(Complicated)→buildDraft(Pure)→RETURN:DraftSpec | Story-3.0 */
 function parse(content) {
   // normalize CRLF → LF (Windows 環境寫出的 markdown 會有 \r\n)
   content = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');

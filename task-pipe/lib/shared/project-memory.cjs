@@ -44,6 +44,7 @@ function getMemoryPath(projectRoot) {
  * 讀取 project memory
  * @returns {{ version: string, project: string, entries: Array, summary: object }}
  */
+/** GEMS: loadMemory | P1 | resolveMemoryPath(Pure)→readJson(IO)→RETURN:Memory | Story-4.0 */
 function loadMemory(projectRoot) {
   const memPath = getMemoryPath(projectRoot);
   if (!fs.existsSync(memPath)) {
@@ -84,6 +85,7 @@ function createEmptyMemory(projectRoot) {
 /**
  * 儲存 memory（含自動裁剪）
  */
+/** GEMS: saveMemory | P1 | trimEntries(Pure)→serializeJson(Pure)→writeFile(IO)→RETURN:void | Story-4.0 */
 function saveMemory(projectRoot, memory) {
   const memPath = getMemoryPath(projectRoot);
   const dir = path.dirname(memPath);

@@ -168,6 +168,7 @@ function getStrategyLevel(retryCount) {
  * @param {Object} error - 錯誤資訊
  * @param {Object} options - 選項
  */
+/** GEMS: recordRetryAndGetStrategy | P1 | readStrategyState(IO)→incrementRetry(Pure)→calcStrategy(Pure)→writeStrategyState(IO)→RETURN:Strategy | Story-4.0 */
 function recordRetryAndGetStrategy(projectRoot, iteration, phase, step, error, options = {}) {
   const { priority = 'P2', storyId = null } = options;
   // v1.1: 統一小寫，避免 anchorError('build') vs handlePhaseSuccess('BUILD') 大小寫不匹配

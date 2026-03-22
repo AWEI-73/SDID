@@ -53,6 +53,7 @@ function findACLines(lines, gemsEndLine, funcLine) {
  * @param {string} [options.mode] - 'ast' | 'regex' | 'auto'（預設 auto）
  * @returns {{ functions: Array, stats: object, untagged?: Array, scannerVersion: string }}
  */
+/** GEMS: scan | P0 | detectScanner(Pure)→runScanner(IO)→enrichACIds(IO)→mergeShrink(Pure)→RETURN:ScanResult | Story-5.0 */
 function scan(srcDir, projectRoot, options = {}) {
   const mode = options.mode || 'auto';
   let result;
@@ -245,7 +246,7 @@ function parseShrinkFormat(srcDir, projectRoot) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory() && entry.name !== 'node_modules' && !entry.name.startsWith('.')) {
         walk(full);
-      } else if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
+      } else if (entry.isFile() && /\.(ts|tsx|cjs|js)$/.test(entry.name)) {
         parseFileShrink(full, results, root);
       }
     }

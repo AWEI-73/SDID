@@ -30,6 +30,7 @@ try {
  * @param {object} options - { dryRun }
  * @returns {object} { generated: [{ storyId, module, file, functionCount }], errors: [] }
  */
+/** GEMS: generatePlansFromContract | P1 | parseContract(IO)→generatePlanContent(Complicated)→writePlanFiles(IO)→RETURN:GenerateResult | Story-4.0 */
 function generatePlansFromContract(contractPath, iterNum, target, options = {}) {
   const { dryRun = false } = options;
   const result = { generated: [], errors: [] };

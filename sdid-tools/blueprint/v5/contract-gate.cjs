@@ -99,6 +99,7 @@ function autoPatchContract(content) {
   return { patched, patches };
 }
 // ── Gate checks（只驗三個大項）──
+/** GEMS: checkContract | P0 | checkStories(Pure)→checkContracts(Pure)→checkACFormat(Pure)→RETURN:GateResult | Story-2.0 */
 function checkContract(content, iterNum) {
   const blockers = [];
   const guided = [];

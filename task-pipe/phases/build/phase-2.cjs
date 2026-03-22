@@ -163,6 +163,7 @@ function runTsc(target, options) {
   }
 }
 
+/** GEMS: buildPhase2 | P1 | detectTddPaths(IO)→runVitest(IO)→runTsc(IO)→RETURN:PhaseResult | Story-4.0 */
 function run(options) {
   const { target, iteration = 'iter-1', story, level = 'M' } = options;
   const relativeTarget = path.relative(process.cwd(), target) || '.';

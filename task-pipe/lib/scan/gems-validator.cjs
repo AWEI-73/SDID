@@ -68,6 +68,7 @@ const VALID_INTEGRATION_ASSERTIONS = [
  * @param {string} srcDir - 源碼目錄
  * @returns {object} { functions: [], stats: {} }
  */
+/** GEMS: scanGemsTags | P1 | findSourceFiles(IO)→extractTags(Pure)→buildStats(Pure)→RETURN:ScanResult | Story-5.0 */
 function scanGemsTags(srcDir) {
   const result = {
     functions: [],
@@ -277,6 +278,7 @@ function detectFraud(tags, funcBody) {
  * 驗證 P0/P1 標籤合規性（只檢查標籤存在，不檢查測試檔案）
  * 測試檔案存在檢查由 validateTestFiles 負責
  */
+/** GEMS: validateP0P1Compliance | P1 | filterByPriority(Pure)→checkTagFields(Pure)→RETURN:ComplianceResult | Story-5.0 */
 function validateP0P1Compliance(functions) {
   const issues = [];
 
@@ -372,7 +374,7 @@ function findSourceFiles(dir, files = []) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory() && !entry.name.includes('__tests__') && entry.name !== 'node_modules') {
       findSourceFiles(fullPath, files);
-    } else if (entry.isFile() && /\.(ts|tsx|js|jsx)$/.test(entry.name) && !entry.name.includes('.test.')) {
+    } else if (entry.isFile() && /\.(ts|tsx|js|jsx|cjs)$/.test(entry.name) && !entry.name.includes('.test.')) {
       files.push(fullPath);
     }
   }

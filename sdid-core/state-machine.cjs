@@ -228,6 +228,7 @@ function detectRoute(projectRoot, iter) {
  * @param {string[]} completedStories
  * @returns {{ phase, step, story, hasError? }|null}
  */
+/** GEMS: inferStateFromLogs | P0 | readLogsDir(IO)→matchPrefixes(Pure)→resolvePhase(Pure)→RETURN:StateResult | Story-1.0 */
 function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStories) {
   const logsDir = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
   if (!fs.existsSync(logsDir)) return null;
@@ -410,6 +411,7 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
  * @param {string|null} storyOpt - 可選，強制指定 story
  * @returns {FullState}
  */
+/** GEMS: detectFullState | P0 | detectRoute(Clear)→resolvePaths(Complicated)→inferStateFromLogs(Complicated)→RETURN:FullState | Story-1.0 */
 function detectFullState(projectRoot, iter, storyOpt) {
   const iterNum = parseInt(iter.replace('iter-', ''), 10);
   const route = detectRoute(projectRoot, iter);

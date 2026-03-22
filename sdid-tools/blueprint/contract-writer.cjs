@@ -181,7 +181,8 @@ function parseContract(content) {
       };
       continue;
     }
-    const itemMatch = t.match(/^\/\/\s*@GEMS-STORY-ITEM:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*(\S+)/);
+    // AC 欄位（第 6 欄）optional — 5 欄或 6 欄都接受
+    const itemMatch = t.match(/^\/\/\s*@GEMS-STORY-ITEM:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+?)(?:\s*\|\s*(\S+))?\s*$/);
     if (itemMatch && currentStory) {
       currentStory.items.push({
         name: itemMatch[1].trim(),
@@ -189,7 +190,7 @@ function parseContract(content) {
         priority: itemMatch[3].trim(),
         flow: itemMatch[4].trim(),
         deps: itemMatch[5].trim(),
-        ac: itemMatch[6].trim(),
+        ac: itemMatch[6] ? itemMatch[6].trim() : '無',
       });
       continue;
     }
@@ -248,6 +249,7 @@ function parseCoverage(str) {
 // Gate 驗證
 // ─────────────────────────────────────────────────────────────
 
+/** GEMS: runGate | P0 | checkContracts(Pure)→checkStories(Pure)→checkAC(Pure)→RETURN:GateResult | Story-2.0 */
 function runGate(parsed, content, draftActions) {
   const blockers = [];
   const warnings = [];

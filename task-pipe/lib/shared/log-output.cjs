@@ -125,6 +125,7 @@ function getLogFileName(phase, step, type = 'error', story = null) {
  * @param {string} [options.story] - Story ID (e.g. 'Story-1.0')
  * @returns {string} 儲存的檔案路徑（相對路徑）
  */
+/** GEMS: saveLog | P1 | resolveLogsDir(IO)→buildFilename(Pure)→writeFile(IO)→RETURN:logPath | Story-4.0 */
 function saveLog(options) {
     const { projectRoot, iteration = 1, phase, step, type = 'error', content, story = null } = options;
 

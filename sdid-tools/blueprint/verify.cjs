@@ -98,6 +98,7 @@ function normalize(name) {
 // ============================================
 // 雙向比對
 // ============================================
+/** GEMS: compareActions | P0 | normalizeName(Pure)→diffLists(Pure)→buildReport(Pure)→RETURN:CompareResult | Story-2.0 */
 function compareActions(blueprintActions, codeFunctions) {
   const result = {
     matched: [],      // 藍圖有、程式碼也有
@@ -393,6 +394,7 @@ function generateVerifyMarkdown(verifyJson) {
 // ============================================
 // 主程式
 // ============================================
+/** GEMS: verifyBlueprint | P0 | loadFunctions(IO)→extractBlueprintActions(IO)→compareActions(Pure)→writeReports(IO)→RETURN:VerifyResult | Story-2.0 */
 function main() {
   const args = parseArgs();
 

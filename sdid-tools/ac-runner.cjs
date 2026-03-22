@@ -491,6 +491,7 @@ function partialMatch(actual, expect) {
 // 執行單一 AC
 // ─────────────────────────────────────────────────────────────
 
+/** GEMS: runAc | P1 | checkSkip(Pure)→executeSpec(Complicated)→validateResult(Pure)→RETURN:AcResult | Story-2.0 */
 function runAc(spec, target) {
   const result = { id: spec.id, fn: spec.fn, status: 'UNKNOWN', actual: null, error: null };
 

@@ -226,6 +226,7 @@ function parseDraft(raw) {
 }
 
 // ── Gate checks（只驗大項結構，不驗語意）──
+/** GEMS: checkDraft | P0 | validateSections(Pure)→checkEntities(Pure)→checkStories(Pure)→RETURN:GateResult | Story-2.0 */
 function checkDraft(d, raw, blueprint) {
   const blockers = [];
   const guided = []; // 語意問題 → 具體指引，不 BLOCK

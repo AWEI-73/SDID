@@ -171,6 +171,7 @@ function detectLatestIter(projectPath) {
  * @param {{ iter?: string, story?: string }} opts
  * @returns {FullState & { iteration: string }}
  */
+/** GEMS: detectProjectState | P0 | detectLatestIter(IO)→ensureIterStructure(IO)→detectFullState(IO)→RETURN:ProjectState | Story-1.0 */
 function detectProjectState(projectPath, opts = {}) {
   const iter = opts.iter || detectLatestIter(projectPath);
   const iterNum = parseInt(iter.replace('iter-', ''), 10);

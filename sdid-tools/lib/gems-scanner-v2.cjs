@@ -386,6 +386,7 @@ function resolveGemsId(func, dictIndex, usedGemsIds) {
   return null;
 }
 
+/** GEMS: scanV2 | P0 | loadTypescript(IO)→[parseAST★Complex]→extractGemsTags(Pure)→RETURN:ScanV2Result | Story-3.0 */
 function scanV2(srcDir, projectRoot) {
   const ts = loadTypescript(projectRoot);
   if (!ts) {

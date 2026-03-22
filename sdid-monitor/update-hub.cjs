@@ -310,6 +310,7 @@ function scanProject(projName, projPath) {
 
 // ─── 主掃描 ──────────────────────────────────────────────────
 
+/** GEMS: updateHub | P0 | scanWorkspace(IO)→scanFramework(IO)→aggregateMetrics(Pure)→writeHubJson(IO)→RETURN:HubData | Story-6.0 */
 function scan() {
   const projects  = {};
   const framework = {};

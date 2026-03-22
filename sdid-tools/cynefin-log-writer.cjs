@@ -344,6 +344,7 @@ function buildLogContent(report, result, iterNum, enrichedActions) {
 // ============================================
 // 主程式
 // ============================================
+/** GEMS: writeCynefinLog | P1 | parseReport(Clear)→validateReport(Clear)→determineResult(Complicated)→buildLogContent(Clear)→writeLog(Clear)→RETURN:CynefinResult | Story-2.0 */
 function main() {
   const args = parseArgs();
 

@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
+/** GEMS: calcBlueprintScore | P1 | classifyTypes(Clear)→scoreGenericSteps(Complicated)→weightCategories(Clear)→RETURN:Score | Story-3.0 */
 function calcBlueprintScore(draft, rawContent = '') {
   const BACKEND_TYPES = new Set(['SVC', 'API', 'DATA', 'REPO', 'DB']);
   const FRONTEND_TYPES = new Set(['UI', 'HOOK', 'ROUTE', 'PAGE', 'COMPONENT']);

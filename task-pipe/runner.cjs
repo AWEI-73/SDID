@@ -632,6 +632,7 @@ function runDryRun(phase, step, options) {
 // ============================================
 // 主函式
 // ============================================
+/** GEMS: runBuild | P0 | parseArgs(Clear)→loadPhase(Clear)→[executePhase★Complex]→reportResult(Clear)→RETURN:BuildResult | Story-4.0 */
 function main() {
   const options = parseArgs();
 

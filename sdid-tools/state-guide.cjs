@@ -80,6 +80,7 @@ function resolveHints(projectRoot, phase, step, story) {
 }
 
 // ── Output formatter ──
+/** GEMS: formatGuide | P1 | resolveTargetGems(Complicated)→assembleStatus(Clear)→buildReadSection(Clear)→RETURN:GuideText | Story-2.0 */
 function formatGuide(opts) {
   const { phase, step, story, iter, route, resumeCtx, scriptPath, gems: gemsRaw, pitfalls, histHint, phase2Script, fullState } = opts;
   const gems = gemsRaw || [];

@@ -114,6 +114,7 @@ function scanSource(srcDir) {
 }
 
 // ── Drift Checks ──
+/** GEMS: checkDrift | P1 | parseContract(Clear)→scanSource(Complicated)→diffFunctions(Clear)→RETURN:DriftResult | Story-2.0 */
 function checkDrift(contract, source, storyFilter) {
   const drifts = [];
   const W = (code, msg, file) => drifts.push({ level: 'WARN', code, msg, file: file || null });

@@ -82,6 +82,7 @@ function createInitialState(iteration, options = {}) {
 // ============================================
 // 讀寫狀態
 // ============================================
+/** GEMS: readState | P1 | resolveStateFile(Pure)→readJson(IO)→RETURN:IterState | Story-1.0 */
 function readState(target, iteration) {
   const stateFile = getStateFilePath(target, iteration);
 
@@ -98,6 +99,7 @@ function readState(target, iteration) {
   }
 }
 
+/** GEMS: writeState | P1 | ensureDir(IO)→serializeJson(Pure)→writeFile(IO)→RETURN:void | Story-1.0 */
 function writeState(target, iteration, state) {
   const iterPath = getIterationPath(target, iteration);
   const stateFile = getStateFilePath(target, iteration);

@@ -40,6 +40,7 @@ function saveScoreLog(projectRoot, iter, score, logOptions) {
   fs.writeFileSync(logPath, `score=${score.total}\ngrade=${score.grade}\nbreakdown=${JSON.stringify(score.breakdown)}\n`);
 }
 
+/** GEMS: generateReport | P1 | calcStats(Clear)→readPrevScore(Clear)→formatOutput(Complicated)→saveLog(Clear)→RETURN:ReportResult | Story-2.0 */
 function generateReport(draft, allIssues, args, rawContent = '') {
   const stats = parser.calculateStats(draft);
   const blockers = allIssues.filter(i => i.level === 'BLOCKER');

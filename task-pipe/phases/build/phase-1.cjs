@@ -27,6 +27,7 @@ const { extractPlanSpec, extractFunctionManifest, getStoryContext } = require('.
 // P0.8: Plan Schema 驗證
 const { validatePlan } = require('../../lib/plan/plan-validator.cjs');
 
+/** GEMS: buildPhase1 | P1 | loadPlan(IO)→generateScaffold(IO)→runTsc(IO)→RETURN:PhaseResult | Story-4.0 */
 function run(options) {
   const { target, iteration = 'iter-1', story, level = 'M' } = options;
   // 計算相對路徑（用於輸出指令，避免絕對路徑問題）

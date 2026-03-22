@@ -236,6 +236,7 @@ function generateBody(name, type, storyId, stepLines) {
 // ============================================
 // 骨架生成
 // ============================================
+/** GEMS: generateScaffoldFromPlan | P1 | loadPlan(IO)→extractSpec(Complicated)→generateBody(Pure)→writeFiles(IO)→RETURN:ScaffoldResult | Story-4.0 */
 function generateScaffoldFromPlan(planPath, targetDir, options = {}) {
   const { dryRun = false } = options;
   const result = { generated: [], skipped: [], errors: [] };

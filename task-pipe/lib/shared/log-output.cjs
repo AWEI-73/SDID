@@ -54,24 +54,14 @@ function getGuardLogLine() {
     return `🚫 禁止修改 ${GUARD_FORBIDDEN} | ✅ 只能修改 TARGET 檔案`;
 }
 let retryStrategy = null;
-let backtrackRouter = null;
 let taintAnalyzer = null;
-let incrementalValidator = null;
 
 try {
     retryStrategy = require('./retry-strategy.cjs');
 } catch (e) { /* 可選模組 */ }
 
 try {
-    backtrackRouter = require('./backtrack-router.cjs');
-} catch (e) { /* 可選模組 */ }
-
-try {
     taintAnalyzer = require('./taint-analyzer.cjs');
-} catch (e) { /* 可選模組 */ }
-
-try {
-    incrementalValidator = require('./incremental-validator.cjs');
 } catch (e) { /* 可選模組 */ }
 
 /**

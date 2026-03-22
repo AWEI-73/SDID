@@ -32,8 +32,16 @@ try {
 // Regex fallback 永遠可用
 const validator = require('./gems-validator.cjs');
 
-// AC 行解析（from enhanced scanner）
-const { findACLines } = require('./gems-scanner-enhanced.cjs');
+// AC 行解析（inline，避免對 enhanced scanner 的跨模組依賴）
+function findACLines(lines, gemsEndLine, funcLine) {
+  const acIds = [];
+  for (let i = gemsEndLine; i < funcLine - 1 && i < lines.length; i++) {
+    const trimmed = (lines[i] || '').trim();
+    const m = trimmed.match(/^\/\/\s*(AC-[\d.]+)/);
+    if (m) acIds.push(m[1]);
+  }
+  return acIds;
+}
 
 // ── 統一掃描 API ──
 

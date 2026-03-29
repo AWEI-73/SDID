@@ -504,7 +504,14 @@ needsTest 判斷規則（腳本自動計算，AI 也可手動填入）:
       }
     }
     console.log(`  Log: ${relPath}`);
-    console.log(`NEXT: 進入 PLAN`);
+    console.log(``);
+    console.log(`@NEXT_STEPS`);
+    console.log(`  1. 觸發 flow-review skill — 審查 STORY-ITEM 的 FLOW 語意 + CYNEFIN 域標記`);
+    console.log(`     觸發詞: 「REVIEW FLOW」或「驗證 FLOW」，輸入: draft_iter-${args.iter}.md 的動作清單`);
+    console.log(`  2. flow-review @PASS 後 → TDD Contract Subagent 寫測試檔（needsTest:true 的 action）`);
+    console.log(`     參考: .agent/skills/sdid/references/tdd-contract-prompt.md`);
+    console.log(`  3. 測試檔 RED 驗證完成後 → 寫 contract_iter-${args.iter}.ts → contract-gate`);
+    console.log(`NEXT: 執行 flow-review skill（觸發詞: REVIEW FLOW）`);
     process.exit(0);
   } else {
     console.log('═══════════════════════════════════════════════════════════');

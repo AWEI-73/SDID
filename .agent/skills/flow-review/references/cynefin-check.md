@@ -12,17 +12,28 @@
 
 ---
 
-## Phase 0: 前置確認
+## Phase 0: 文件品質評分（前置判斷）
 
-Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHECK。
+在做域分析之前，先對輸入文件做品質評分。
+如果文件本身品質不足，域分析的結果也不可靠。
 
-```
-@BLOCKER：Draft 尚未通過 design-review → 返回執行 design-review skill
-@PASS：繼續 Phase 0.5
-```
+### 評分維度（每項 0-5 分，滿分 25）
 
-> design-review 負責文件品質審查（tag 完整性、Then 語意、Entity 引用等）。
-> 進到這裡代表文件結構已合格，CYNEFIN-CHECK 專注做域分析。
+| 維度 | 0 分 | 3 分 | 5 分 |
+|------|------|------|------|
+| 明確性 | 全是模糊描述 | 大部分明確，少數模糊 | 每個功能都有具體行為描述 |
+| 完整性 | 只有標題 | 有功能列表但缺細節 | 功能、邊界、錯誤處理都有 |
+| 可測試性 | 無法寫測試 | 部分可寫測試 | 每個功能都能對應測試案例 |
+| 一致性 | 自相矛盾 | 小處不一致 | 術語統一、邏輯自洽 |
+| 可行性 | 技術上不可能 | 需要額外研究 | 技術方案明確可行 |
+
+### 門檻
+
+| 總分 | 判定 | 動作 |
+|------|------|------|
+| 20-25 | ✅ PASS | 繼續域分析 |
+| 15-19 | ⚠️ WARN | 標記弱項，繼續但在 report 中註記 |
+| 0-14 | ❌ FAIL | 退回修改文件，不進行域分析 |
 
 ---
 
@@ -44,7 +55,7 @@ Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHE
 - 其他 → `needsTest: false`
 
 **needsTest 的影響**：
-- `needsTest: true` → CYNEFIN @PASS 後，Controller 派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），為此 action 寫測試檔並將 `@GEMS-TDD` 路徑加入 contract.ts，再由 design-review skill 審查，之後 Phase 2 執行 vitest
+- `needsTest: true` → CYNEFIN @PASS 後，Controller 派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），為此 action 寫測試檔並將 `@GEMS-TDD` 路徑加入 contract.ts，再由 Design Reviewer 審查，之後 Phase 2 執行 vitest
 - `needsTest: false` → Phase 2 只跑 `tsc --noEmit`（DB CRUD / UI / 外部 API 層）
 
 將 actions[] 填入 JSON report，供 cynefin-log-writer.cjs 寫入 cynefin-report.json，再由 Controller 讀取決定哪些 action 需要 TDD Contract Subagent 寫測試。
@@ -172,9 +183,8 @@ node sdid-tools/cynefin-log-writer.cjs --report-file=<上述路徑> --target=<pr
 
 log 寫入成功後才算 `@PASS`，loop 才會放行進入 **CONTRACT** 節點。
 
-> ⚠️ CYNEFIN-CHECK @PASS 後（強制依序）：
-> 1. **FLOW-REVIEW**（flow-review skill）→ 客觀審查 FLOW 設計，產出 @GEMS-WHY + `flow-review-pass-*.log`
-> 2. 若有 `needsTest: true` 的 action → 派 **TDD Contract Subagent**（寫測試檔 + 加 @GEMS-TDD）
-> 3. **design-review skill** 審查 contract → **CONTRACT Gate**（contract-gate.cjs v5）
-> 4. CONTRACT @PASS → **PLAN**（spec-to-plan.cjs，機械轉換）
-> 5. PLAN → **BUILD Phase 1-4**
+> ⚠️ CYNEFIN-CHECK @PASS 後：
+> 1. 若有 `needsTest: true` 的 action → 先派 **TDD Contract Subagent**（寫測試檔 + 加 @GEMS-TDD）→ 再派 **Design Reviewer** 審查 contract
+> 2. 所有測試檔準備完畢 → **CONTRACT Gate**（contract-gate.cjs v5）
+> 3. CONTRACT @PASS → **PLAN**（spec-to-plan.cjs，機械轉換）
+> 4. PLAN → **BUILD Phase 1-4**

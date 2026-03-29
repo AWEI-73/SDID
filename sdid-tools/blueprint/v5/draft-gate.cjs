@@ -254,7 +254,7 @@ function checkDraft(d, raw, blueprint) {
     B('DR-004', `動作清單有 ${d.actions.length} 個動作，超過上限 10，請拆 Story`);
 
   // 大項 4: 每個動作的必填欄位（純格式）
-  const acRefs = new Set();
+  const acRefs = new Set(); // v7.0: 保留供未來擴充，目前不驗 AC 引用
   for (const item of d.actions) {
     const prefix = `[${item.techName || '?'}]`;
     if (!item.techName || item.techName.trim() === '')
@@ -385,6 +385,13 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
     ? `${relTarget}/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`
     : `<project>/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
   const nextContractCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractPath}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
+
+  // Foundation iter 判斷（Story 類型為 Foundation 或模組名為 Foundation）
+  const isFoundationIter = d.module === 'Foundation' || (d.storyType && d.storyType === 'Foundation');
+  const reportPath = relTarget
+    ? `${relTarget}/.gems/iterations/iter-${iterNum}/cynefin-report.json`
+    : `.gems/iterations/iter-${iterNum}/cynefin-report.json`;
+  const nextCynefinCmd = `node sdid-tools/cynefin-log-writer.cjs --report-file=${reportPath}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
   const retryCmd = `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=${relDraft}${args.blueprint ? ' --blueprint=' + path.relative(process.cwd(), args.blueprint) : ''}${relTarget ? ' --target=' + relTarget : ''}`;
 
   // Log 存檔
@@ -426,7 +433,10 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
       guided.forEach(g => logLines.push(`  @GUIDED [${g.code}] ${g.msg}`));
       logLines.push(``);
     }
-    logLines.push(`=== NEXT ===`, passed ? nextContractCmd : retryCmd, ``);
+    logLines.push(`=== NEXT ===`, passed ? (isFoundationIter ? nextContractCmd : nextCynefinCmd) : retryCmd, ``);
+    if (passed && !isFoundationIter) {
+      logLines.push(`=== CYNEFIN_NOTE ===`, `Foundation iter 以外必須先跑 CYNEFIN-CHECK，再跑 flow-review skill，再寫 contract`, ``);
+    }
     logLines.push(`=== GUARD ===`, `🚫 禁止修改 task-pipe/ sdid-tools/ | ✅ 只能修改 ${relDraft}`);
     fs.writeFileSync(logFile, logLines.join('\n'), 'utf8');
     logPath = path.relative(args.target, logFile);
@@ -461,14 +471,18 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
       ? `${relTarget}/.gems/iterations/iter-${iterNum}/poc/${d.module}POC.html`
       : `.gems/iterations/iter-${iterNum}/poc/${d.module}POC.html`);
 
+    // 偵測是否有 UI 或 ROUTE 動作（有前端就需要 POC HTML）
+    const hasUiActions = d.actions.some(a => ['UI', 'ROUTE'].includes((a.type || '').toUpperCase()));
+    const pocRequired = hasUiActions; // 有 UI 或 ROUTE 動作才需要 POC HTML
+
     console.log(`@CONTEXT_SCOPE`);
     console.log(`  Draft: ${relDraft}`);
     console.log(`  Module: ${d.module} | Actions: ${d.actions.length} | P0/P1 ACs: ${d.acDefs.filter(a => a.tag !== 'SKIP').length}`);
     console.log(`  Action types: ${[...new Set(d.actions.map(a => a.type))].join(', ')}`);
-    console.log(`  POC HTML: ${pocHtmlExists ? `✅ ${pocHtmlPath}` : `❌ 尚未產出`}`);
+    console.log(`  POC HTML: ${pocHtmlExists ? `✅ ${pocHtmlPath}` : (pocRequired ? `❌ 必須產出（有 UI 動作）` : `⏭ 跳過（無 UI 動作）`)}`);
     console.log('');
     const pocGateCmd = `node sdid-tools/blueprint/v5/poc-gate.cjs --poc=${pocHtmlTarget}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
-    if (!pocHtmlExists) {
+    if (pocRequired && !pocHtmlExists) {
       console.log(`@TASK-1`);
       console.log(`  ACTION: WRITE_POC_HTML`);
       console.log(`  FILE: ${pocHtmlTarget}`);
@@ -483,8 +497,14 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
       console.log(`  EXAMPLE: task-pipe/templates/examples/contract-iter-1-ecotrack.example.v3.ts`);
       console.log('');
       console.log(`NEXT (poc 完成後): ${pocGateCmd}`);
-      console.log(`NEXT (跳過 poc):   ${nextContractCmd}`);
-    } else {
+      if (isFoundationIter) {
+        console.log(`NEXT (跳過 poc):   ${nextContractCmd}`);
+        console.log(`  ⚡ Foundation iter — 跳過 CYNEFIN-CHECK + flow-review，直接進 contract-gate`);
+      } else {
+        console.log(`NEXT (跳過 poc):   ${nextCynefinCmd}`);
+        console.log(`  ⚠️  非 Foundation iter — 必須先跑 CYNEFIN-CHECK → flow-review skill → TDD Contract Subagent → contract-gate`);
+      }
+    } else if (pocHtmlExists) {
       console.log(`@TASK`);
       console.log(`  ACTION: WRITE_CONTRACT`);
       console.log(`  FILE: ${contractPath}`);
@@ -493,7 +513,13 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
       console.log(`  EXAMPLE: task-pipe/templates/examples/contract-iter-1-ecotrack.example.v3.ts`);
       console.log('');
       console.log(`NEXT (驗證 poc): ${pocGateCmd}`);
-      console.log(`NEXT (跳過 poc): ${nextContractCmd}`);
+      if (isFoundationIter) {
+        console.log(`NEXT (跳過 poc): ${nextContractCmd}`);
+        console.log(`  ⚡ Foundation iter — 跳過 CYNEFIN-CHECK + flow-review，直接進 contract-gate`);
+      } else {
+        console.log(`NEXT (跳過 poc): ${nextCynefinCmd}`);
+        console.log(`  ⚠️  非 Foundation iter — 必須先跑 CYNEFIN-CHECK → flow-review skill → TDD Contract Subagent → contract-gate`);
+      }
     }
   } else {
     console.log(`═══════════════════════════════════════════════════════════`);

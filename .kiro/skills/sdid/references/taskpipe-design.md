@@ -1,70 +1,84 @@
-# Task-Pipe 設計模式 — POC-PLAN 漸進式規則
+# Task-Pipe 設計模式 — Draft 直入主流程
 
 ## 概覽
 
-Task-Pipe 是細部漸進式設計模式，適合需求已經比較明確、或是局部功能開發的場景。
-透過 POC Step 1-5 做細部需求探索 + 契約設計 + UI 原型，再透過 PLAN Step 1-5 產出 implementation_plan。
+Task-Pipe 是需求明確時的直接入口。
+不需要 Blueprint 5 輪對話，直接建立 `draft_iter-N.md` 進入主流程。
 
-## 執行方式
+適用：
+- 需求明確（知道要做什麼、有實體/操作/使用者）
+- 局部功能開發或新迭代
+- 使用者說「快速建」「練習」「小專案」
 
-所有步驟都透過 MCP `sdid-loop` tool 自動偵測和執行：
-
-```
-# 繼續現有專案（自動偵測狀態）
-呼叫 MCP sdid-loop tool，project=[path]
-
-# 新專案
-呼叫 MCP sdid-loop tool，project=[name]
-
-# 強制從特定步驟開始
-呼叫 MCP sdid-loop tool，project=[path]，forceStart=POC
-呼叫 MCP sdid-loop tool，project=[path]，forceStart=PLAN```
-
-> ⚠️ 舊的 `taskpipe-loop.cjs` 已 deprecated，不要使用。
+---
 
 ## 流程
 
 ```
-POC Step 1-5 → PLAN Step 1-5 → implementation_plan（匯流到 BUILD）
+draft_iter-N.md
+  └── design-review skill（Draft gate）
+        ↓ @PASS
+  CYNEFIN-CHECK（強制）
+        ↓ @PASS
+  TDD Contract Subagent（needsTest:true → 寫 @GEMS-TDD 測試檔）
+        ↓ READY
+  contract_iter-N.ts
+    └── design-review skill（Contract gate）→ contract-gate.cjs
+          ↓ @PASS
+  spec-to-plan → implementation_plan_Story-X.Y.md
+          ↓
+  BUILD Phase 1-4（task-pipe/runner.cjs）
+          ↓ 所有 Story @PASS
+  SCAN → functions.json
+          ↓
+  VERIFY（blueprint-verify.cjs）→ 完成
 ```
 
-### POC 階段 (Step 1-5)
-1. 模糊消除 — 讀取 requirement_draft，消除歧義（若 draft 不存在，POC Step 1 會自動 scaffold 空白 draft template，AI 需根據使用者需求填寫後再繼續）
-2. 規模評估 — 評估 S/M/L，檢查 Story 數量
-3. 契約設計 — 產出 @GEMS-CONTRACT 型別定義
-4. UI 原型 — 產出 POC.html + @GEMS-DESIGN-BRIEF
-5. 需求規格 — 產出 requirement_spec
+---
 
-### PLAN 階段 (Step 1-5)
-1. 需求確認 — 確認需求，模糊消除
-2. 規格注入 — 生成 implementation_plan_Story-X.Y.md
-3. 架構審查 — Constitution Audit
-4. 標籤規格設計 — 設計 GEMS 標籤規格
-5. 需求規格說明 — 最終確認
+## 執行步驟
 
-## 執行循環
+### Step 1 — 建立 draft
 
-1. 呼叫 MCP `sdid-loop` tool，`project=[path]`
-2. 讀取 output
-   - @PASS → 腳本會告訴你下一步，再次執行
-   - @TACTICAL_FIX → 讀 error log，修復，再次執行
-3. 重複直到進入 BUILD 階段
+```
+.gems/design/draft_iter-N.md
+```
 
-## 錯誤處理
+若無現有 draft，引導使用者用一句話描述需求，然後直接建立 draft 檔案。
+需求已夠清楚 → 直接寫 draft，不需確認。
 
-- 讀取 `.gems/iterations/iter-X/logs/` 下最新的 error log
-- 找 `@TACTICAL_FIX` 標記 — 告訴你要修什麼
-- 修復專案檔案（不是工具檔案）
-- 重新執行 loop
+**draft 必填欄位：**
+- 功能名稱
+- 實體定義（@GEMS-ENTITY / @GEMS-TABLE）
+- Story 列表（@GEMS-STORY）
+- API / FUNCTION 邊界（@GEMS-API / @GEMS-FUNCTION）
 
-## 參數
+### Step 2 — 進入主流程
 
-| 參數 | 用途 |
+draft 建立後**不等待確認**，自動進入：
+
+```
+design-review → CYNEFIN-CHECK → CONTRACT → spec-to-plan → BUILD
+```
+
+---
+
+## 檔案路徑規則
+
+| 產物 | 路徑 |
 |------|------|
-| `--project=[path]` | 專案路徑（必填） |
-| `--new --project=[name]` | 新專案 |
-| `--type=[type]` | 專案類型（任意名稱） |
-| `--force-start=POC` | 強制從 POC Step 1 開始（MCP 參數：`forceStart: "POC"`）|
-| `--force-start=PLAN` | 強制從 PLAN Step 1 開始（MCP 參數：`forceStart: "PLAN"`）|
-| `--level=S/M/L` | 執行等級 |
-| `--mode=full\|quick` | full=全流程, quick=小步快跑 |
+| draft | `.gems/design/draft_iter-N.md` |
+| contract | `.gems/iterations/iter-N/contract_iter-N.ts` |
+| implementation_plan | `.gems/iterations/iter-N/plan/implementation_plan_Story-X.Y.md` |
+| build logs | `.gems/iterations/iter-N/logs/` |
+
+---
+
+## 與 Blueprint 的差異
+
+| | Blueprint | Task-Pipe |
+|--|-----------|-----------|
+| 適用 | 需求模糊，需要探索 | 需求明確，直接開發 |
+| 入口 | 5 輪對話 → blueprint.md → draft | 直接建 draft |
+| 前置設計 | 有（藍圖設計） | 無 |
+| 流程 | 相同主流程 | 相同主流程 |

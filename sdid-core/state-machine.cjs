@@ -359,13 +359,12 @@ function inferStateFromLogs(projectRoot, iterNum, plannedStories, completedStori
     if (!has('cynefin-check-pass-')) {
       return { phase: 'CYNEFIN_CHECK', step: null, story: null };
     }
-    // Contract Gate: cynefin-check-pass 後必須有 contract-pass 才能進 PLAN
+    // Flow-Review Gate: cynefin-check-pass 後必須有 flow-review-pass 才能進 CONTRACT
+    if (!has('flow-review-pass-')) {
+      return { phase: 'FLOW_REVIEW', step: null, story: null };
+    }
+    // Contract Gate: flow-review-pass 後必須有 contract-pass 才能進 PLAN
     if (!has('contract-pass-') && !has('contract-gate-pass-')) {
-      // POC_HTML: draft-gate pass 存在 + poc html 存在 + poc-gate log 不存在 → 需要跑 poc-gate
-      const pocHtml = findPocHtml(projectRoot, iterNum);
-      if (pocHtml && !has('poc-gate-pass-')) {
-        return { phase: 'POC_HTML', step: null, story: null };
-      }
       return { phase: 'CONTRACT', step: null, story: null };
     }
     // contract.ts 比最新 contract-pass log 新 → contract 已變動，需重新 gate
@@ -537,6 +536,7 @@ function buildNextCommand(st) {
       return `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${cp} --target=${projectRoot} --iter=${iterNum}`;
     }
     case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
+    case 'FLOW_REVIEW':  return `# AI skill: invoke flow-review skill with contract at .gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
     case 'POC_HTML': {
       const pocHtml = findPocHtml(projectRoot, iterNum) || `<project>/.gems/design/poc_iter-${iterNum}.html`;
       return `node sdid-tools/blueprint/v5/poc-gate.cjs --poc=${pocHtml} --target=${projectRoot} --iter=${iterNum}`;

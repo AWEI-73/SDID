@@ -10,7 +10,7 @@
   不含：動作清單、AC、FLOW、DEPS（這些在 per-iter draft）
   
   產出時機：5 輪對話結束後一次性寫出
-  更新時機：iter 完成時更新狀態標記
+  更新時機：全授權模式不需更新
   大小上限：~100-150 行（不隨 iter 數膨脹）
 -->
 
@@ -60,11 +60,11 @@ src/
 
 ## 3. 迭代規劃
 
-| Iter | 模組 | 目標（一行） | 交付 | 狀態 |
-|------|------|-------------|------|------|
-| 1 | shared | 型別 + API 介面契約 + 前端殼 | INFRA | [CURRENT] |
-| 2 | {moduleA} | {一行描述} | FULL | [STUB] |
-| 3 | {moduleB} | {一行描述} | FULL | [STUB] |
+| Iter | 模組 | 目標（一行） | 交付 |
+|------|------|-------------|------|
+| 1 | shared | 型別 + API 介面契約 + 前端殼 | INFRA |
+| 2 | {moduleA} | {一行描述} | FULL |
+| 3 | {moduleB} | {一行描述} | FULL |
 
 ### 模組 API 摘要
 - shared: CoreTypes, ENV_CONFIG, I{Service}Contracts

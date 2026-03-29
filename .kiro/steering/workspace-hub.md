@@ -3,7 +3,7 @@ inclusion: always
 ---
 
 # SDID Workspace 認知快照
-**更新**: 2026-03-22 12:16:13 UTC
+**更新**: 2026-03-22 22:39:40 UTC
 **Root**: `C:\Users\user\Desktop\SDID`
 **Monitor**: http://localhost:3737
 
@@ -23,10 +23,10 @@ ARCHITECTURE.md v7.0，更新 2026-03-19
 
 ## SDID 框架健康
 
-- `sdid-core/` 3 支 | 最後異動: 2026-03-17 | 1 邊 ✅ | 入口: architecture-contract.cjs, orchestrator.cjs, state-machine.cjs
-- `sdid-monitor/` 8 支 | 最後異動: 2026-03-17 | 2 邊 ✅ | 入口: main.cjs, server.cjs, update-hub.cjs
-- `sdid-tools/` 31 支 | 最後異動: 2026-03-20 | 3 邊 ✅ | 入口: ac-runner.cjs, cynefin-log-writer.cjs, plan-to-scaffold.cjs, poc-to-scaffold.cjs, state-guide.cjs
-- `task-pipe/` 68 支 | 最後異動: 2026-03-21 | 19 邊 ✅ | 入口: runner.cjs
+- `sdid-core/` 3 支 | 最後異動: 2026-03-22 | 1 邊 ✅ | 入口: architecture-contract.cjs, orchestrator.cjs, state-machine.cjs
+- `sdid-monitor/` 8 支 | 最後異動: 2026-03-22 | 2 邊 ✅ | 入口: main.cjs, server.cjs, update-hub.cjs
+- `sdid-tools/` 31 支 | 最後異動: 2026-03-23 | 3 邊 ✅ | 入口: ac-runner.cjs, cynefin-log-writer.cjs, plan-to-scaffold.cjs, poc-to-scaffold.cjs, state-guide.cjs
+- `task-pipe/` 74 支 | 最後異動: 2026-03-23 | 16 邊 ✅ | 入口: runner.cjs
 
 ## Git
 **目前 branch**: `main`
@@ -42,23 +42,25 @@ ARCHITECTURE.md v7.0，更新 2026-03-19
 - `claude/thirsty-davinci` → C:/Users/user/Desktop/SDID/.claude/worktrees/thirsty-davinci
 
 **最近 commits**:
+- 32b4b22 feat(sdid): sdid-self-scan.cjs — git ls-files 驅動的自動化掃描器
+- 5b5a573 feat(sdid): 補 specToPlan + microFixGate 標籤 + 更新 contract + memory
+- 34e4af2 feat(sdid): GEMS 標籤全覆蓋 + meta-contract iter-1 + 殭屍清理
+- d5f23a6 fix(tests): 修正 e2e-loop-scenarios A5/B1 mock 與 loop 行為不同步
+- 41c1ea9 refactor(task-pipe): 移除無用依賴，邊數 19 → 16
+- 732fbd0 refactor(sdid): dep-scan .cjs 支援 + update-hub framework health
 - 193e67d merge(sdid): template v7 cleanup — AC/v4 removal + spec delete
 - 64dba25 chore(templates): v7 cleanup — remove stale AC/v4 templates + spec
-- e600d0f merge(sdid): suspicious-buck — @GEMS-WHY + AC cleanup + architecture v7
-- 29833ba feat(sdid): v7.0 contract @GEMS-WHY + architecture AC cleanup
-- 681014b fix(sdid): clean up remaining AC legacy refs in adversarial-reviewer + phase-1
-- 859ed0e refactor(sdid): v7.0 flow smoothness — fix all P0-P2 issues + full template AC→TDD migration
-- 803ac8e refactor(sdid): complete AC→TDD migration (v7.0) — dead code removal + docs/arch full sync
-- ae788aa feat(sdid): AC to TDD migration (v7.0)
 
 ## 專案狀態（SDID 管理中）
 
 | Project | Iter | Phase | Badge | Tech |
 |---------|------|-------|-------|------|
+| qs-new-app | iter-1 | — | — | — |
+| SDID | iter-1 | CONTRACT | @PASS | — |
 | training-dashboard | iter-2 | DONE | @PASS | — |
 | training-resource-mgmt | iter-1 | DONE | @PASS | — |
 
-**無 .gems（非 SDID 管理）**: train-dashboard
+**無 .gems（非 SDID 管理）**: 訓練資源管理, ExamForge, OpenSpec-main, test-design-scoring, train-dashboard
 
 ## 關鍵路徑
 ```

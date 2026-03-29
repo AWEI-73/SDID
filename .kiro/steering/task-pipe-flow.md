@@ -47,27 +47,38 @@ node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=.gems/design/bluepri
 # 2. Draft Gate
 node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-N.md --target=<project>
 
-# 3. Cynefin 語意域分析（AI 手動執行）
-node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=N
+# 3. CYNEFIN-CHECK（非 Foundation iter 強制，draft-gate @PASS 後自動提示）
+node sdid-tools/cynefin-log-writer.cjs --report-file=<project>/.gems/iterations/iter-N/cynefin-report.json --target=<project> --iter=N
 
-# 4. Contract Gate
+# 4. flow-review skill（非 Foundation iter 強制，CYNEFIN @PASS 後觸發）
+# 觸發詞: 「REVIEW FLOW」，輸入: draft_iter-N.md 的動作清單
+# 輸出: 標記過的 FLOW + @GEMS-WHY，貼回 contract.ts
+
+# 5. TDD Contract Subagent（needsTest:true 的 action 才執行）
+# 參考: .agent/skills/sdid/references/tdd-contract-prompt.md
+# 產出: 測試檔（RED 狀態）+ contract_iter-N.ts 的 @GEMS-TDD 路徑
+
+# 6. Contract Gate
 node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-N/contract_iter-N.ts --target=<project> --iter=N
 
-# 5. Contract → Plan（機械轉換）
+# 7. Contract → Plan（機械轉換）
 node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-N
 
-# 6. BUILD Phase 1-4
+# 8. BUILD Phase 1-4
 node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=<project>
 node task-pipe/runner.cjs --phase=BUILD --step=2 --story=Story-X.Y --target=<project>
 node task-pipe/runner.cjs --phase=BUILD --step=3 --story=Story-X.Y --target=<project>
 node task-pipe/runner.cjs --phase=BUILD --step=4 --story=Story-X.Y --target=<project>
 
-# 7. SCAN
+# 9. SCAN
 node task-pipe/runner.cjs --phase=SCAN --target=<project>
 
-# 8. VERIFY
+# 10. VERIFY
 node sdid-tools/blueprint/verify.cjs --draft=.gems/design/draft_iter-N.md --target=<project> --iter=N
 ```
+
+> ⚠️ Foundation iter（模組名 = Foundation）跳過步驟 3-5，直接從 draft-gate → contract-gate。
+> 非 Foundation iter 步驟 3-5 缺一不可，draft-gate 的 NEXT 已強制指向 cynefin-log-writer。
 
 ## 📚 BUILD 階段 (Phase 1-4，v6)
 

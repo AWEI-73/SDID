@@ -49,9 +49,9 @@
   },
   {
     "id": 9,
-    "query": "繼續 TaskFlow 的藍圖，iter-2 現在是 [CURRENT] 狀態，要展開 AC",
+    "query": "繼續 TaskFlow 的藍圖，iter-2 的 draft 還沒建，要展開下一 iter",
     "should_trigger": true,
-    "reason": "BLUEPRINT-CONTINUE，[CURRENT] 狀態標記是 SDID 專有詞彙"
+    "reason": "BLUEPRINT-CONTINUE，主藍圖有未開始 iter，iter-N 是 SDID 專有詞彙"
   },
   {
     "id": 10,

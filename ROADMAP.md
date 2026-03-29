@@ -1,8 +1,8 @@
 # SDID 快速導航
-> 自動生成 — 2026-03-17 09:08:12 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
+> 自動生成 — 2026-03-22 22:39:40 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
 
 ## 框架路線
-ARCHITECTURE.md v6.1
+ARCHITECTURE.md v7.0
 
 - Blueprint
 - Per-iter Draft
@@ -11,25 +11,20 @@ ARCHITECTURE.md v6.1
 
 ## 專案動向
 
-### 訓練資源管理 `@BLOCK`
-- iter: iter-4 | phase: GATE
-- 下一步: `node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=.gems/design/blueprint.md --target=訓練資源管理`
+### qs-new-app
+- iter: iter-1 | phase: —
 
-### ExamForge `@PASS`
-- iter: iter-11 | phase: DONE
-
-### my_workflow `@BLOCK`
-- iter: iter-4 | phase: BUILD-1
-- 下一步: `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=my_workflow --iteration=iter-4`
-
-### test-design-scoring `@PASS`
-- iter: iter-3 | phase: CONTRACT
-- 下一步: `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-3/contract_iter-3.ts --target=test-design-scoring --iter=3`
+### SDID `@PASS`
+- iter: iter-1 | phase: CONTRACT
+- 下一步: `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-1/contract_iter-1.ts --target=SDID --iter=1`
 
 ### training-dashboard `@PASS`
 - iter: iter-2 | phase: DONE
 
-_非 SDID 管理: OpenSpec-main, sdid-core_
+### training-resource-mgmt `@PASS`
+- iter: iter-1 | phase: DONE
+
+_非 SDID 管理: ExamForge, OpenSpec-main, test-design-scoring, train-dashboard, 訓練資源管理_
 
 ## 工具快速參考
 

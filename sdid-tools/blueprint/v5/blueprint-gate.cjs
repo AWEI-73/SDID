@@ -41,14 +41,13 @@ function autoPatchBlueprint(raw) {
     return `${prefix}${val}`;
   });
 
-  // 2. 迭代規劃表缺 [CURRENT] → 第一個 iter 標記 [CURRENT]
+  // 2. 迭代規劃表缺 [CURRENT] → 只在有狀態欄時才補（無狀態欄格式不需要）
   const hasCurrent = /\[CURRENT\]/i.test(patched);
-  if (!hasCurrent) {
-    // 找迭代規劃表第一個資料行，加 [CURRENT]
+  const hasStatusCol = /\|\s*(狀態|status)\s*\|/i.test(patched);
+  if (!hasCurrent && hasStatusCol) {
     const iterTableMatch = patched.match(/(##\s*3\.\s*迭代規劃[\s\S]*?\n\|[^\n]+\n\|[-|\s]+\n)(\|[^\n]+)/);
     if (iterTableMatch) {
       const firstRow = iterTableMatch[2];
-      // 把最後一欄（status）改為 [CURRENT]
       const newRow = firstRow.replace(/\|\s*([^|]*)\s*\|?\s*$/, '| [CURRENT] |');
       patched = patched.replace(firstRow, newRow);
       patches.push('迭代規劃表缺 [CURRENT] → 第一個 iter 自動標記');
@@ -143,13 +142,13 @@ function parseBlueprint(raw) {  const bp = {
     const rows = iterSection[1].split('\n').filter(l => l.startsWith('|'));
     for (const r of rows) {
       const cols = r.split('|').map(c => c.trim()).filter(Boolean);
-      if (cols.length >= 5) {
+      if (cols.length >= 4) {
         bp.iterationPlan.push({
           iter: parseInt(cols[0]) || 0,
           module: cols[1],
           goal: cols[2],
           delivery: cols[3],
-          status: cols[4],
+          status: cols[4] || '',  // 可選，無狀態欄時為空字串
         });
       }
     }
@@ -219,10 +218,11 @@ function checkBlueprint(bp, raw) {
   if (bp.iterationPlan.length === 0)
     B('BP-008', '缺少「迭代規劃表」');
 
-  // BP-009: 必須有 [CURRENT]
+  // BP-009: [CURRENT] 為可選（無狀態欄時跳過）
   const hasCurrent = bp.iterationPlan.some(e => /CURRENT/i.test(e.status));
-  if (bp.iterationPlan.length > 0 && !hasCurrent)
-    B('BP-009', '迭代規劃表沒有 [CURRENT] 標記');
+  const hasStatusCol = bp.iterationPlan.some(e => e.status !== '');
+  if (hasStatusCol && bp.iterationPlan.length > 0 && !hasCurrent)
+    B('BP-009', '迭代規劃表有狀態欄但沒有 [CURRENT] 標記');
 
   // BP-010: API 摘要
   if (bp.apiSummary.length === 0)
@@ -268,7 +268,7 @@ function getFixGuidance(code) {
     'BP-006': '加入 ### 路由結構 code block',
     'BP-007': '選定單一樣式策略: CSS Modules / Tailwind / Global CSS',
     'BP-008': '加入 ## 3. 迭代規劃 表格',
-    'BP-009': '在迭代規劃表標記一個 [CURRENT]',
+    'BP-009': '迭代規劃表有狀態欄但缺 [CURRENT]，或移除狀態欄改用無狀態格式',
     'BP-010': '加入 ### 模組 API 摘要',
     'BP-011': '確保 API 摘要的模組名與迭代規劃表一致',
     'BP-012': '替換所有 {placeholder} 為實際內容',
@@ -341,7 +341,9 @@ Blueprint Gate v5.0 — 全局骨架品質門控
 
   const relBp = path.relative(process.cwd(), args.blueprint);
   const relTarget = args.target ? path.relative(process.cwd(), args.target) || '.' : null;
-  const currentIter = bp.iterationPlan.find(e => /CURRENT/i.test(e.status));
+  // CURRENT iter 偵測（有狀態欄用 [CURRENT]，無狀態欄預設 iter-1）
+  const currentIter = bp.iterationPlan.find(e => /CURRENT/i.test(e.status))
+    || bp.iterationPlan[0];
   const iterNum = currentIter ? currentIter.iter : 1;
   const nextDraftCmd = `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=<draft_iter-${iterNum}.md> --blueprint=${relBp}${relTarget ? ' --target=' + relTarget : ''}`;
   const retryCmd = `node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=${relBp}${relTarget ? ' --target=' + relTarget : ''}`;
@@ -400,12 +402,12 @@ Blueprint Gate v5.0 — 全局骨架品質門控
     console.log(`@CONTEXT_SCOPE`);
     console.log(`  Blueprint: ${relBp}`);
     console.log(`  CURRENT iter: iter-${iterNum} (${currentIter ? currentIter.module : '?'})`);
-    console.log(`  Iter plan: ${bp.iterationPlan.map(e => `iter-${e.iter}:${e.module}[${e.status}]`).join(', ')}`);
+    console.log(`  Iter plan: ${bp.iterationPlan.map(e => e.status ? `iter-${e.iter}:${e.module}[${e.status}]` : `iter-${e.iter}:${e.module}`).join(', ')}`);
     console.log(`  API summary: ${bp.apiSummary.slice(0, 2).join(' | ')}${bp.apiSummary.length > 2 ? '...' : ''}`);
     console.log('');
     console.log(`@TASK`);
     console.log(`  ACTION: WRITE_DRAFT`);
-    console.log(`  FILE: <project>/.gems/iterations/iter-${iterNum}/poc/draft_iter-${iterNum}.md`);
+    console.log(`  FILE: <project>/.gems/design/draft_iter-${iterNum}.md`);
     console.log(`  EXPECTED: 依 Blueprint iter-${iterNum} 規劃產出 per-iter draft（動作清單 + TDD 測試需求）`);
     console.log(`  REFERENCE: task-pipe/templates/draft-iter-golden.template.v5.md`);
     console.log(`  EXAMPLE: task-pipe/templates/examples/draft-iter-1-ecotrack.example.v5.md`);

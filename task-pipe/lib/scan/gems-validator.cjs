@@ -82,12 +82,12 @@ function scanGemsTags(srcDir) {
     const relativePath = path.relative(process.cwd(), file);
     const lines = content.split('\n');
 
-    // 提取函式（簡化版，用 regex）
-    const funcPattern = /(?:export\s+)?(?:async\s+)?function\s+(\w+)|(?:export\s+)?const\s+(\w+)\s*=\s*(?:async\s*)?\(/g;
+    // 提取函式與 class（簡化版，用 regex）
+    const funcPattern = /(?:export\s+)?(?:async\s+)?function\s+(\w+)|(?:export\s+)?const\s+(\w+)\s*=\s*(?:async\s*)?\(|(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/g;
     let match;
 
     while ((match = funcPattern.exec(content)) !== null) {
-      const funcName = match[1] || match[2];
+      const funcName = match[1] || match[2] || match[3];
       result.stats.total++;
 
       // 計算函式所在行號

@@ -375,21 +375,22 @@ function deriveBadge(projData) {
 
   // 找最新的「有意義」log（排除 info/template/smoke-test/report 等輔助 log）
   const meaningfulPrefixes = [
-    { re: /^gate-verify-error-/,   phase: 'VERIFY',   badge: '@BLOCK' },
-    { re: /^scan-scan-/,           phase: 'SCAN',      badge: (l) => l.includes('-pass-') ? '@PASS' : '@BLOCK' },
+    { re: /^gate-verify-error-/,   phase: 'VERIFY',      badge: '@BLOCK' },
+    { re: /^scan-scan-/,           phase: 'SCAN',         badge: (l) => l.includes('-pass-') ? '@PASS' : '@BLOCK' },
     { re: /^build-phase-(\d+)-(?:Story-[\d.]+-)?(.+?)-\d{4}/, phase: null, badge: null }, // 特殊處理
-    { re: /^pocfix-/,              phase: 'POC-FIX',   badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
-    { re: /^contract-gate-/,       phase: 'CONTRACT',  badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
-    { re: /^contract-error-/,      phase: 'CONTRACT',  badge: '@BLOCK' },
-    { re: /^draft-gate-/,          phase: 'GATE',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
-    { re: /^blueprint-gate-/,      phase: 'GATE',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
-    { re: /^cynefin-check-/,       phase: 'CYNEFIN',   badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^pocfix-/,              phase: 'POC-FIX',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^flow-review-/,         phase: 'FLOW_REVIEW',  badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^contract-gate-/,       phase: 'CONTRACT',     badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^contract-/,            phase: 'CONTRACT',     badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^draft-gate-/,          phase: 'DRAFT_GATE',   badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^blueprint-gate-/,      phase: 'BLUEPRINT_GATE', badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^cynefin-check-/,       phase: 'CYNEFIN',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
     // v5 legacy
-    { re: /^gate-verify-error-/,   phase: 'VERIFY',    badge: '@BLOCK' },
-    { re: /^gate-check-/,          phase: 'GATE',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
-    { re: /^gate-plan-/,           phase: 'PLAN',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
-    { re: /^plan-step-/,           phase: null,        badge: null }, // 特殊處理
-    { re: /^poc-step-/,            phase: null,        badge: null }, // 特殊處理
+    { re: /^gate-verify-error-/,   phase: 'VERIFY',       badge: '@BLOCK' },
+    { re: /^gate-check-/,          phase: 'GATE',         badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^gate-plan-/,           phase: 'PLAN',         badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    { re: /^plan-step-/,           phase: null,           badge: null },
+    { re: /^poc-step-/,            phase: null,           badge: null },
   ];
 
   // 找最新的有意義 log（從後往前掃）
@@ -490,8 +491,10 @@ function generateRoadmap(hub) {
           nextCmd = `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-${iterN}.md --target=${name}`;
         } else if (phase === 'CONTRACT') {
           nextCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/${iter}/contract_iter-${iterN}.ts --target=${name} --iter=${iterN}`;
-        } else if (phase === 'CYNEFIN') {
+        } else if (phase === 'CYNEFIN' || phase === 'CYNEFIN_CHECK') {
           nextCmd = `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${name} --iter=${iterN}`;
+        } else if (phase === 'FLOW_REVIEW') {
+          nextCmd = `# AI skill: invoke flow-review skill → writes flow-review-pass-{ts}.log to .gems/iterations/${iter}/logs/`;
         } else if (phase === 'PLAN') {
           nextCmd = `node task-pipe/tools/spec-to-plan.cjs --target=${name} --iteration=${iter}`;
         } else if (phase.startsWith('BUILD-')) {

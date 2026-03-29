@@ -676,22 +676,23 @@
   </div>
 
   <script>
-    // ── Tooltip labels ──────────────────────────────────────────
+    // ── Tooltip labels (v7) ─────────────────────────────────────
     const TIPS = {
-      // POC steps
-      'poc-1': '模糊消除', 'poc-2': '規模評估', 'poc-3': '契約設計',
-      'poc-4': 'UI 原型', 'poc-5': '需求規格',
-      // PLAN steps
-      'plan-1': '需求確認', 'plan-2': '規格注入', 'plan-3': '架構審查',
-      'plan-4': '標籤規格設計', 'plan-5': '需求規格說明',
-      // BUILD phases
-      'build-1': '骨架檢查', 'build-2': '標籤驗收', 'build-3': '測試腳本',
-      'build-4': 'Test Gate', 'build-5': 'TDD 測試執行',
-      'build-6': '修改檔案測試', 'build-7': '整合檢查', 'build-8': 'Fillback',
-      // Blueprint gates
-      'gate-check': '藍圖門控驗證', 'gate-plan': '藍圖→Plan 轉換',
-      'gate-shrink': '收縮迭代', 'gate-expand': '展開下一 iter',
-      'gate-verify': '最終驗證', 'gate-scan': '全專案掃描',
+      // v7 Pipeline gates
+      'blueprint': '主藍圖設計驗證 blueprint-gate.cjs',
+      'draft': 'Per-iter 功能需求 + TDD 測試需求',
+      'cynefin': '語意域分析，展開隱含複雜度',
+      'flow-review': 'FLOW 設計客觀審查，產出 @GEMS-WHY',
+      'contract': '型別邊界 + @CONTRACT-LOCK 封版',
+      'plan': 'spec-to-plan 機械轉換 → implementation_plan',
+      // BUILD phases v7
+      'build-p1': 'Phase 1: 骨架映射層 — 產出骨架 + GEMS 標籤',
+      'build-p2': 'Phase 2: TDD 驗收層 — vitest RED→GREEN / tsc',
+      'build-p3': 'Phase 3: 整合層 — 路由整合 + barrel export',
+      'build-p4': 'Phase 4: 標籤品質 + Fillback 產出',
+      // Post-build
+      'scan': '全專案掃描，更新 functions.json',
+      'verify': '最終交付驗收 blueprint-verify.cjs',
     };
 
     let projects = [], selProject = null, selIter = null, projDetail = null;
@@ -763,24 +764,21 @@
       el.scrollTop = st;
     }
 
-    // ── Layer 2: Detail ───────────────────────────────────────────
+    // ── Layer 2: Detail (v7) ──────────────────────────────────────
     function renderDetail() {
       const el = document.getElementById('proj-detail');
       if (!projDetail) return;
       const iterData = projDetail.iters.find(i => i.iter === selIter);
       if (!iterData) return;
 
-      const { gatePhases = {}, stories = [], logs = [], pocSteps = {}, planSteps = {}, noStoryPhases = {}, flowType } = iterData;
+      const { gatePhases = {}, stories = [], logs = [], noStoryPhases = {} } = iterData;
       const pname = projDetail.name;
 
       const tabs = projDetail.iters.map(i =>
         `<span class="iter-tab ${i.iter === selIter ? 'active' : ''}" onclick="selectIter('${i.iter}')">${i.iter}</span>`
       ).join('');
 
-      const ftTag = flowType && flowType !== 'unknown'
-        ? `<span class="flow-tag ${flowType}" style="margin-left:8px">${flowType}</span>` : '';
-
-      // ── node builder ──────────────────────────────────────────
+      // ── helpers ────────────────────────────────────────────────
       function node(label, tipKey, status, logFile, count) {
         const cls = !status ? 'pending' : status === 'pass' ? 'pass' : status === 'error' ? 'error' : 'info';
         const icon = !status ? '' : status === 'pass' ? '✓ ' : status === 'error' ? '✕ ' : '~ ';
@@ -790,134 +788,125 @@
         return `<div class="node ${cls}"${tip} ${click}>${icon}${escHtml(label)}${badge}</div>`;
       }
 
-      function gateNode(key, label) {
-        const status = gatePhases[key] || null;
-        const allLogs = logs.filter(f => key === 'scan' ? f.startsWith('scan-scan-') : f.startsWith(`gate-${key}-`));
-        const latest = allLogs[allLogs.length - 1] || null;
-        return node(label, `gate-${key}`, status, latest, allLogs.length);
-      }
-
-      function stepNode(phase, n, stepObj, prefix) {
-        const key = String(n);
-        const info = stepObj[key] || stepObj[n] || null;
-        const allLogs = logs.filter(f => f.startsWith(`${prefix}-step-${key}-`));
-        const tipKey = Number.isInteger(n) ? `${phase}-${n}` : null;
-        return node(`${n}`, tipKey, info ? info.status : null, info ? info.logFile : null, allLogs.length);
-      }
-
-      function buildNode(storyId, n, info, cnt) {
-        return node(`${n}`, `build-${n}`, info ? info.status : null, info ? info.logFile : null, cnt);
-      }
+      const getLogStatus = (ls) => !ls.length ? null
+        : ls[ls.length - 1].includes('pass') ? 'pass'
+        : (ls[ls.length - 1].includes('error') || ls[ls.length - 1].includes('fail')) ? 'error' : 'info';
 
       const A = `<span class="node-arrow">→</span>`;
-      const hasAnyGate = Object.values(gatePhases).some(Boolean);
-      const effectiveBP = flowType === 'blueprint' || flowType === 'mixed' || hasAnyGate;
-      const effectiveTP = flowType === 'task-pipe' || flowType === 'mixed' || !effectiveBP;
-
       const sections = [];
 
-      // Blueprint pre-build
-      if (effectiveBP) {
-        sections.push(`<div class="flow-sec">
-      <div class="sec-label">Blueprint — Pre-build</div>
-      <div class="flow-track">${gateNode('check', 'Gate')}${A}${gateNode('plan', 'Plan')}</div>
-    </div>`);
+      // ── Iter Overview (multi-iter projects) ───────────────────
+      if (projDetail.iters.length > 1) {
+        const overview = projDetail.iters.map(i => {
+          const cls = (i.badge === '@PASS' && i.phase === 'DONE') ? 'pass'
+            : i.badgeClass === 'block' ? 'error'
+            : i.iter === selIter ? 'info' : 'pending';
+          const icon = cls === 'pass' ? '✓ ' : cls === 'error' ? '✕ ' : '';
+          return `<div class="node ${cls}" style="font-size:11px" onclick="selectIter('${i.iter}')">${icon}${escHtml(i.iter)}</div>`;
+        }).join(A);
+        sections.push(`<div class="flow-sec" style="background:var(--surface)">
+          <div class="sec-label">Iterations</div>
+          <div class="flow-track">${overview}</div>
+        </div>`);
       }
 
-      // Task-Pipe POC / PLAN
-      if (effectiveTP) {
-        const pocAll = [...new Set([1, 2, 3, 4, 5, ...Object.keys(pocSteps).map(Number)])].sort((a, b) => a - b);
-        const planAll = [...new Set([1, 2, 3, 4, 5, ...Object.keys(planSteps).map(Number)])].sort((a, b) => a - b);
-        const pocTrack = pocAll.map(n => stepNode('poc', n, pocSteps, 'poc')).join(A);
-        const planTrack = planAll.map(n => stepNode('plan', n, planSteps, 'plan')).join(A);
-        sections.push(`<div class="flow-sec">
-      <div class="sec-label">Task-Pipe — POC / PLAN</div>
-      <div class="flow-row"><span class="flow-row-label">POC</span><div class="flow-track">${pocTrack}</div></div>
-      <div class="flow-row"><span class="flow-row-label">PLAN</span><div class="flow-track">${planTrack}</div></div>
-    </div>`);
-      }
+      // ── Pre-Build Pipeline ────────────────────────────────────
+      const bpLogs  = logs.filter(f => /^blueprint-gate-/.test(f)).sort();
+      const dgLogs  = logs.filter(f => /^draft-gate-/.test(f)).sort();
+      const cyLogs  = logs.filter(f => /^cynefin-check-/.test(f)).sort();
+      const frLogs  = logs.filter(f => /^flow-review-/.test(f)).sort();
+      const ctLogs  = logs.filter(f => /^(contract-gate|contract)-/.test(f)).sort();
+      const plLogs  = logs.filter(f => /^gate-plan-/.test(f)).sort();
 
-      // BUILD phases
+      const preParts = [];
+      if (bpLogs.length || gatePhases.blueprintGate) {
+        preParts.push(node('Blueprint', 'blueprint', getLogStatus(bpLogs), bpLogs[bpLogs.length - 1] || null, bpLogs.length));
+        preParts.push(A);
+      }
+      preParts.push(node('Draft',       'draft',       getLogStatus(dgLogs), dgLogs[dgLogs.length - 1] || null, dgLogs.length));
+      preParts.push(A);
+      preParts.push(node('Cynefin',     'cynefin',     getLogStatus(cyLogs), cyLogs[cyLogs.length - 1] || null, cyLogs.length));
+      preParts.push(A);
+      preParts.push(node('Flow-Review', 'flow-review', getLogStatus(frLogs), frLogs[frLogs.length - 1] || null, frLogs.length));
+      preParts.push(A);
+      preParts.push(node('Contract',    'contract',    getLogStatus(ctLogs), ctLogs[ctLogs.length - 1] || null, ctLogs.length));
+      preParts.push(A);
+      preParts.push(node('Plan',        'plan',        getLogStatus(plLogs), plLogs[plLogs.length - 1] || null, plLogs.length));
+
+      sections.push(`<div class="flow-sec">
+        <div class="sec-label">Pre-Build Pipeline</div>
+        <div class="flow-track">${preParts.join('')}</div>
+      </div>`);
+
+      // ── BUILD Phase 1-4 ──────────────────────────────────────
+      const PHASE_TIPS = { 1: 'build-p1', 2: 'build-p2', 3: 'build-p3', 4: 'build-p4' };
       const buildRows = stories.map(s => {
-        const boxes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => {
+        const boxes = [1, 2, 3, 4].map(n => {
           const info = s.phases[n] || null;
-          const cnt = logs.filter(f => f.startsWith(`build-phase-${n}-Story-${s.story}-`)).length;
-          return buildNode(s.story, n, info, cnt);
+          const cnt  = logs.filter(f => f.startsWith(`build-phase-${n}-Story-${s.story}-`)).length;
+          return node(`P${n}`, PHASE_TIPS[n], info?.status || null, info?.logFile || null, cnt);
         }).join(A);
         return `<div class="flow-row">
-      <span class="flow-row-label">Story-${s.story}</span>
-      <div class="flow-track">${boxes}</div>
-      <span class="badge ${s.badgeClass}" style="margin-left:8px;flex-shrink:0">${s.badge}</span>
-    </div>`;
+          <span class="flow-row-label">Story-${escHtml(s.story)}</span>
+          <div class="flow-track">${boxes}</div>
+          <span class="badge ${s.badgeClass}" style="margin-left:8px;flex-shrink:0">${s.badge}</span>
+        </div>`;
       });
 
       if (Object.keys(noStoryPhases).length) {
-        const boxes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => {
+        const boxes = [1, 2, 3, 4].map(n => {
           const info = noStoryPhases[n] || null;
-          return buildNode('legacy', n, info, 1);
+          return node(`P${n}`, PHASE_TIPS[n], info?.status || null, info?.logFile || null, 1);
         }).join(A);
         buildRows.push(`<div class="flow-row">
-      <span class="flow-row-label" style="font-style:italic;color:var(--text3)">legacy</span>
-      <div class="flow-track">${boxes}</div>
-    </div>`);
+          <span class="flow-row-label" style="font-style:italic;color:var(--text3)">legacy</span>
+          <div class="flow-track">${boxes}</div>
+        </div>`);
       }
 
       if (!buildRows.length) {
-        const boxes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => buildNode('—', n, null, 0)).join(A);
+        const boxes = [1, 2, 3, 4].map(n => node(`P${n}`, PHASE_TIPS[n], null, null, 0)).join(A);
         buildRows.push(`<div class="flow-row">
-      <span class="flow-row-label" style="color:var(--text3)">—</span>
-      <div class="flow-track">${boxes}</div>
-    </div>`);
+          <span class="flow-row-label" style="color:var(--text3)">—</span>
+          <div class="flow-track">${boxes}</div>
+        </div>`);
       }
 
       sections.push(`<div class="flow-sec">
-    <div class="sec-label">Build Phases</div>
-    ${buildRows.join('')}
-  </div>`);
+        <div class="sec-label">BUILD Phase 1-4</div>
+        ${buildRows.join('')}
+      </div>`);
 
-      // Blueprint post-build
-      if (effectiveBP) {
-        const scanPass = gatePhases.scan === 'pass';
-        const reportBtn = scanPass
-          ? A + `<div class="node pass" data-tip="全專案掃描" onclick="loadScan('${escAttr(pname)}')">📊 Report</div>`
-          : '';
-        const track = [
-          gateNode('shrink', 'Shrink'), A,
-          gateNode('expand', 'Expand'), A,
-          gateNode('verify', 'Verify'), A,
-          gateNode('scan', 'SCAN'),
-        ].join('') + reportBtn;
-        sections.push(`<div class="flow-sec">
-      <div class="sec-label">Blueprint — Post-build</div>
-      <div class="flow-track">${track}</div>
-    </div>`);
-      } else if (gatePhases.scan) {
-        const allScanLogs = logs.filter(f => f.startsWith('scan-scan-'));
-        const scanNode = node('SCAN', 'gate-scan', gatePhases.scan, allScanLogs[allScanLogs.length - 1] || null, allScanLogs.length);
-        const reportBtn = gatePhases.scan === 'pass'
-          ? A + `<div class="node pass" data-tip="全專案掃描" onclick="loadScan('${escAttr(pname)}')">📊 SCAN Report</div>`
-          : '';
-        sections.push(`<div class="flow-sec">
-      <div class="sec-label">SCAN</div>
-      <div class="flow-track">${scanNode}${reportBtn}</div>
-    </div>`);
-      }
+      // ── Post-Build ───────────────────────────────────────────
+      const scanLogs   = logs.filter(f => /^scan-scan-/.test(f)).sort();
+      const verifyLogs = logs.filter(f => /^gate-verify-/.test(f)).sort();
+      const scanStatus   = getLogStatus(scanLogs);
+      const verifyStatus = getLogStatus(verifyLogs);
 
-      // Alignment Button (always show if we have an Iteration selected, useful for early viewing)
-      const alignBtn = `<div class="node info" data-tip="計畫與產出對齊" onclick="loadAlignment('${escAttr(pname)}', '${selIter}')">🎯 Plan Alignment</div>`;
+      const scanNode   = node('SCAN',   'scan',   scanStatus,   scanLogs[scanLogs.length - 1]     || null, scanLogs.length);
+      const verifyNode = node('VERIFY', 'verify', verifyStatus, verifyLogs[verifyLogs.length - 1] || null, verifyLogs.length);
+      const reportBtn  = scanStatus === 'pass'
+        ? A + `<div class="node pass" data-tip="全專案掃描報告" onclick="loadScan('${escAttr(pname)}')">📊 Report</div>` : '';
+
+      sections.push(`<div class="flow-sec">
+        <div class="sec-label">Post-Build</div>
+        <div class="flow-track">${scanNode}${reportBtn}${A}${verifyNode}</div>
+      </div>`);
+
+      // ── Review Actions ───────────────────────────────────────
+      const alignBtn = `<div class="node info" data-tip="計畫與產出對齊" onclick="loadAlignment('${escAttr(pname)}', '${selIter}')">🎯 Alignment</div>`;
       sections.push(`<div class="flow-sec">
         <div class="sec-label">Review</div>
         <div class="flow-track">${alignBtn}</div>
       </div>`);
 
-
       const st = el.scrollTop;
       el.innerHTML = `
-    <div class="det-head">
-      <div class="det-title">${escHtml(pname)}${ftTag}</div>
-      <div class="iter-tabs">${tabs}</div>
-    </div>
-    ${sections.join('')}`;
+        <div class="det-head">
+          <div class="det-title">${escHtml(pname)}</div>
+          <div class="iter-tabs">${tabs}</div>
+        </div>
+        ${sections.join('')}`;
       el.scrollTop = st;
     }
 

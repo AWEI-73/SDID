@@ -134,21 +134,21 @@ function sortIters(iters) {
   return iters.sort((a, b) => parseInt(a.split('-')[1]) - parseInt(b.split('-')[1]));
 }
 
-// ─── Flow type detection ──────────────────────────────────────
-// Returns: 'blueprint' | 'task-pipe' | 'quick-start' | 'mixed'
+// ─── Flow type detection (v7 — unified pipeline) ─────────────
+// v7: one pipeline, always blueprint-style gate sequence
 function detectFlowType(logs, gemsRoot) {
+  // v7 gate prefixes
+  const hasV7Gates = logs.some(l =>
+    /^(draft-gate|cynefin-check|flow-review|contract-gate|contract|blueprint-gate|gate-plan|gate-verify)-/.test(l)
+  );
+  if (hasV7Gates) return 'blueprint';
+  // Legacy fallback
   const hasBlueprintGate = logs.some(l => /^gate-(check|expand|shrink|verify)-/.test(l));
   const hasTaskPipeSteps = logs.some(l => /^(poc|plan)-step-/.test(l));
-  // quick-start: story_status.json at project root or .gems root
-  const projectRoot = path.resolve(gemsRoot, '..', '..');
-  const hasStoryStatus = fs.existsSync(path.join(projectRoot, 'story_status.json')) ||
-    fs.existsSync(path.join(gemsRoot, '..', 'story_status.json'));
-
   if (hasBlueprintGate && hasTaskPipeSteps) return 'mixed';
   if (hasBlueprintGate) return 'blueprint';
   if (hasTaskPipeSteps) return 'task-pipe';
-  if (hasStoryStatus) return 'quick-start';
-  return 'task-pipe';
+  return 'blueprint';
 }
 
 // ─── Parse POC/PLAN steps (Task-Pipe flow) ───────────────────
@@ -214,17 +214,43 @@ function parseBuildPhases(logs) {
   return { storyMap, noStoryMap };
 }
 
-// ─── Parse gate phases ────────────────────────────────────────
+// ─── Parse gate phases (v7) ──────────────────────────────────
 function parseGatePhases(logs) {
-  const gates = { check: null, cynefinCheck: null, plan: null, shrink: null, expand: null, verify: null, scan: null };
+  const gates = {
+    blueprintGate: null,  // blueprint-gate-pass/error
+    draftGate: null,      // draft-gate-pass/error
+    cynefin: null,        // cynefin-check-pass/fail
+    flowReview: null,     // flow-review-pass/error
+    contract: null,       // contract-pass / contract-gate-pass
+    plan: null,           // gate-plan-pass
+    scan: null,           // scan-scan-pass/error
+    verify: null,         // gate-verify-pass/error
+  };
   for (const log of logs) {
-    const gm = log.match(/^gate-(check|plan|shrink|expand|verify)-(pass|error|fail)-/);
-    if (gm) { gates[gm[1]] = gm[2] === 'pass' ? 'pass' : 'error'; continue; }
-    // cynefin-check-pass-*.log / cynefin-check-fail-*.log
-    const cm = log.match(/^cynefin-check-(pass|fail)-/);
-    if (cm) { gates.cynefinCheck = cm[1] === 'pass' ? 'pass' : 'error'; continue; }
-    const sm = log.match(/^scan-scan-(pass|error|fail|info)-/);
-    if (sm) { gates.scan = sm[1] === 'pass' ? 'pass' : sm[1] === 'info' ? 'info' : 'error'; }
+    if (/^blueprint-gate-(pass|error)-/.test(log)) {
+      gates.blueprintGate = log.includes('pass') ? 'pass' : 'error'; continue;
+    }
+    if (/^draft-gate-(pass|error)-/.test(log)) {
+      gates.draftGate = log.includes('pass') ? 'pass' : 'error'; continue;
+    }
+    if (/^cynefin-check-(pass|fail)-/.test(log)) {
+      gates.cynefin = log.includes('pass') ? 'pass' : 'error'; continue;
+    }
+    if (/^flow-review-(pass|error)-/.test(log)) {
+      gates.flowReview = log.includes('pass') ? 'pass' : 'error'; continue;
+    }
+    if (/^(contract-gate|contract)-(pass|error)-/.test(log)) {
+      gates.contract = log.includes('pass') ? 'pass' : 'error'; continue;
+    }
+    if (/^gate-plan-(pass|error)-/.test(log)) {
+      gates.plan = log.includes('pass') ? 'pass' : 'error'; continue;
+    }
+    if (/^scan-scan-(pass|error|fail|info)-/.test(log)) {
+      gates.scan = log.includes('pass') ? 'pass' : log.includes('info') ? 'info' : 'error';
+    }
+    if (/^gate-verify-(pass|error)-/.test(log)) {
+      gates.verify = log.includes('pass') ? 'pass' : 'error';
+    }
   }
   return gates;
 }
@@ -267,8 +293,8 @@ function deriveStatus(logs, gemsRoot) {
   const { storyMap, noStoryMap } = parseBuildPhases(logs);
   const stories = buildStoryList(storyMap);
 
-  // Max passed BUILD phase (with or without Story)
-  const totalPhases = 8;
+  // Max passed BUILD phase (v7: P1-P4)
+  const totalBuildPhases = 4;
   let maxPassedPhase = 0;
   for (const s of stories) {
     for (const [p, info] of Object.entries(s.phases)) {
@@ -279,75 +305,69 @@ function deriveStatus(logs, gemsRoot) {
     if (info.status === 'pass' && parseInt(p) > maxPassedPhase) maxPassedPhase = parseInt(p);
   }
 
-  // POC/PLAN step analysis — sort steps numerically (handles 2.5, 2.6)
-  const sortStepNums = obj => Object.keys(obj).map(Number).sort((a, b) => a - b);
-  const pocStepNums = sortStepNums(pocSteps);
-  const planStepNums = sortStepNums(planSteps);
-  const pocDone = pocStepNums.filter(n => pocSteps[n]?.status === 'pass').length;
-  const planDone = planStepNums.filter(n => planSteps[n]?.status === 'pass').length;
-  const pocBlocked = pocStepNums.find(n => pocSteps[n]?.status === 'error');
-  const planBlocked = planStepNums.find(n => planSteps[n]?.status === 'error');
-  const pocLastStep = pocStepNums.length ? pocStepNums[pocStepNums.length - 1] : null;
-  const planLastStep = planStepNums.length ? planStepNums[planStepNums.length - 1] : null;
-
-  // COMPLETE detection (mirrors ralph-loop logic):
-  // scan pass OR (verify pass) = done
-  const isComplete = gatePhases.scan === 'pass' || gatePhases.verify === 'pass';
-
-  // Determine current phase label + badge
+  const isComplete = gatePhases.verify === 'pass';
   let currentPhase = null, badge = null, badgeClass = 'idle';
 
   if (isComplete) {
     currentPhase = 'DONE'; badge = '@PASS'; badgeClass = 'pass';
   } else if (gatePhases.verify === 'error') {
     currentPhase = 'VERIFY'; badge = '@BLOCK'; badgeClass = 'block';
-  } else if (gatePhases.shrink === 'pass') {
-    currentPhase = 'SHRINK✓'; badge = '@PASS'; badgeClass = 'pass';
-  } else if (stories.length > 0) {
+  } else if (gatePhases.scan === 'pass') {
+    currentPhase = 'VERIFY'; badge = null; badgeClass = 'idle';
+  } else if (stories.length > 0 || Object.keys(noStoryMap).length > 0) {
     const blocking = stories.find(s => s.badgeClass === 'block');
-    const fixing = stories.find(s => s.badgeClass === 'fix');
-    if (blocking) { currentPhase = `BUILD-${blocking.lastPhase}`; badge = '@BLOCK'; badgeClass = 'block'; }
-    else if (fixing) { currentPhase = `BUILD-${fixing.lastPhase}`; badge = '@FIX'; badgeClass = 'fix'; }
-    else { currentPhase = `BUILD-${maxPassedPhase}`; badge = '@PASS'; badgeClass = 'pass'; }
-  } else if (Object.keys(noStoryMap).length > 0) {
-    const lastPhase = Math.max(...Object.keys(noStoryMap).map(Number));
-    const lastStatus = noStoryMap[lastPhase]?.status;
-    if (lastStatus === 'error') { currentPhase = `BUILD-${lastPhase}`; badge = '@BLOCK'; badgeClass = 'block'; }
-    else if (lastStatus === 'info') { currentPhase = `BUILD-${lastPhase}`; badge = '@FIX'; badgeClass = 'fix'; }
-    else { currentPhase = `BUILD-${lastPhase}`; badge = '@PASS'; badgeClass = 'pass'; }
-  } else if (planBlocked !== undefined) {
-    currentPhase = `PLAN-${planBlocked}`; badge = '@BLOCK'; badgeClass = 'block';
-  } else if (planDone > 0) {
-    currentPhase = `PLAN-${planLastStep}`; badge = '@PASS'; badgeClass = 'pass';
-  } else if (pocBlocked !== undefined) {
-    currentPhase = `POC-${pocBlocked}`; badge = '@BLOCK'; badgeClass = 'block';
-  } else if (pocDone > 0) {
-    currentPhase = `POC-${pocLastStep}`; badge = '@PASS'; badgeClass = 'pass';
+    const fixing   = stories.find(s => s.badgeClass === 'fix');
+    if (blocking) {
+      currentPhase = `BUILD-P${blocking.lastPhase}`; badge = '@BLOCK'; badgeClass = 'block';
+    } else if (fixing) {
+      currentPhase = `BUILD-P${fixing.lastPhase}`; badge = '@FIX'; badgeClass = 'fix';
+    } else if (Object.keys(noStoryMap).length > 0) {
+      const lastP = Math.max(...Object.keys(noStoryMap).map(Number));
+      const ls = noStoryMap[lastP]?.status;
+      currentPhase = `BUILD-P${lastP}`;
+      if (ls === 'error') { badge = '@BLOCK'; badgeClass = 'block'; }
+      else if (ls === 'info') { badge = '@FIX'; badgeClass = 'fix'; }
+      else { badge = '@PASS'; badgeClass = 'pass'; }
+    } else {
+      currentPhase = `BUILD-P${maxPassedPhase}`; badge = '@PASS'; badgeClass = 'pass';
+    }
   } else if (gatePhases.plan === 'pass') {
     currentPhase = 'BUILD'; badge = null; badgeClass = 'idle';
-  } else if (gatePhases.check === 'pass' && gatePhases.cynefinCheck === 'error') {
-    currentPhase = 'CYNEFIN-CHECK'; badge = '@BLOCK'; badgeClass = 'block';
-  } else if (gatePhases.check === 'pass' && !gatePhases.cynefinCheck) {
-    currentPhase = 'CYNEFIN-CHECK'; badge = null; badgeClass = 'idle';
-  } else if (gatePhases.check === 'pass') {
+  } else if (gatePhases.plan === 'error') {
+    currentPhase = 'PLAN'; badge = '@BLOCK'; badgeClass = 'block';
+  } else if (gatePhases.contract === 'pass') {
     currentPhase = 'PLAN'; badge = null; badgeClass = 'idle';
-  } else if (gatePhases.check === 'error') {
-    currentPhase = 'GATE'; badge = '@BLOCK'; badgeClass = 'block';
+  } else if (gatePhases.contract === 'error') {
+    currentPhase = 'CONTRACT'; badge = '@BLOCK'; badgeClass = 'block';
+  } else if (gatePhases.flowReview === 'pass') {
+    currentPhase = 'CONTRACT'; badge = null; badgeClass = 'idle';
+  } else if (gatePhases.flowReview === 'error') {
+    currentPhase = 'FLOW-REVIEW'; badge = '@BLOCK'; badgeClass = 'block';
+  } else if (gatePhases.cynefin === 'pass') {
+    currentPhase = 'FLOW-REVIEW'; badge = null; badgeClass = 'idle';
+  } else if (gatePhases.cynefin === 'error') {
+    currentPhase = 'CYNEFIN'; badge = '@BLOCK'; badgeClass = 'block';
+  } else if (gatePhases.draftGate === 'pass') {
+    currentPhase = 'CYNEFIN'; badge = null; badgeClass = 'idle';
+  } else if (gatePhases.draftGate === 'error') {
+    currentPhase = 'DRAFT-GATE'; badge = '@BLOCK'; badgeClass = 'block';
+  } else if (gatePhases.blueprintGate === 'pass') {
+    currentPhase = 'DRAFT-GATE'; badge = null; badgeClass = 'idle';
+  } else if (gatePhases.blueprintGate === 'error') {
+    currentPhase = 'BLUEPRINT'; badge = '@BLOCK'; badgeClass = 'block';
   }
 
-  // Progress: POC 10% + PLAN 20% + BUILD 70%
+  // Progress: pre-build 25%, plan 5%, BUILD 60%, scan 5%, verify 5%
   let progress = 0;
   if (isComplete) {
     progress = 100;
   } else {
-    const pocTotal = Math.max(pocStepNums.length, 1);
-    const planTotal = Math.max(planStepNums.length, 1);
-    if (pocDone > 0) progress += Math.round((pocDone / pocTotal) * 10);
-    if (planDone > 0) progress += Math.round((planDone / planTotal) * 20);
-    if (maxPassedPhase > 0) progress += Math.round((maxPassedPhase / totalPhases) * 70);
-    // Blueprint: gate-check/plan count as POC/PLAN done
-    if (gatePhases.check === 'pass' && pocDone === 0) progress += 10;
-    if (gatePhases.plan === 'pass' && planDone === 0) progress += 20;
+    const preBuildGates = ['blueprintGate', 'draftGate', 'cynefin', 'flowReview', 'contract'];
+    const preBuildPassed = preBuildGates.filter(k => gatePhases[k] === 'pass').length;
+    progress += Math.round((preBuildPassed / preBuildGates.length) * 25);
+    if (gatePhases.plan === 'pass') progress += 5;
+    if (maxPassedPhase > 0) progress += Math.round((maxPassedPhase / totalBuildPhases) * 60);
+    if (gatePhases.scan === 'pass') progress += 5;
   }
 
   return { flowType, phase: currentPhase, badge, badgeClass, progress, stories, pocSteps, planSteps, noStoryPhases: noStoryMap, gatePhases };

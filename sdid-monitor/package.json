@@ -1,13 +1,13 @@
 {
   "name": "sdid-monitor",
-  "version": "1.0.0",
-  "description": "SDID Task-Pipe Monitor",
+  "version": "1.1.0",
+  "description": "SDID Monitor — 流程架構監控與專案進程追蹤",
   "main": "main.cjs",
   "scripts": {
-    "start": "node server.cjs",
-    "start:electron": "set ELECTRON_RUN_AS_NODE= && electron .",
-    "build:exe": "set ELECTRON_RUN_AS_NODE= && npx electron-packager . sdid-monitor --platform=win32 --arch=x64 --out=dist_packager --overwrite",
-    "dist": "electron-builder -w"
+    "start":           "node server.cjs",
+    "start:electron":  "electron .",
+    "dist":            "electron-builder -w --x64 --dir",
+    "dist:packager":   "npx electron-packager . \"SDID Monitor\" --platform=win32 --arch=x64 --out=dist_packager --overwrite --ignore=dist_packager --ignore=dist --ignore=README.md"
   },
   "keywords": [],
   "author": "",
@@ -17,13 +17,29 @@
     "express": "^4.18.2"
   },
   "build": {
-    "appId": "com.sdid.monitor",
+    "appId":       "com.sdid.monitor",
+    "productName": "SDID Monitor",
+    "copyright":   "SDID Project",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "server.cjs",
+      "update-hub.cjs",
+      "index.html",
+      "hub.json",
+      "milestones.json",
+      "tray-icon.png",
+      "node_modules/**"
+    ],
     "win": {
-      "target": "nsis"
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "forceCodeSigning": false
     }
   },
   "devDependencies": {
-    "electron": "^40.6.0",
+    "electron":         "^40.6.0",
     "electron-builder": "^26.8.1"
   }
 }

@@ -34,18 +34,25 @@ const { spawn } = require('child_process');
 const UPDATE_HUB_SCRIPT = path.join(__dirname, 'update-hub.cjs');
 
 let hubRebuildTimer = null;
+let hubRebuildCooldown = false; // 防止 rebuild 期間重複觸發
 function scheduleHubRebuild(reason) {
+  if (hubRebuildCooldown) return; // 冷卻中，直接忽略
   clearTimeout(hubRebuildTimer);
   hubRebuildTimer = setTimeout(() => {
+    if (hubRebuildCooldown) return;
+    hubRebuildCooldown = true;
     console.log(`🔄  hub rebuild triggered by: ${reason}`);
     hubCache = { data: null, time: 0 };
     const child = spawn(process.execPath, [UPDATE_HUB_SCRIPT], {
-      detached: true,
+      detached: false,
       stdio: 'ignore',
       env: { ...process.env, WORKSPACE_ROOT, ELECTRON_RUN_AS_NODE: '1' },
     });
+    child.on('close', () => {
+      setTimeout(() => { hubRebuildCooldown = false; }, 3000); // 3s 冷卻後才允許下次
+    });
     child.unref();
-  }, 1200); // debounce 1.2s，避免連續寫入觸發多次
+  }, 1200);
 }
 
 // ─── Deep watch: 監聽關鍵路徑的檔案異動 ──────────────────────
@@ -91,11 +98,12 @@ let watchDebounce = null;
 try {
   fs.watch(WORKSPACE_ROOT, { persistent: false }, (eventType, filename) => {
     if (!filename) return;
+    if (filename.includes('hub.json')) return; // hub 自身寫入不觸發
+    if (filename.startsWith('.git')) return;   // git 內部操作不觸發
     clearTimeout(watchDebounce);
     watchDebounce = setTimeout(() => {
       projectsCache = { data: null, time: 0 };
       broadcast({ type: 'refresh' });
-      // new project might have appeared — re-setup watches
       scheduleHubRebuild(`workspace root / ${filename}`);
     }, 800);
   });

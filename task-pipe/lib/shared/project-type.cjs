@@ -188,32 +188,58 @@ function getGreenfieldGuide(projectType) {
 }
 
 /**
- * 取得源碼目錄路徑（自動偵測）
+ * 取得源碼目錄路徑（自動偵測，單一路徑，向後相容）
  */
 function getSrcDir(target, projectType, configTypes = {}) {
-  const types = { ...DEFAULT_PROJECT_TYPES, ...configTypes };
-  const typeConfig = types[projectType];
+  const dirs = getSrcDirs(target);
+  return dirs[0] || path.join(target, 'src');
+}
 
-  // 優先使用 config 定義的目錄
-  const configSrcDir = typeConfig?.srcDir || 'src';
-
-  // Special handling for GAS projects where srcDir is '.'
-  if (configSrcDir === '.') {
-    return target;
+/**
+ * 取得所有源碼目錄路徑（支援多根目錄）
+ * 優先讀 blueprint.md 的 **源碼路徑** 欄位，fallback 到 auto-glob
+ * @param {string} target - 專案根目錄（絕對路徑）
+ * @returns {string[]} 絕對路徑陣列（只含存在的目錄）
+ */
+function getSrcDirs(target) {
+  // 1. 讀 blueprint.md 的 **源碼路徑** 欄位（長期方案：SST）
+  const blueprintPath = path.join(target, '.gems', 'design', 'blueprint.md');
+  if (fs.existsSync(blueprintPath)) {
+    try {
+      const content = fs.readFileSync(blueprintPath, 'utf8');
+      const match = content.match(/\*\*源碼路徑\*\*:\s*(.+)/);
+      if (match) {
+        const backtickPaths = match[1].match(/`([^`]+)`/g);
+        if (backtickPaths && backtickPaths.length > 0) {
+          const resolved = backtickPaths
+            .map(p => p.replace(/`/g, '').trim())
+            .map(p => path.join(target, p))
+            .filter(p => fs.existsSync(p));
+          if (resolved.length > 0) return resolved;
+        }
+      }
+    } catch { /* 讀取失敗 fallback */ }
   }
 
-  const configPath = path.join(target, configSrcDir);
-  if (fs.existsSync(configPath)) return configPath;
+  // 2. Auto-glob：找深度 1 子目錄下的 src/（短期 fallback）
+  const IGNORE = new Set(['node_modules', '.gems', '.git', '.claude', 'dist', 'build', 'coverage']);
+  const candidates = [];
 
-  // 自動偵測常見目錄
-  const possibleDirs = ['src', 'js', 'lib', 'app'];
-  for (const dir of possibleDirs) {
-    const dirPath = path.join(target, dir);
-    if (fs.existsSync(dirPath)) return dirPath;
-  }
+  // 先檢查 root/src
+  const rootSrc = path.join(target, 'src');
+  if (fs.existsSync(rootSrc)) candidates.push(rootSrc);
 
-  // 預設返回 src
-  return path.join(target, 'src');
+  // 再檢查子目錄下的 src/
+  try {
+    const entries = fs.readdirSync(target, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || IGNORE.has(entry.name)) continue;
+      const subSrc = path.join(target, entry.name, 'src');
+      if (fs.existsSync(subSrc)) candidates.push(subSrc);
+    }
+  } catch { /* readdirSync 失敗 fallback */ }
+
+  return candidates.length > 0 ? candidates : [path.join(target, 'src')];
 }
 
 module.exports = {
@@ -221,5 +247,6 @@ module.exports = {
   hasSrcFiles,
   getGreenfieldGuide,
   getSrcDir,
+  getSrcDirs,
   DEFAULT_PROJECT_TYPES
 };

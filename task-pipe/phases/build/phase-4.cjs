@@ -17,7 +17,7 @@ const { emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cj
 const { getNextCmd, getRetryCmd } = require('../../lib/shared/next-command-helper.cjs');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { clearCheckpoints } = require('../../lib/checkpoint.cjs');
-const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
+const { detectProjectType, getSrcDir, getSrcDirs } = require('../../lib/shared/project-type.cjs');
 const { handlePhaseSuccess } = require('../../lib/shared/error-handler.cjs');
 const { getStoryContext, formatStoryContext } = require('../../lib/plan/plan-spec-extractor.cjs');
 const { validate: validateSuggestions } = require('../../lib/suggestions-validator.cjs');
@@ -49,7 +49,8 @@ function run(options) {
   }
 
   const { type: projectType } = detectProjectType(target);
-  const srcPath = getSrcDir(target, projectType);
+  const srcPaths = getSrcDirs(target);                                      // multi-root 支援
+  const srcPath = srcPaths.find(p => fs.existsSync(p)) || srcPaths[0];     // 向後相容單一路徑
   const buildPath = path.join(target, `.gems/iterations/${iteration}/build`);
   const planPath = path.join(target, `.gems/iterations/${iteration}/plan`);
   const fillbackFile = path.join(buildPath, `Fillback_${story}.md`);
@@ -65,7 +66,7 @@ function run(options) {
   // ============================================
   // 1. GEMS 標籤品質複查
   // ============================================
-  const tagIssues = checkTagQuality(srcPath, story, target, iteration);
+  const tagIssues = checkTagQuality(srcPaths, story, target, iteration);
 
   if (tagIssues.critical.length > 0) {
     const tasks = tagIssues.critical.map(issue => ({
@@ -94,7 +95,7 @@ function run(options) {
   // 3. 產出 Fillback + Suggestions（如果還沒有）
   // ============================================
   if (!fs.existsSync(fillbackFile) || !fs.existsSync(suggestionsFile)) {
-    const genResult = autoGenerateOutputs(target, iteration, story, buildPath, storyContext, srcPath, tagIssues, acCoverage);
+    const genResult = autoGenerateOutputs(target, iteration, story, buildPath, storyContext, srcPaths, tagIssues, acCoverage);
     if (!genResult.success) {
       emitFix({
         scope: `BUILD Phase 4 | ${story}`,
@@ -186,45 +187,54 @@ function run(options) {
  * GEMS 標籤品質複查
  * 品質複查（不是第一次強制），只報 CRITICAL 問題
  */
-function checkTagQuality(srcPath, story, target, iteration) {
+function checkTagQuality(srcPathOrPaths, story, target, iteration) {
   const result = { critical: [], warnings: [], total: 0, p0: 0, p1: 0, p2: 0, p3: 0 };
+  if (!scanGemsTags) return result;
 
-  if (!scanGemsTags || !fs.existsSync(srcPath)) return result;
+  // 支援單一路徑（string）或多路徑（string[]）
+  const srcPaths = Array.isArray(srcPathOrPaths) ? srcPathOrPaths : [srcPathOrPaths];
+  const existingPaths = srcPaths.filter(p => fs.existsSync(p));
+  if (existingPaths.length === 0) return result;
 
-  try {
-    const scanResult = scanGemsTags(srcPath);
-    const storyFunctions = scanResult.functions.filter(f => f.storyId === story);
+  // 掃描所有 srcDirs，合併結果
+  const allStoryFunctions = [];
+  for (const sp of existingPaths) {
+    try {
+      const scanResult = scanGemsTags(sp);
+      const fns = scanResult.functions.filter(f => f.storyId === story);
+      allStoryFunctions.push(...fns);
+    } catch { /* 單目錄掃描失敗不影響其他目錄 */ }
+  }
 
-    result.total = storyFunctions.length;
-    result.p0 = storyFunctions.filter(f => f.priority === 'P0').length;
-    result.p1 = storyFunctions.filter(f => f.priority === 'P1').length;
-    result.p2 = storyFunctions.filter(f => f.priority === 'P2').length;
-    result.p3 = storyFunctions.filter(f => f.priority === 'P3').length;
+  result.total = allStoryFunctions.length;
+  result.p0 = allStoryFunctions.filter(f => f.priority === 'P0').length;
+  result.p1 = allStoryFunctions.filter(f => f.priority === 'P1').length;
+  result.p2 = allStoryFunctions.filter(f => f.priority === 'P2').length;
+  result.p3 = allStoryFunctions.filter(f => f.priority === 'P3').length;
 
-    // 假實作偵測（CRITICAL）
-    for (const fn of storyFunctions) {
-      if (fn.fraudIssues && fn.fraudIssues.length > 0) {
-        for (const issue of fn.fraudIssues) {
-          result.critical.push({
-            file: fn.file || 'src/',
-            message: `[FRAUD] ${fn.name}: ${issue}`,
-            acSpec: fn.acIds ? fn.acIds.join(', ') : null
-          });
-        }
-      }
-    }
-
-    // P0 缺少 GEMS-FLOW → BLOCKER；P1+ 略過（不擋）
-    for (const fn of storyFunctions) {
-      if (fn.priority === 'P0' && !fn.flow) {
+  // 假實作偵測（CRITICAL）
+  for (const fn of allStoryFunctions) {
+    if (fn.fraudIssues && fn.fraudIssues.length > 0) {
+      for (const issue of fn.fraudIssues) {
         result.critical.push({
           file: fn.file || 'src/',
-          message: `${fn.name} (P0) 缺少 GEMS-FLOW，P0 函式必須有 flow 標籤才能進 Phase-4 驗證`,
+          message: `[FRAUD] ${fn.name}: ${issue}`,
           acSpec: fn.acIds ? fn.acIds.join(', ') : null
         });
       }
     }
-  } catch { /* 掃描失敗不阻擋 */ }
+  }
+
+  // P0 缺少 GEMS-FLOW → BLOCKER；P1+ 略過（不擋）
+  for (const fn of allStoryFunctions) {
+    if (fn.priority === 'P0' && !fn.flow) {
+      result.critical.push({
+        file: fn.file || 'src/',
+        message: `${fn.name} (P0) 缺少 GEMS-FLOW，P0 函式必須有 flow 標籤才能進 Phase-4 驗證`,
+        acSpec: fn.acIds ? fn.acIds.join(', ') : null
+      });
+    }
+  }
 
   return result;
 }
@@ -264,9 +274,18 @@ function checkAcCoverage(target, iteration, srcPath, story) {
 /**
  * 自動產出 Fillback + Suggestions
  */
-function autoGenerateOutputs(target, iteration, story, buildPath, storyContext, srcPath, tagIssues, acCoverage) {
+function autoGenerateOutputs(target, iteration, story, buildPath, storyContext, srcPathOrPaths, tagIssues, acCoverage) {
   try {
-    const scanResult = scanUnified ? scanUnified(srcPath, target) : { functions: [], stats: { p0: 0, p1: 0, p2: 0, p3: 0 } };
+    // 支援單一路徑或多路徑陣列
+    const srcPaths = Array.isArray(srcPathOrPaths) ? srcPathOrPaths : [srcPathOrPaths];
+    const existingPaths = srcPaths.filter(p => fs.existsSync(p));
+    // 合併所有 srcDirs 的掃描結果
+    const allFunctions = [];
+    for (const sp of existingPaths) {
+      const r = scanUnified ? scanUnified(sp, target) : { functions: [] };
+      allFunctions.push(...(r.functions || []));
+    }
+    const scanResult = { functions: allFunctions, stats: { p0: 0, p1: 0, p2: 0, p3: 0 } };
     const storyFunctions = scanResult.functions.filter(f => f.storyId === story);
 
     const qualityIssues = tagIssues.critical.map(i => ({

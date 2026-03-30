@@ -117,10 +117,24 @@ function runTsc(target, options) {
   console.log(`\n🔍 型別檢查 | ${story}`);
   console.log(`   （無 @GEMS-TDD — DB/UI 層，只跑 tsc --noEmit）\n`);
 
-  // 找 tsconfig
-  const tsconfigPath = path.join(target, 'tsconfig.json');
-  if (!fs.existsSync(tsconfigPath)) {
-    console.log(`⏭  跳過 tsc：tsconfig.json 不存在`);
+  // 找 tsconfig：先查 root，再查深度 1 子目錄（支援 monorepo / 雙根目錄專案）
+  const TSCONFIG_IGNORE = new Set(['node_modules', '.gems', '.git', 'dist', 'build']);
+  let tsconfigPath = null;
+  const rootCandidate = path.join(target, 'tsconfig.json');
+  if (fs.existsSync(rootCandidate)) {
+    tsconfigPath = rootCandidate;
+  } else {
+    try {
+      for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+        if (!entry.isDirectory() || TSCONFIG_IGNORE.has(entry.name)) continue;
+        const sub = path.join(target, entry.name, 'tsconfig.json');
+        if (fs.existsSync(sub)) { tsconfigPath = sub; break; }
+      }
+    } catch { /* ignore */ }
+  }
+
+  if (!tsconfigPath) {
+    console.log(`⏭  跳過 tsc：tsconfig.json 不存在（root 及深度 1 子目錄均未找到）`);
     emitPass({
       scope: `BUILD Phase 2 | ${story}`,
       summary: 'SKIP — 無 tsconfig.json',
@@ -129,11 +143,15 @@ function runTsc(target, options) {
     return { verdict: 'PASS', skipped: true };
   }
 
+  const tsconfigDir = path.dirname(tsconfigPath);
+  const tsconfigRel = path.relative(target, tsconfigPath);
+  console.log(`   tsconfig: ${tsconfigRel}`);
+
   try {
     const output = execSync('npx tsc --noEmit', {
       encoding: 'utf8',
       stdio: 'pipe',
-      cwd: target
+      cwd: tsconfigDir   // 在 tsconfig 所在目錄執行
     });
     if (output) console.log(output);
 

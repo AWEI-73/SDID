@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
+const { detectProjectType, getSrcDir, getSrcDirs } = require('../../lib/shared/project-type.cjs');
 const { createErrorHandler, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
 const { anchorOutput, anchorPass, anchorError, emitPass, emitBlock } = require('../../lib/shared/log-output.cjs');
 
@@ -35,9 +35,10 @@ function run(options) {
   const backupsPath = path.join(gemsPath, 'backups');
   const iterPath = path.join(gemsPath, 'iterations', iteration);
 
-  // 偵測專案類型
+  // 偵測專案類型 + 取得所有源碼目錄（multi-root 支援）
   const { type: projectType } = detectProjectType(absTarget);
-  const srcDir = getSrcDir(absTarget, projectType);
+  const srcDirs = getSrcDirs(absTarget);      // string[] — blueprint 宣告 or auto-glob
+  const srcDir = srcDirs[0];                  // 向後相容：single-dir ops 用第一個
 
   // 確保目錄存在
   [docsPath, backupsPath].forEach(dir => {
@@ -55,7 +56,7 @@ function run(options) {
     step: 'scan'
   };
 
-  return runBuiltinScan(absTarget, srcDir, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType);
+  return runBuiltinScan(absTarget, srcDirs, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType);
 }
 
 // [REMOVED] runFullScan — 舊 gems-scanner.cjs 路線已淘汰
@@ -65,7 +66,39 @@ function run(options) {
  * 內建簡易掃描（沒有完整 scanner 時使用）
  * v7.0: 使用增強版掃描器，支援行號索引
  */
-function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType) {
+/**
+ * 合併多個 unified.scan() 結果（multi-root 支援）
+ */
+function mergeScanResults(results) {
+  if (results.length === 1) return results[0];
+  const merged = {
+    functions: [],
+    stats: { total: 0, tagged: 0, p0: 0, p1: 0, p2: 0, p3: 0, avgFunctionLines: 0 },
+    untagged: [],
+    scannerVersion: results[0]?.scannerVersion || 'regex-6.0',
+  };
+  for (const r of results) {
+    if (!r) continue;
+    merged.functions.push(...(r.functions || []));
+    merged.untagged.push(...(r.untagged || []));
+    for (const k of ['total', 'tagged', 'p0', 'p1', 'p2', 'p3']) {
+      merged.stats[k] = (merged.stats[k] || 0) + (r.stats?.[k] || 0);
+    }
+  }
+  // 平均行數：以全部函式重算
+  const linesArr = merged.functions.map(f => f.lines || 0).filter(l => l > 0);
+  merged.stats.avgFunctionLines = linesArr.length > 0
+    ? Math.round(linesArr.reduce((a, b) => a + b, 0) / linesArr.length)
+    : 0;
+  return merged;
+}
+
+function runBuiltinScan(target, srcDirs, iteration, docsPath, backupsPath, iterPath, errorHandler, runOptions, projectType) {
+  // 向後相容：srcDirs 可能是 string（舊呼叫）或 string[]（新呼叫）
+  if (!Array.isArray(srcDirs)) srcDirs = [srcDirs];
+  const existingSrcDirs = srcDirs.filter(d => fs.existsSync(d));
+  const srcDir = existingSrcDirs[0] || srcDirs[0]; // primary（顯示 + backup 用）
+
   // v2.5: 統一使用 gems-scanner-unified（AST → Regex 自動降級）
   const unified = require('../../lib/scan/gems-scanner-unified.cjs');
   const scannerLabel = unified.hasAstScanner ? 'gems-scanner-v2 (AST)' : 'gems-validator (Regex)';
@@ -74,7 +107,7 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
     context: `Phase SCAN | 規格書產出 | ${iteration}`,
     info: {
       'Scanner': scannerLabel,
-      '源碼': srcDir,
+      '源碼': existingSrcDirs.length > 1 ? existingSrcDirs.join(', ') : (existingSrcDirs[0] || srcDir),
       '輸出': docsPath
     },
     task: ['執行掃描 (含 startLine/endLine)'],
@@ -82,7 +115,7 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
   }, runOptions);
 
   try {
-    // 備份當前 iteration 與源碼
+    // 備份當前 iteration 與第一個源碼目錄
     backupIteration(iterPath, srcDir, backupsPath, iteration);
 
     let scanResult;
@@ -90,7 +123,11 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
 
     // SHRINK 已移為可選工具，SCAN 直接讀源碼中的 GEMS 標籤（支援完整多行格式與 shrink 格式）
     // 若需在 SCAN 前壓縮標籤，請手動執行: node task-pipe/tools/shrink-tags.cjs --target=<project>
-    const raw = unified.scan(srcDir, target);
+    // multi-root：掃描所有存在的 srcDirs，合併結果
+    const rawResults = (existingSrcDirs.length > 0 ? existingSrcDirs : [srcDir])
+      .map(d => { try { return unified.scan(d, target); } catch { return null; } })
+      .filter(Boolean);
+    const raw = mergeScanResults(rawResults);
     scannerVersion = raw.scannerVersion === 'ast-v2' ? '8.0' : '6.0';
 
     if (raw.scannerVersion === 'ast-v2') {
@@ -191,7 +228,9 @@ function runBuiltinScan(target, srcDir, iteration, docsPath, backupsPath, iterPa
     );
 
     // DB schema — 只產 DB_SCHEMA.md（人讀），不再產 schema.json
-    const schema = generateSchema(srcDir);
+    // multi-root：合併所有 srcDirs 的 schema
+    const schema = (existingSrcDirs.length > 0 ? existingSrcDirs : [srcDir])
+      .reduce((acc, d) => Object.assign(acc, generateSchema(d)), {});
     generateSchemaMarkdown(schema, docsPath);
 
     // Tech stack

@@ -118,22 +118,23 @@ function runTsc(target, options) {
   console.log(`   （無 @GEMS-TDD — DB/UI 層，只跑 tsc --noEmit）\n`);
 
   // 找 tsconfig：先查 root，再查深度 1 子目錄（支援 monorepo / 雙根目錄專案）
-  const TSCONFIG_IGNORE = new Set(['node_modules', '.gems', '.git', 'dist', 'build']);
-  let tsconfigPath = null;
+  // v7.1: 收集所有 tsconfig 一起跑（雙根目錄如 backend-gas/ + frontend/ 都要驗）
+  const TSCONFIG_IGNORE = new Set(['node_modules', '.gems', '.git', 'dist', 'build', 'coverage']);
+  const tsconfigPaths = [];
   const rootCandidate = path.join(target, 'tsconfig.json');
   if (fs.existsSync(rootCandidate)) {
-    tsconfigPath = rootCandidate;
-  } else {
-    try {
-      for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
-        if (!entry.isDirectory() || TSCONFIG_IGNORE.has(entry.name)) continue;
-        const sub = path.join(target, entry.name, 'tsconfig.json');
-        if (fs.existsSync(sub)) { tsconfigPath = sub; break; }
-      }
-    } catch { /* ignore */ }
+    tsconfigPaths.push(rootCandidate);
   }
+  // 深度 1 子目錄：找到全部不 break
+  try {
+    for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+      if (!entry.isDirectory() || TSCONFIG_IGNORE.has(entry.name)) continue;
+      const sub = path.join(target, entry.name, 'tsconfig.json');
+      if (fs.existsSync(sub)) tsconfigPaths.push(sub);
+    }
+  } catch { /* ignore */ }
 
-  if (!tsconfigPath) {
+  if (tsconfigPaths.length === 0) {
     console.log(`⏭  跳過 tsc：tsconfig.json 不存在（root 及深度 1 子目錄均未找到）`);
     emitPass({
       scope: `BUILD Phase 2 | ${story}`,
@@ -143,42 +144,44 @@ function runTsc(target, options) {
     return { verdict: 'PASS', skipped: true };
   }
 
-  const tsconfigDir = path.dirname(tsconfigPath);
-  const tsconfigRel = path.relative(target, tsconfigPath);
-  console.log(`   tsconfig: ${tsconfigRel}`);
+  // 對每個 tsconfig 都跑 tsc --noEmit，任一失敗即 BLOCKER
+  const allErrors = [];
+  for (const tsconfigPath of tsconfigPaths) {
+    const tsconfigDir = path.dirname(tsconfigPath);
+    const tsconfigRel = path.relative(target, tsconfigPath);
+    console.log(`   tsconfig: ${tsconfigRel}`);
+    try {
+      const output = execSync('npx tsc --noEmit', {
+        encoding: 'utf8',
+        stdio: 'pipe',
+        cwd: tsconfigDir
+      });
+      if (output) console.log(output);
+      console.log(`   ✅ ${tsconfigRel} — 無型別錯誤`);
+    } catch (err) {
+      const output = (err.stdout || '') + (err.stderr || '');
+      console.log(output);
+      const errorLines = output.split('\n').filter(l => /error TS/.test(l)).slice(0, 10).join('\n');
+      allErrors.push(`[${tsconfigRel}]\n${errorLines || output.split('\n').slice(-10).join('\n')}`);
+    }
+  }
 
-  try {
-    const output = execSync('npx tsc --noEmit', {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      cwd: tsconfigDir   // 在 tsconfig 所在目錄執行
-    });
-    if (output) console.log(output);
-
-    emitPass({
-      scope: `BUILD Phase 2 | ${story}`,
-      summary: 'tsc --noEmit PASS — 無型別錯誤',
-      nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
-    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
-    return { verdict: 'PASS' };
-
-  } catch (err) {
-    const output = (err.stdout || '') + (err.stderr || '');
-    console.log(output);
-
-    const errorLines = output.split('\n')
-      .filter(l => /error TS/.test(l))
-      .slice(0, 20)
-      .join('\n');
-
+  if (allErrors.length > 0) {
     emitBlock({
       scope: `BUILD Phase 2 | ${story}`,
-      summary: `tsc --noEmit FAIL — 型別錯誤，修復後重跑`,
-      details: errorLines || output.split('\n').slice(-20).join('\n'),
+      summary: `tsc --noEmit FAIL — ${allErrors.length}/${tsconfigPaths.length} 個 tsconfig 有型別錯誤`,
+      details: allErrors.join('\n\n'),
       nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
     }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
     return { verdict: 'BLOCKER' };
   }
+
+  emitPass({
+    scope: `BUILD Phase 2 | ${story}`,
+    summary: `tsc --noEmit PASS — ${tsconfigPaths.length} 個 tsconfig 均無型別錯誤`,
+    nextCmd: getNextCmd('BUILD', '2', { story, level, target: relativeTarget, iteration })
+  }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+  return { verdict: 'PASS' };
 }
 
 /** GEMS: buildPhase2 | P1 | detectTddPaths(IO)→runVitest(IO)→runTsc(IO)→RETURN:PhaseResult | Story-4.0 */

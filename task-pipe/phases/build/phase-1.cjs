@@ -795,6 +795,8 @@ src/modules/[module-name]/
 function mapCheckToTask(check, target, srcDir, planFile, story) {
   const name = check.name;
   const relPlan = path.relative(target, planFile);
+  // v7.1: 使用實際 srcDir 相對路徑，避免 hardcode src/（支援多根目錄如 backend-gas/src）
+  const relSrcDir = path.relative(target, srcDir).replace(/\\/g, '/') || 'src';
 
   if (name.includes('package.json')) {
     return {
@@ -815,23 +817,31 @@ function mapCheckToTask(check, target, srcDir, planFile, story) {
   if (name.includes('Config')) {
     return {
       action: 'CREATE_DIR_WITH_INDEX',
-      file: 'src/config/',
-      expected: 'src/config/index.ts exporting app config',
+      file: `${relSrcDir}/config/`,
+      expected: `${relSrcDir}/config/index.ts exporting app config`,
       reference: `${relPlan} → Config Layer`
+    };
+  }
+  if (name.includes('Shared 子目錄')) {
+    return {
+      action: 'CREATE_SUBDIRS',
+      file: `${relSrcDir}/shared/`,
+      expected: `At least 1 file or subdirectory in ${relSrcDir}/shared/ (types.ts, or types/, storage/, utils/)`,
+      reference: `${relPlan} → Shared Layer items`
     };
   }
   if (name.includes('Shared')) {
     return {
       action: 'CREATE_DIR_WITH_SUBDIRS',
-      file: 'src/shared/',
-      expected: 'src/shared/index.ts + subdirs (types/, storage/, utils/)',
+      file: `${relSrcDir}/shared/`,
+      expected: `${relSrcDir}/shared/index.ts + subdirs (types/, storage/, utils/)`,
       reference: `${relPlan} → Shared Layer`
     };
   }
   if (name.includes('Modules')) {
     return {
       action: 'CREATE_DIR',
-      file: 'src/modules/',
+      file: `${relSrcDir}/modules/`,
       expected: 'Empty modules container directory',
       reference: `${relPlan} → Modules Layer`
     };
@@ -839,7 +849,7 @@ function mapCheckToTask(check, target, srcDir, planFile, story) {
   if (name.includes('Assets')) {
     return {
       action: 'CREATE_DIR',
-      file: 'src/assets/',
+      file: `${relSrcDir}/assets/`,
       expected: 'Static assets directory',
       reference: relPlan
     };
@@ -847,17 +857,9 @@ function mapCheckToTask(check, target, srcDir, planFile, story) {
   if (name.includes('Routes')) {
     return {
       action: 'CREATE_DIR_WITH_INDEX',
-      file: 'src/routes/',
-      expected: 'src/routes/index.ts with route definitions',
+      file: `${relSrcDir}/routes/`,
+      expected: `${relSrcDir}/routes/index.ts with route definitions`,
       reference: relPlan
-    };
-  }
-  if (name.includes('Shared 子目錄')) {
-    return {
-      action: 'CREATE_SUBDIRS',
-      file: 'src/shared/',
-      expected: 'At least 1 subdirectory (types/ or storage/ or utils/)',
-      reference: `${relPlan} → Shared Layer items`
     };
   }
   // Fallback
@@ -964,15 +966,17 @@ function validateModule0Structure(target, srcDir, projectType) {
   }
 
   // Shared 子目錄：前端需要 components/layouts，後端需要 types/storage 等
+  // v7.1: 接受平坦檔案（如 GAS backend 的 types.ts）或子目錄，只要 shared/ 有內容即可
   const sharedDir = path.join(srcDir, 'shared');
   if (fs.existsSync(sharedDir)) {
-    const sharedSubs = fs.readdirSync(sharedDir).filter(f => {
+    const sharedEntries = fs.readdirSync(sharedDir);
+    const sharedSubs = sharedEntries.filter(f => {
       const fullPath = path.join(sharedDir, f);
       return fs.statSync(fullPath).isDirectory();
     });
     checks.push({
       name: 'Shared 子目錄',
-      pass: sharedSubs.length >= 1  // 至少有一個子目錄
+      pass: sharedEntries.length >= 1  // 至少有一個檔案或子目錄（接受平坦檔案如 types.ts）
     });
   }
 
@@ -999,7 +1003,9 @@ function detectExtraFiles(srcDir, manifest, extensions, iterNum = 1, target = nu
   function addManifestPaths(m) {
     for (const fn of m.functions) {
       if (fn.file) {
-        const norm = fn.file.replace(/^\.?\/?(src\/)?/, 'src/').replace(/\\/g, '/');
+        // v7.1: 保留完整相對路徑（支援多根目錄如 frontend/src/foo.ts）
+        // 只正規化反斜線與前導 ./ — 不強制加 src/ 前綴
+        const norm = fn.file.replace(/\\/g, '/').replace(/^\.\//, '');
         plannedPaths.add(norm);
       }
     }
@@ -1047,18 +1053,25 @@ function detectExtraFiles(srcDir, manifest, extensions, iterNum = 1, target = nu
     if (!fs.existsSync(dir)) continue;
     const files = findSourceFilesFlat(dir, extensions);
 
+    // v7.1: 使用 target（專案根）為基準計算相對路徑，支援多根目錄
+    const projectRoot = target || path.dirname(srcDir);
+    // 取得所有合法的 src 根目錄（相對 target，用於 isInfraFile 判斷）
+    const { getSrcDirs } = require('../../lib/shared/project-type.cjs');
+    const allSrcRoots = target
+      ? getSrcDirs(target).map(p => path.relative(target, p).replace(/\\/g, '/'))
+      : [path.relative(projectRoot, srcDir).replace(/\\/g, '/')];
+
     for (const file of files) {
       // 取得相對於專案根目錄的路徑
-      const projectRoot = path.dirname(srcDir);
       const relPath = path.relative(projectRoot, file).replace(/\\/g, '/');
 
       // 跳過測試檔案
       if (relPath.includes('__tests__') || relPath.includes('.test.') || relPath.includes('.spec.')) continue;
 
-      // 跳過 Architecture Contract 認定的基礎建設檔案（如 src/config/*）
+      // 跳過 Architecture Contract 認定的基礎建設檔案（如 src/config/* 或 backend-gas/src/config/*）
       // 即使 Plan 沒明列，這些路徑也是合法的
       const contract = require('../../lib/shared/architecture-contract-proxy.cjs');
-      if (contract.isInfraFile(relPath)) continue;
+      if (contract.isInfraFile(relPath, allSrcRoots)) continue;
 
       // 檢查是否在 Plan 定義中
       if (!plannedPaths.has(relPath)) {
@@ -1431,13 +1444,16 @@ function generatePlanSpecsBlock(planSpec, manifest, story) {
 function autoScaffoldFoundation(target, srcDir, projectType, manifest) {
   const created = [];
 
+  // v7.1: display 用相對於 target 的路徑，而非 hardcode src/
+  const relSrc = path.relative(target, srcDir).replace(/\\/g, '/') || 'src';
+
   // 必要分層（所有專案）
   const requiredDirs = ['config', 'shared', 'modules'];
   for (const dir of requiredDirs) {
     const fullPath = path.join(srcDir, dir);
     if (!fs.existsSync(fullPath)) {
       fs.mkdirSync(fullPath, { recursive: true });
-      created.push(`src/${dir}/`);
+      created.push(`${relSrc}/${dir}/`);
     }
   }
 
@@ -1447,7 +1463,7 @@ function autoScaffoldFoundation(target, srcDir, projectType, manifest) {
     const assetsPath = path.join(srcDir, 'assets');
     if (!fs.existsSync(assetsPath)) {
       fs.mkdirSync(assetsPath, { recursive: true });
-      created.push('src/assets/');
+      created.push(`${relSrc}/assets/`);
     }
   }
 
@@ -1457,7 +1473,7 @@ function autoScaffoldFoundation(target, srcDir, projectType, manifest) {
     const routesPath = path.join(srcDir, 'routes');
     if (!fs.existsSync(routesPath)) {
       fs.mkdirSync(routesPath, { recursive: true });
-      created.push('src/routes/');
+      created.push(`${relSrc}/routes/`);
     }
   }
 

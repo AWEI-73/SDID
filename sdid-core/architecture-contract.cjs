@@ -89,13 +89,19 @@ function inferFilePath(type, moduleName, kebab, layer = 'feature') {
 /**
  * phase-1 的 detectExtraFiles() 用這個函式判斷「合法的基礎建設檔案」。
  * 即使 Plan manifest 沒有明列，這些路徑也不應被標為「多餘」。
- * 
- * @param {string} relPath - 相對於專案根目錄的路徑（正規化，使用 /）
+ *
+ * v7.1: 支援多根目錄（srcRoots），從 blueprint **源碼路徑** 讀取。
+ *
+ * @param {string} relPath  - 相對於專案根目錄的路徑（正規化，使用 /）
+ * @param {string[]} srcRoots - 所有合法的 src 根目錄（相對路徑，如 ['src'] 或 ['backend-gas/src','frontend/src']）
  * @returns {boolean} true = 是基礎建設檔案，跳過多餘檢查
  */
-function isInfraFile(relPath) {
-  // src/config/ 下的所有檔案 = config layer，即使 Plan 沒明列也合法
-  if (relPath.startsWith('src/config/')) return true;
+function isInfraFile(relPath, srcRoots = ['src']) {
+  // 每個 srcRoot 下的 config/ 都屬於 config layer，即使 Plan 沒明列也合法
+  for (const root of srcRoots) {
+    const prefix = root.endsWith('/') ? root : root + '/';
+    if (relPath.startsWith(`${prefix}config/`)) return true;
+  }
   return false;
 }
 

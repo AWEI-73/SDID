@@ -98,9 +98,24 @@ function autoPatchContract(content) {
 
   return { patched, patches };
 }
+// ── 讀取最新 cynefin-report.json（contract-gate cross-check 用）──
+function findLatestCynefinReport(logsDir) {
+  if (!fs.existsSync(logsDir)) return null;
+  try {
+    const files = fs.readdirSync(logsDir)
+      .filter(f => f.startsWith('cynefin-report-') && f.endsWith('.json'))
+      .sort()
+      .reverse();
+    if (files.length === 0) return null;
+    return JSON.parse(fs.readFileSync(path.join(logsDir, files[0]), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 // ── Gate checks（只驗三個大項）──
-/** GEMS: checkContract | P0 | checkStories(Pure)→checkContracts(Pure)→checkACFormat(Pure)→RETURN:GateResult | Story-2.0 */
-function checkContract(content, iterNum) {
+/** GEMS: checkContract | P0 | checkStories(Pure)→checkContracts(Pure)→checkTDDCoverage(Complicated)→RETURN:GateResult | Story-2.0 */
+function checkContract(content, iterNum, target = null) {
   const blockers = [];
   const guided = [];
   const B = (code, msg) => blockers.push({ code, msg });
@@ -119,13 +134,31 @@ function checkContract(content, iterNum) {
   // 大項 3: @CONTRACT-LOCK（通過後自動注入，這裡只在 BLOCKER 時提示）
   // 不驗 @CONTRACT-LOCK，因為 @PASS 時會自動注入
 
-  // @GUIDED: @GEMS-TDD 路徑格式驗證（不 BLOCK，只提示）
+  // CG-003: @GEMS-TDD 路徑格式驗證 → BLOCKER（升級自 GUIDED CG-G01）
+  // 不再要求 src/ 前綴（支援多根目錄），只驗副檔名
   const tddMatches = [...content.matchAll(/\/\/\s*@GEMS-TDD:\s*(.+)/g)];
-  const badTddPaths = tddMatches
-    .map(m => m[1].trim())
-    .filter(p => !p.startsWith('src/') || !p.endsWith('.test.ts'));
+  const tddPaths = tddMatches.map(m => m[1].trim()).filter(Boolean);
+  const badTddPaths = tddPaths.filter(p => !p.match(/\.(test|spec)\.(ts|tsx)$/));
   if (badTddPaths.length > 0)
-    G('CG-G01', `@GEMS-TDD 路徑建議以 src/ 開頭並以 .test.ts 結尾: ${badTddPaths.join(', ')}`);
+    B('CG-003', `@GEMS-TDD 路徑格式錯誤，必須以 .test.ts / .spec.ts / .test.tsx / .spec.tsx 結尾: ${badTddPaths.join(', ')}`);
+
+  // CG-004: CYNEFIN cross-check → BLOCKER
+  // 若 cynefin-report 中有 needsTest:true 的 action，contract 必須有 @GEMS-TDD:
+  if (target) {
+    const logsDir = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
+    const cynefinReport = findLatestCynefinReport(logsDir);
+    if (cynefinReport && Array.isArray(cynefinReport.actions)) {
+      const needsTestActions = cynefinReport.actions.filter(a => a.needsTest === true);
+      if (needsTestActions.length > 0 && tddPaths.length === 0) {
+        const names = needsTestActions.map(a => a.name).join(', ');
+        B('CG-004',
+          `CYNEFIN 報告中有 ${needsTestActions.length} 個 needsTest:true action（${names}），` +
+          `但 contract 缺少 @GEMS-TDD: 標籤。` +
+          `請新增: // @GEMS-TDD: <src路徑>/<模組>.test.ts`
+        );
+      }
+    }
+  }
 
   // @GUIDED: any/unknown 型別
   if (/:\s*any\b|:\s*unknown\b/.test(content))
@@ -184,7 +217,7 @@ Auto-patch: @GEMS-STORIES 區塊 → @GEMS-STORY: 單行格式
     content = patched;
   }
 
-  const { blockers, guided } = checkContract(content, args.iter);
+  const { blockers, guided } = checkContract(content, args.iter, args.target);
   const passed = blockers.length === 0;
 
   // @CONTRACT-LOCK 注入（@PASS 時）

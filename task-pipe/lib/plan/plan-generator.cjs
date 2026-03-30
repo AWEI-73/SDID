@@ -59,8 +59,18 @@ function generatePlansFromContract(contractPath, iterNum, target, options = {}) 
     fs.mkdirSync(planDir, { recursive: true });
   }
 
+  // v7.1: 從 blueprint **源碼路徑** 讀取 srcRoot（支援多根目錄）
+  let srcRoot = 'src';
+  try {
+    const { getSrcDirs } = require('../shared/project-type.cjs');
+    const srcDirs = getSrcDirs(target);
+    if (srcDirs.length > 0) {
+      srcRoot = path.relative(target, srcDirs[0]).replace(/\\/g, '/') || 'src';
+    }
+  } catch { /* fallback to src */ }
+
   for (const story of parsed.stories) {
-    const planContent = generatePlanForStory(story, iterNum, parsed);
+    const planContent = generatePlanForStory(story, iterNum, parsed, srcRoot);
     const planFile = path.join(planDir, `implementation_plan_${story.id}.md`);
 
     if (!dryRun) {
@@ -106,8 +116,9 @@ function generatePlansFromSpec(specPath, iterNum, target, options = {}) {
  * @param {object} story - { id, module, title, type, items: [{ name, type, priority, flow, deps, ac }] }
  * @param {number} iterNum
  * @param {object} parsed - parseContract 的完整結果
+ * @param {string} srcRoot - src 根目錄（相對 target，如 'src' 或 'backend-gas/src'），從 blueprint 讀取
  */
-function generatePlanForStory(story, iterNum, parsed) {
+function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src') {
   const today = new Date().toISOString().split('T')[0];
   const storyId = story.id;
   const isFoundation = story.type === 'INFRA' || /shared|config|infrastructure/i.test(story.module);
@@ -125,7 +136,7 @@ function generatePlanForStory(story, iterNum, parsed) {
 
     const depsStr = item.deps === '無' ? '無' : item.deps;
     const depsRisk = depsStr === '無' ? 'LOW' : (depsStr.split(',').length >= 3 ? 'HIGH' : 'MEDIUM');
-    const filePath = inferFilePath(item.name, item.type, story.module);
+    const filePath = inferFilePath(item.name, item.type, story.module, srcRoot);
 
     return `### Item ${i + 1}: ${item.name}
 
@@ -269,15 +280,20 @@ ${contractSection}
 
 /**
  * 推導檔案路徑（從 contract story item）
+ * v7.1: 接受 srcRoot 參數，從 blueprint **源碼路徑** 傳入
+ * @param {string} name - 函式/元件名稱
+ * @param {string} type - GEMS 類型（CONST/LIB/API/SVC/HOOK/UI/ROUTE）
+ * @param {string} moduleName - 模組名稱
+ * @param {string} srcRoot - src 根目錄相對路徑（預設 'src'，多根目錄時如 'backend-gas/src'）
  */
-function inferFilePath(name, type, moduleName) {
+function inferFilePath(name, type, moduleName, srcRoot = 'src') {
   const kebab = name
     .replace(/([a-z])([A-Z])/g, '$1-$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
     .toLowerCase();
 
   const isShared = moduleName === 'shared';
-  const base = isShared ? 'src/shared' : `src/modules/${moduleName}`;
+  const base = isShared ? `${srcRoot}/shared` : `${srcRoot}/modules/${moduleName}`;
 
   switch (type) {
     case 'CONST': return `${base}/${isShared ? 'types/' : ''}${kebab}.ts`;

@@ -296,6 +296,12 @@ Micro-Fix Gate v1.0 — 輕量驗證器
     console.log(`  ✓ GEMS 標籤: OK`);
     console.log(`  ✓ Import 整合: OK`);
     writeGateLog(projectRoot, args.iter, 'pass', `${filesToCheck.length} 個檔案全部通過`, args.changed);
+    // --- Decision Log ---
+    const { writeDecisionLog } = require('../lib/decision-log.cjs');
+    writeDecisionLog(projectRoot, { gate: 'micro-fix-gate', status: 'PASS', iter: args.iter });
+    console.log(`[LOG-REQUIRED] gate=micro-fix-gate status=PASS`);
+    console.log(`  → 補上 why 到 .gems/decision-log.jsonl 再繼續`);
+    console.log('');
     process.exit(0);
   }
 
@@ -354,6 +360,20 @@ Micro-Fix Gate v1.0 — 輕量驗證器
     detailLines.slice(1).forEach(l => console.log(l));
   }
   console.log(`NEXT: ${nextCmd}`);
+  // --- Decision Log ---
+  const { writeDecisionLog } = require('../lib/decision-log.cjs');
+  writeDecisionLog(projectRoot, {
+    gate: 'micro-fix-gate',
+    status: 'BLOCKER',
+    iter: args.iter,
+    errors: [
+      ...tagIssues.map(i => `GEMS-missing:${i.file}`),
+      ...importIssues.map(i => `import-broken:${i.file}`)
+    ]
+  });
+  console.log(`[LOG-REQUIRED] gate=micro-fix-gate status=BLOCKER`);
+  console.log(`  → 補上 why + resolution 到 .gems/decision-log.jsonl 再繼續`);
+  console.log('');
 
   process.exit(1);
 }

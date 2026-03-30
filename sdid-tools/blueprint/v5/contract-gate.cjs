@@ -283,6 +283,18 @@ Auto-patch: @GEMS-STORIES 區塊 → @GEMS-STORY: 單行格式
     console.log(`═══════════════════════════════════════════════════════════`);
   }
 
+  // --- Decision Log ---
+  const { writeDecisionLog } = require('../../lib/decision-log.cjs');
+  writeDecisionLog(args.target, {
+    gate: 'contract-gate',
+    status: passed ? 'PASS' : 'BLOCKER',
+    iter: args.iter,
+    errors: blockers.map(b => b.code)
+  });
+  console.log(`[LOG-REQUIRED] gate=contract-gate status=${passed ? 'PASS' : 'BLOCKER'} iter=${args.iter}`);
+  console.log(`  → 補上 why${passed ? '' : ' + resolution'} 到 .gems/decision-log.jsonl 再繼續`);
+  console.log('');
+
   process.exit(passed ? 0 : 1);
 }
 

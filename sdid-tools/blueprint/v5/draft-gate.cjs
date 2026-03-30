@@ -553,6 +553,17 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
     console.log(`═══════════════════════════════════════════════════════════`);
   }
 
+  // --- Decision Log ---
+  const { writeDecisionLog } = require('../../lib/decision-log.cjs');
+  writeDecisionLog(args.target, {
+    gate: 'draft-gate',
+    status: passed ? 'PASS' : 'BLOCKER',
+    errors: blockers.map(b => b.code)
+  });
+  console.log(`[LOG-REQUIRED] gate=draft-gate status=${passed ? 'PASS' : 'BLOCKER'}`);
+  console.log(`  → 補上 why${passed ? '' : ' + resolution'} 到 .gems/decision-log.jsonl 再繼續`);
+  console.log('');
+
   process.exit(passed ? 0 : 1);
 }
 

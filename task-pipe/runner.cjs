@@ -510,6 +510,27 @@ function runPhase(phase, step, options, config) {
       log('✨ 流程交接就緒', 'green');
     }
 
+    // --- Decision Log ---
+    try {
+      const { writeDecisionLog } = require('../sdid-tools/lib/decision-log.cjs');
+      const dlStatus = result.verdict === 'PASS' ? 'PASS' : result.verdict === 'BLOCKER' ? 'BLOCKER' : result.verdict;
+      writeDecisionLog(options.target, {
+        gate: `${phase}-step${step}`,
+        status: dlStatus,
+        iter: options.iteration,
+        story: options.story || null,
+        errors: result.verdict !== 'PASS' && result.reason ? [result.reason.substring(0, 120)] : []
+      });
+      const needsWhy = !isSuccessVerdict;
+      console.log(`[LOG-REQUIRED] gate=${phase}-step${step} status=${dlStatus}${options.story ? ' story=' + options.story : ''}`);
+      if (needsWhy) {
+        console.log(`  → 補上 why + resolution 到 .gems/decision-log.jsonl 再繼續`);
+      } else {
+        console.log(`  → 補上 why 到 .gems/decision-log.jsonl 再繼續`);
+      }
+      console.log('');
+    } catch (e) { /* silent */ }
+
     process.exit(isSuccessVerdict ? 0 : 1);
   } catch (err) {
     log('');
@@ -542,6 +563,22 @@ function runPhase(phase, step, options, config) {
       log(err.stack, 'dim');
     }
     log('');
+
+    // --- Decision Log (ERROR) ---
+    try {
+      const { writeDecisionLog } = require('../sdid-tools/lib/decision-log.cjs');
+      writeDecisionLog(options.target, {
+        gate: `${phase}-step${step}`,
+        status: 'ERROR',
+        iter: options.iteration,
+        story: options.story || null,
+        errors: [err.message.substring(0, 120)]
+      });
+      console.log(`[LOG-REQUIRED] gate=${phase}-step${step} status=ERROR`);
+      console.log(`  → 補上 why + resolution 到 .gems/decision-log.jsonl 再繼續`);
+      console.log('');
+    } catch (e) { /* silent */ }
+
     process.exit(1);
   }
 }

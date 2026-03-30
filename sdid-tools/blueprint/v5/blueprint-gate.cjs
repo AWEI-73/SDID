@@ -449,6 +449,17 @@ Blueprint Gate v5.0 — 全局骨架品質門控
     console.log(`═══════════════════════════════════════════════════════════`);
   }
 
+  // --- Decision Log ---
+  const { writeDecisionLog } = require('../../lib/decision-log.cjs');
+  writeDecisionLog(args.target, {
+    gate: 'blueprint-gate',
+    status: passed ? 'PASS' : 'BLOCKER',
+    errors: blockers.map(b => b.code)
+  });
+  console.log(`[LOG-REQUIRED] gate=blueprint-gate status=${passed ? 'PASS' : 'BLOCKER'}`);
+  console.log(`  → 補上 why${passed ? '' : ' + resolution'} 到 .gems/decision-log.jsonl 再繼續`);
+  console.log('');
+
   process.exit(passed ? 0 : 1);
 }
 

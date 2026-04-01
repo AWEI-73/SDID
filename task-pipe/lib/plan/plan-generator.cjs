@@ -54,6 +54,10 @@ function generatePlansFromContract(contractPath, iterNum, target, options = {}) 
     return result;
   }
 
+  // v4: 解析 @CONTRACT/@TEST/@RISK/Behavior: 區塊，建立 storyId → contracts 映射
+  const isV4 = /\/\/\s*@CONTRACT:\s*\w+/.test(content);
+  const v4ContractMap = isV4 ? parseV4Contracts(content) : {};
+
   const planDir = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, 'plan');
   if (!dryRun) {
     fs.mkdirSync(planDir, { recursive: true });
@@ -70,7 +74,8 @@ function generatePlansFromContract(contractPath, iterNum, target, options = {}) 
   } catch { /* fallback to src */ }
 
   for (const story of parsed.stories) {
-    const planContent = generatePlanForStory(story, iterNum, parsed, srcRoot);
+    const v4Info = v4ContractMap[story.id] || null;
+    const planContent = generatePlanForStory(story, iterNum, parsed, srcRoot, v4Info);
     const planFile = path.join(planDir, `implementation_plan_${story.id}.md`);
 
     if (!dryRun) {
@@ -112,13 +117,47 @@ function generatePlansFromSpec(specPath, iterNum, target, options = {}) {
 }
 
 /**
+ * 解析 v4 contract 中的 @CONTRACT/@TEST/Behavior: 區塊
+ * 回傳 storyId → [{ name, testPath, risk, flow, behaviors }] 的映射
+ */
+function parseV4Contracts(content) {
+  const map = {};
+  // 找每個 @CONTRACT: 區塊（到下一個 @CONTRACT: 或 export 為止）
+  const blockRegex = /\/\/\s*@CONTRACT:\s*(.+?)(?=\n\/\/\s*@CONTRACT:|\nexport\s+(?:interface|declare|type|class|function)|$)/gs;
+  for (const m of content.matchAll(blockRegex)) {
+    const block = m[0];
+    const headerParts = m[1].trim().split('|').map(s => s.trim());
+    const storyId = headerParts[3] || '';
+    if (!storyId) continue;
+
+    const testMatch = block.match(/\/\/\s*@TEST:\s*(.+\.(?:test|spec)\.tsx?)/);
+    const riskMatch = block.match(/\/\/\s*@RISK:\s*(.+)/);
+    const flowMatch = block.match(/\/\/\s*@GEMS-FLOW:\s*(.+)/);
+    const behaviorLines = [...block.matchAll(/\/\/\s*-\s*(.+)/g)].map(b => b[1].trim());
+
+    if (!map[storyId]) map[storyId] = [];
+    map[storyId].push({
+      name: headerParts[0] || '',
+      priority: headerParts[1] || '',
+      type: headerParts[2] || '',
+      testPath: testMatch ? testMatch[1].trim() : null,
+      risk: riskMatch ? riskMatch[1].trim() : null,
+      flow: flowMatch ? flowMatch[1].trim() : null,
+      behaviors: behaviorLines,
+    });
+  }
+  return map;
+}
+
+/**
  * 為單一 Story 產生 implementation_plan Markdown
- * @param {object} story - { id, module, title, type, items: [{ name, type, priority, flow, deps, ac }] }
+ * @param {object} story - { id, module, title, type, items: [...] }
  * @param {number} iterNum
  * @param {object} parsed - parseContract 的完整結果
- * @param {string} srcRoot - src 根目錄（相對 target，如 'src' 或 'backend-gas/src'），從 blueprint 讀取
+ * @param {string} srcRoot - src 根目錄
+ * @param {Array|null} v4Info - parseV4Contracts 解析出的該 story contracts（v4 專用）
  */
-function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src') {
+function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = null) {
   const today = new Date().toISOString().split('T')[0];
   const storyId = story.id;
   const isFoundation = story.type === 'INFRA' || /shared|config|infrastructure/i.test(story.module);
@@ -211,19 +250,48 @@ import type { ${refs} } from '../../shared/types/core-types';
     }
   }
 
+  // Step 0（v4 only）: 寫 RED 測試
+  const step0Section = v4Info && v4Info.some(c => c.testPath)
+    ? `## 0. ⚡ TDD 第一步：寫 RED 測試（v4 必做）
+
+> **在 Phase 1 建骨架之前**，先寫好 @TEST 指定的測試檔（RED 狀態）。
+> Phase 2 只改實作讓測試 GREEN，不能動測試檔。
+
+${v4Info.filter(c => c.testPath).map(c => `### ${c.name}（${c.priority} | ${c.type}）
+
+**測試檔**：\`${c.testPath}\`
+${c.risk ? `**風險**：${c.risk}` : ''}
+
+**Behavior: 對應測試案例**：
+${c.behaviors.length > 0
+  ? c.behaviors.map(b => `- \`it('${b.replace(/→/, '→').replace(/^[^(]+\([^)]*\)\s*→\s*/, '')}', () => { ... })\``).join('\n')
+  : '（依 contract Behavior: 自行補充）'}
+
+**RED 確認**：
+\`\`\`bash
+npx vitest run ${c.testPath} --reporter=verbose
+# → FAIL（因 import 的函式不存在）= 正確 RED
+\`\`\`
+`).join('\n---\n\n')}
+
+---
+
+`
+    : '';
+
   return `# Implementation Plan - ${storyId}
 
 **迭代**: iter-${iterNum}
 **Story ID**: ${storyId}
 **日期**: ${today}
 **目標模組**: ${story.module}
-**來源**: contract-parser 自動生成 (plan-generator v2.0)
+**來源**: contract-parser 自動生成 (plan-generator v2.1${v4Info ? ' | v4-HARNESS' : ''})
 
-> Status: READY FOR BUILD
+> Status: READY FOR BUILD${v4Info && v4Info.some(c => c.testPath) ? '\n> ⚡ v4 模式：先寫 RED 測試（Step 0），再建骨架（Phase 1）' : ''}
 
 ---
 
-## 1. Story 目標
+${step0Section}## 1. Story 目標
 
 **一句話目標**: ${story.title}
 

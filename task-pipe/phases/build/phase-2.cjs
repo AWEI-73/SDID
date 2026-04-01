@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 2: TDD 驗收層 (v7.0)
+ * BUILD Phase 2: TDD 驗收層 (v7.1)
  *
  * 定位：跑測試（TDD）或型別檢查（tsc）
  *
- * 驗收策略:
- *   contract_iter-N.ts 有 @GEMS-TDD → vitest --run（測試在 contract 階段就寫好）
- *   沒有 @GEMS-TDD → tsc --noEmit（DB/UI/外部依賴層，只驗型別）
+ * 驗收策略（自動偵測 contract 格式版本）:
+ *   v4 contract（有 @CONTRACT:）:
+ *     @TEST 路徑 → vitest --run（驗 it()/test() 存在 + GREEN）
+ *   v3 contract（有 @GEMS-TDD:）:
+ *     @GEMS-TDD 路徑 → vitest --run
+ *   無測試路徑 → tsc --noEmit（DB/UI/外部依賴層，只驗型別）
  *
  * TDD 原則:
  *   - 測試是規格，不能動測試檔
  *   - Phase 1 骨架是 RED 狀態（測試 failing）
  *   - Phase 2 修實作讓測試 GREEN
- *
- * 取代舊 ac-runner 機制（v6.x @GEMS-AC-* 標籤已 deprecated）
  */
 'use strict';
 
@@ -33,10 +34,39 @@ function findContractFile(target, iteration) {
   return contract ? path.join(iterDir, contract) : null;
 }
 
-// ── 從 contract 提取 @GEMS-TDD 路徑（支援多個）──
+// ── 從 contract 提取測試路徑（v4: @TEST / v3: @GEMS-TDD）──
 function extractTddPaths(contractContent) {
-  const matches = [...contractContent.matchAll(/\/\/\s*@GEMS-TDD:\s*(.+)/g)];
-  return matches.map(m => m[1].trim()).filter(Boolean);
+  const isV4 = /\/\/\s*@CONTRACT:\s*\w+/.test(contractContent);
+  if (isV4) {
+    // v4: 讀 @TEST:，過濾 @TEST-SKIP: 開頭的行
+    const matches = [...contractContent.matchAll(/\/\/\s*@TEST:\s*(.+)/g)];
+    return {
+      paths: matches
+        .map(m => m[1].trim())
+        .filter(p => p && p.match(/\.(test|spec)\.(ts|tsx)$/)),
+      isV4: true,
+    };
+  } else {
+    // v3: 讀 @GEMS-TDD:
+    const matches = [...contractContent.matchAll(/\/\/\s*@GEMS-TDD:\s*(.+)/g)];
+    return {
+      paths: matches.map(m => m[1].trim()).filter(Boolean),
+      isV4: false,
+    };
+  }
+}
+
+// ── 驗 it()/test() 呼叫存在（v4 only）──
+function verifyTestContent(target, testPaths) {
+  const empty = [];
+  for (const p of testPaths) {
+    const abs = path.join(target, p);
+    if (!fs.existsSync(abs)) continue;
+    const content = fs.readFileSync(abs, 'utf8');
+    const hasTestCall = /\bit\s*\(|\btest\s*\(/.test(content);
+    if (!hasTestCall) empty.push(p);
+  }
+  return empty;
 }
 
 // ── 跑 vitest ──
@@ -52,14 +82,14 @@ function runVitest(target, tddPaths, options) {
   const missingPaths = tddPaths.filter(p => !existingPaths.includes(p));
 
   if (missingPaths.length > 0) {
-    console.log(`\n⚠️  測試檔不存在（contract 階段應已建立）:`);
+    console.log(`\n⚠️  測試檔不存在（contract-gate @TEST 應已驗過）:`);
     missingPaths.forEach(p => console.log(`   ✗ ${p}`));
   }
 
   if (existingPaths.length === 0) {
     emitBlock({
       scope: `BUILD Phase 2 | ${story}`,
-      summary: `@GEMS-TDD 指定的測試檔均不存在，請在 contract 階段建立測試檔`,
+      summary: `@TEST 指定的測試檔均不存在，請確認 contract-gate CG-003 已通過`,
       details: tddPaths.map(p => `  ✗ ${p}`).join('\n'),
       nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
     }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
@@ -212,11 +242,24 @@ function run(options) {
   }
 
   const contractContent = fs.readFileSync(contractFile, 'utf8');
-  const tddPaths = extractTddPaths(contractContent);
+  const { paths: tddPaths, isV4 } = extractTddPaths(contractContent);
 
   const sharedOptions = { story, iteration, level, relativeTarget, iterNum };
 
   if (tddPaths.length > 0) {
+    // v4: 額外驗 it()/test() 呼叫存在
+    if (isV4) {
+      const emptyFiles = verifyTestContent(target, tddPaths);
+      if (emptyFiles.length > 0) {
+        emitBlock({
+          scope: `BUILD Phase 2 | ${story}`,
+          summary: `@TEST 檔案存在但無 it()/test() 呼叫（空殼測試）`,
+          details: emptyFiles.map(p => `  ✗ ${p} — 缺少 it() 或 test() 呼叫`).join('\n'),
+          nextCmd: `補齊測試案例後重跑 phase-2`
+        }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+        return { verdict: 'BLOCKER' };
+      }
+    }
     return runVitest(target, tddPaths, sharedOptions);
   } else {
     return runTsc(target, sharedOptions);

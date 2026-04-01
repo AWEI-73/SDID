@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 4: 標籤品質複查 + Fillback (v6.0)
- * 合併原 Phase 2（標籤掃描）+ Phase 8（Fillback）
+ * BUILD Phase 4: 標籤品質複查 + SCAN 注入 (v7.1)
  *
  * 職責:
- * - GEMS 標籤品質複查（P0-P3 全覆蓋，不是第一次強制）
- * - TDD 覆蓋率確認（@GEMS-TDD 指定的測試檔是否存在）
- * - 自動產出 Fillback_Story-X.Y.md + iteration_suggestions_Story-X.Y.json
+ * - GEMS 標籤品質複查（假實作偵測 + P0 FLOW 驗證）
+ * - TDD 覆蓋率確認（v4: @TEST / v3: @GEMS-TDD）
+ * - SCAN 注入 flow+testPath 到 functions.json
  * - 判斷是否進入下一個 Story 或完成 iteration
+ *
+ * 移除（M28-5）：Fillback_Story-X.Y.md + iteration_suggestions_Story-X.Y.json
  */
 'use strict';
 
@@ -19,8 +20,7 @@ const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { clearCheckpoints } = require('../../lib/checkpoint.cjs');
 const { detectProjectType, getSrcDir, getSrcDirs } = require('../../lib/shared/project-type.cjs');
 const { handlePhaseSuccess } = require('../../lib/shared/error-handler.cjs');
-const { getStoryContext, formatStoryContext } = require('../../lib/plan/plan-spec-extractor.cjs');
-const { validate: validateSuggestions } = require('../../lib/suggestions-validator.cjs');
+const { getStoryContext } = require('../../lib/plan/plan-spec-extractor.cjs');
 
 // GEMS 掃描器
 let scanUnified = null;
@@ -31,7 +31,7 @@ try {
   scanGemsTags = mod.scanGemsTags;
 } catch { /* 可選 */ }
 
-/** GEMS: buildPhase4 | P1 | collectOutputs(IO)→writeEmitJson(IO)→updateState(IO)→RETURN:PhaseResult | Story-4.0 */
+/** GEMS: buildPhase4 | P1 | checkTagQuality(IO)→checkAcCoverage(IO)→runScan(IO)→RETURN:PhaseResult | Story-4.0 */
 function run(options) {
   const { target, iteration = 'iter-1', story, level = 'M' } = options;
   const relativeTarget = path.relative(process.cwd(), target) || '.';
@@ -53,15 +53,13 @@ function run(options) {
   const srcPath = srcPaths.find(p => fs.existsSync(p)) || srcPaths[0];     // 向後相容單一路徑
   const buildPath = path.join(target, `.gems/iterations/${iteration}/build`);
   const planPath = path.join(target, `.gems/iterations/${iteration}/plan`);
-  const fillbackFile = path.join(buildPath, `Fillback_${story}.md`);
-  const suggestionsFile = path.join(buildPath, `iteration_suggestions_${story}.json`);
   const implPlanPath = path.join(planPath, `implementation_plan_${story}.md`);
 
   if (!fs.existsSync(buildPath)) fs.mkdirSync(buildPath, { recursive: true });
 
   const storyContext = getStoryContext(implPlanPath);
 
-  console.log(`\n🏷️  標籤品質複查 + Fillback | ${story}`);
+  console.log(`\n🏷️  標籤品質複查 + SCAN | ${story}`);
 
   // ============================================
   // 1. GEMS 標籤品質複查
@@ -87,59 +85,27 @@ function run(options) {
   }
 
   // ============================================
-  // 2. AC 覆蓋率確認
+  // 2. AC 覆蓋率確認（v4: @TEST / v3: @GEMS-TDD）
   // ============================================
   const acCoverage = checkAcCoverage(target, iteration, srcPath, story);
 
   // ============================================
-  // 3. 產出 Fillback + Suggestions（如果還沒有）
+  // 3. SCAN 注入 flow+testPath 到 functions.json
   // ============================================
-  if (!fs.existsSync(fillbackFile) || !fs.existsSync(suggestionsFile)) {
-    const genResult = autoGenerateOutputs(target, iteration, story, buildPath, storyContext, srcPaths, tagIssues, acCoverage);
-    if (!genResult.success) {
-      emitFix({
-        scope: `BUILD Phase 4 | ${story}`,
-        summary: `自動產出失敗: ${genResult.error}`,
-        targetFile: buildPath,
-        missing: ['Fillback_Story-X.Y.md', 'iteration_suggestions_Story-X.Y.json'],
-        nextCmd: getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration })
-      }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-4', story });
-      return { verdict: 'PENDING', reason: 'auto_gen_failed' };
-    }
-
-    console.log(`\n✅ 自動產出完成`);
-    console.log(`   Fillback: ${path.relative(target, fillbackFile)}`);
-    console.log(`   Suggestions: ${path.relative(target, suggestionsFile)}`);
-
-    // 立即驗證自動產出的結果，若通過則不需要第二次執行
-    const quickValidation = validateOutputs(fillbackFile, suggestionsFile);
-    if (!quickValidation.valid) {
-      console.log(`\n📝 請填寫 Suggestions 中的 TODO 欄位後重跑`);
-      console.log(`NEXT: ${getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration })}`);
-      return { verdict: 'PENDING', reason: 'fillback_generated' };
-    }
-    // 自動產出且驗證通過 → 繼續執行後續流程（不返回 PENDING）
-  }
+  runScan(srcPaths, target, iteration, story);
 
   // ============================================
-  // 4. 驗證已有的 Fillback + Suggestions
+  // 4. 全部通過 — 寫完成標記，清除 checkpoints，判斷下一步
   // ============================================
-  const validation = validateOutputs(fillbackFile, suggestionsFile);
+  // 寫完成標記（取代舊 Fillback 做為 findCompletedStories 依據）
+  try {
+    fs.writeFileSync(
+      path.join(buildPath, `phase4-done_${story}`),
+      JSON.stringify({ storyId: story, iteration, completedAt: new Date().toISOString() }, null, 2),
+      'utf8'
+    );
+  } catch { /* 非關鍵 */ }
 
-  if (!validation.valid) {
-    emitFix({
-      scope: `BUILD Phase 4 | ${story}`,
-      summary: `Fillback/Suggestions 驗證失敗`,
-      targetFile: suggestionsFile,
-      missing: validation.errors,
-      nextCmd: getRetryCmd('BUILD', '4', { story, target: relativeTarget, iteration })
-    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-4', story });
-    return { verdict: 'PENDING', reason: 'validation_failed' };
-  }
-
-  // ============================================
-  // 5. 全部通過 — 清除 checkpoints，判斷下一步
-  // ============================================
   handlePhaseSuccess('BUILD', '4', story, target);
   clearCheckpoints(target, iteration, story);
 
@@ -240,11 +206,12 @@ function checkTagQuality(srcPathOrPaths, story, target, iteration) {
 }
 
 /**
- * v7.0: TDD 覆蓋率確認
- * 讀 contract_iter-N.ts 的 @GEMS-TDD 路徑，確認測試檔是否存在
+ * v7.1: TDD 覆蓋率確認（雙模式）
+ * - v4 contract（有 @CONTRACT:）→ 讀 @TEST: 路徑
+ * - v3 contract → 讀 @GEMS-TDD: 路徑
  */
 function checkAcCoverage(target, iteration, srcPath, story) {
-  const result = { total: 0, covered: 0, uncovered: [] };
+  const result = { total: 0, covered: 0, uncovered: [], isV4: false };
 
   const iterNum = iteration.replace('iter-', '');
   const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
@@ -252,12 +219,28 @@ function checkAcCoverage(target, iteration, srcPath, story) {
 
   try {
     const content = fs.readFileSync(contractPath, 'utf8');
+    const isV4 = /\/\/\s*@CONTRACT:\s*\w+/.test(content);
+    result.isV4 = isV4;
+
     const tddPaths = [];
-    const pattern = /\/\/\s*@GEMS-TDD:\s*(.+)/g;
-    let m;
-    while ((m = pattern.exec(content)) !== null) {
-      const p = m[1].trim();
-      if (!tddPaths.includes(p)) tddPaths.push(p);
+    if (isV4) {
+      // v4: 讀 @TEST: 路徑（過濾非 .test.ts 格式的）
+      const pattern = /\/\/\s*@TEST:\s*(.+)/g;
+      let m;
+      while ((m = pattern.exec(content)) !== null) {
+        const p = m[1].trim();
+        if (p && /\.(test|spec)\.(ts|tsx)$/.test(p) && !tddPaths.includes(p)) {
+          tddPaths.push(p);
+        }
+      }
+    } else {
+      // v3: 讀 @GEMS-TDD: 路徑
+      const pattern = /\/\/\s*@GEMS-TDD:\s*(.+)/g;
+      let m;
+      while ((m = pattern.exec(content)) !== null) {
+        const p = m[1].trim();
+        if (p && !tddPaths.includes(p)) tddPaths.push(p);
+      }
     }
 
     result.total = tddPaths.length;
@@ -272,155 +255,22 @@ function checkAcCoverage(target, iteration, srcPath, story) {
 }
 
 /**
- * 自動產出 Fillback + Suggestions
+ * SCAN 注入：將 flow+testPath 從 contract 注入到 functions.json（M28-5/M28-8）
+ * scanUnified 存在時自動執行；不存在時靜默跳過
  */
-function autoGenerateOutputs(target, iteration, story, buildPath, storyContext, srcPathOrPaths, tagIssues, acCoverage) {
+function runScan(srcPaths, target, iteration, story) {
+  if (!scanUnified) return;
+  const existingPaths = srcPaths.filter(p => fs.existsSync(p));
+  if (existingPaths.length === 0) return;
   try {
-    // 支援單一路徑或多路徑陣列
-    const srcPaths = Array.isArray(srcPathOrPaths) ? srcPathOrPaths : [srcPathOrPaths];
-    const existingPaths = srcPaths.filter(p => fs.existsSync(p));
-    // 合併所有 srcDirs 的掃描結果
-    const allFunctions = [];
+    // 觸發掃描（gems-scanner-unified 會自行寫 functions.json）
     for (const sp of existingPaths) {
-      const r = scanUnified ? scanUnified(sp, target) : { functions: [] };
-      allFunctions.push(...(r.functions || []));
+      scanUnified(sp, target);
     }
-    const scanResult = { functions: allFunctions, stats: { p0: 0, p1: 0, p2: 0, p3: 0 } };
-    const storyFunctions = scanResult.functions.filter(f => f.storyId === story);
-
-    const qualityIssues = tagIssues.critical.map(i => ({
-      type: 'TAG_QUALITY',
-      severity: 'CRITICAL',
-      message: i.message,
-      file: i.file
-    }));
-
-    if (acCoverage.uncovered.length > 0) {
-      acCoverage.uncovered.forEach(p => {
-        qualityIssues.push({
-          type: 'TDD_MISSING',
-          severity: 'WARNING',
-          path: p,
-          message: `測試檔不存在: ${p}`
-        });
-      });
-    }
-
-    const suggestions = {
-      storyId: story,
-      iterationId: iteration,
-      status: 'Completed',
-      completedItems: storyFunctions.length > 0
-        ? [{ itemId: 1, name: '實作完成', functions: storyFunctions.map(f => f.name) }]
-        : [],
-      tagStats: {
-        p0: tagIssues.p0, p1: tagIssues.p1,
-        p2: tagIssues.p2, p3: tagIssues.p3,
-        total: tagIssues.total
-      },
-      acCoverage: {
-        total: acCoverage.total,
-        covered: acCoverage.covered,
-        uncovered: acCoverage.uncovered
-      },
-      technicalHighlights: storyFunctions.length > 0
-        ? storyFunctions.map(f => `實作 ${f.name}（${f.priority || 'P1'}）`)
-        : (storyContext && storyContext.items && storyContext.items.length > 0
-            ? storyContext.items.map(i => `完成 ${i.id}: ${i.name || i.id}`)
-            : ['Story 實作完成']),
-      technicalDebt: [],
-      suggestions: qualityIssues.length === 0
-        ? [{ type: 'QUALITY', message: `${story} 標籤與 TDD 品質良好，建議繼續下一個 Story` }]
-        : [],
-      qualityIssues: qualityIssues.length > 0 ? qualityIssues : undefined,
-      nextIteration: {
-        suggestedGoal: storyContext && storyContext.storyName
-          ? `繼續 ${storyContext.storyId} 後續 Story 開發`
-          : '繼續下一個 Story 開發',
-        suggestedItems: []
-      },
-      blockers: []
-    };
-
-    fs.writeFileSync(
-      path.join(buildPath, `iteration_suggestions_${story}.json`),
-      JSON.stringify(suggestions, null, 2), 'utf8'
-    );
-
-    const fillback = [
-      `# Fillback ${story}`,
-      '',
-      `## 基本資訊`,
-      `- **Iteration**: ${iteration}`,
-      `- **Story ID**: ${story}`,
-      `- **Status**: Completed`,
-      `- **完成日期**: ${new Date().toISOString().split('T')[0]}`,
-      '',
-    ];
-
-    // Foundation Story（CONST/型別/骨架）通常沒有 TDD，統計可能為 0
-    const isFoundation = story.endsWith('.0') || (storyContext && storyContext.storyType === 'Foundation');
-    const hasTdd = acCoverage.total > 0;
-
-    if (isFoundation && !hasTdd) {
-      fillback.push(`## Foundation Story — 不適用`);
-      fillback.push(`此 Story 為骨架/型別定義層，無 @GEMS-TDD，標籤統計與 TDD 覆蓋不適用。`);
-      fillback.push(`驗收方式：TypeScript 編譯通過（tsc --noEmit）+ Phase 1 骨架映射完整。`);
-      fillback.push('');
-    } else {
-      fillback.push(`## 標籤統計`);
-      fillback.push(`- P0: ${tagIssues.p0} | P1: ${tagIssues.p1} | P2: ${tagIssues.p2} | P3: ${tagIssues.p3}`);
-      fillback.push('');
-      fillback.push(`## TDD 覆蓋`);
-      fillback.push(`- 總計: ${acCoverage.total} | 已存在: ${acCoverage.covered}`);
-      if (acCoverage.uncovered.length > 0) fillback.push(`- 缺少: ${acCoverage.uncovered.join(', ')}`);
-      fillback.push('');
-    }
-
-    fillback.push(`## 產出函式`);
-    fillback.push(...storyFunctions.map(f => `- \`${f.name}\` (${f.priority}) — ${f.description || ''}`));
-
-    fs.writeFileSync(path.join(buildPath, `Fillback_${story}.md`), fillback.filter(l => l !== undefined).join('\n'), 'utf8');
-
-    return { success: true };
+    console.log(`\n📡 SCAN 完成 → functions.json 已更新`);
   } catch (err) {
-    return { success: false, error: err.message };
+    console.log(`\n⚠️  SCAN 失敗（非 BLOCKER）: ${err.message}`);
   }
-}
-
-/**
- * 驗證 Fillback + Suggestions 必填欄位
- */
-function validateOutputs(fillbackFile, suggestionsFile) {
-  const errors = [];
-
-  if (!fs.existsSync(fillbackFile)) errors.push('Fillback_Story-X.Y.md 不存在');
-  if (!fs.existsSync(suggestionsFile)) errors.push('iteration_suggestions_Story-X.Y.json 不存在');
-
-  if (errors.length > 0) return { valid: false, errors };
-
-  try {
-    const json = JSON.parse(fs.readFileSync(suggestionsFile, 'utf8'));
-    if (!json.storyId) errors.push('suggestions.json 缺少 storyId');
-    if (!json.status) errors.push('suggestions.json 缺少 status');
-
-    // 零容忍：qualityIssues + suggestions 合計至少 1 個（v6 放寬，不強制 3 個）
-    const qiCount = Array.isArray(json.qualityIssues) ? json.qualityIssues.length : 0;
-    const sugCount = Array.isArray(json.suggestions) ? json.suggestions.length : 0;
-    if (qiCount + sugCount === 0) {
-      errors.push('suggestions.json 需要至少 1 個 qualityIssues 或 suggestions 條目');
-    }
-
-    // CRITICAL issues 必須修完
-    const criticals = (json.qualityIssues || []).filter(q => q.severity === 'CRITICAL');
-    if (criticals.length > 0) {
-      errors.push(`${criticals.length} 個 CRITICAL 品質問題未修復`);
-    }
-  } catch (e) {
-    errors.push(`suggestions.json 格式錯誤: ${e.message}`);
-  }
-
-  return { valid: errors.length === 0, errors };
 }
 
 function findPlannedStories(planPath) {
@@ -434,7 +284,7 @@ function findPlannedStories(planPath) {
 function findCompletedStories(buildPath) {
   if (!fs.existsSync(buildPath)) return [];
   return fs.readdirSync(buildPath)
-    .filter(f => f.startsWith('Fillback_'))
+    .filter(f => f.startsWith('phase4-done_'))
     .map(f => { const m = f.match(/Story-([\d.]+)/); return m ? `Story-${m[1]}` : null; })
     .filter(Boolean).sort();
 }

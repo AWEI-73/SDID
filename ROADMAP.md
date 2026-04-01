@@ -1,5 +1,5 @@
 # SDID 快速導航
-> 自動生成 — 2026-04-01 11:18:48 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
+> 自動生成 — 2026-04-01 12:34:23 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
 
 ## 框架路線
 ARCHITECTURE.md v7.0
@@ -43,16 +43,16 @@ _非 SDID 管理: ExamForge, OpenSpec-main, test-design-scoring, train-dashboard
 
 | ID | 任務 | 狀態 |
 |----|------|------|
-| M28-1 | tdd-contract-prompt.md 黃金樣板 LOCKED | ✅ done |
-| M28-2 | contract-gate.cjs CG-005（Behavior: 錯誤路徑 WARNING） | ⬜ pending |
-| M28-3 | phase-2.cjs @TEST 路徑存在性驗證 + it()/test() 確認 | ⬜ pending |
-| M28-4 | phase-3.cjs P0 SVC/API 整合測試驗證 | ⬜ pending |
-| M28-5 | phase-4.cjs 移除 Fillback/iteration_suggestions，SCAN 注入 flow+testPath | ⬜ pending |
-| M28-6 | plan-generator.cjs 第一步改為寫 @TEST 指定測試（RED） | ⬜ pending |
-| M28-7 | sdid/SKILL.md 移除 CYNEFIN 語意自預測，保留行為數量 gate | ⬜ pending |
-| M28-8 | GEMS Scanner 解析 @GEMS-FLOW 注入 functions.json behavior 欄位 | ⬜ pending |
-| M28-9 | 修復 functions.json storyId 空值（SCAN linkage broken） | ⬜ pending |
-| M28-10 | contract-golden.template.v4.ts 完整範例（SIMPLE/COMPLEX/HOOK） | ✅ done |
+| M28-1 | tdd-contract-prompt.md 黃金樣板 LOCKED（FLOW=method層級 | ✅ done |
+| M28-2 | contract-gate.cjs v5.2 — v4 HARNESS CG-001~005 + v3 相容（ | ✅ done |
+| M28-3 | phase-2.cjs v7.1 — @TEST 路徑支援 + it()/test() 空殼 BLOCKER  | ✅ done |
+| M28-4 | phase-3.cjs P0 SVC/API 整合測試驗證 | ✅ done |
+| M28-5 | phase-4.cjs 移除 Fillback/iteration_suggestions | ✅ done |
+| M28-6 | plan-generator.cjs v2.1 — v4 Step 0 寫 RED 測試 + parseV4C | ✅ done |
+| M28-7 | sdid/SKILL.md 移除 CYNEFIN 語意自預測節點 | ✅ done |
+| M28-8 | GEMS Scanner 讀簡化 1 行標籤 + 解析 @GEMS-FLOW 注入 functions.jso | ✅ done |
+| M28-9 | 修復 functions.json storyId 空值（SCAN linkage broken） | ✅ done |
+| M28-10 | contract-golden.template.v4.ts 完整範例（SIMPLE/COMPLEX/HOOK | ✅ done |
 
 ## GEMS 標籤格式（v4 簡化版）
 

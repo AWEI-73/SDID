@@ -16,18 +16,18 @@
     {
       "id": "M28",
       "label": "M28 — HARNESS 演進：Contract 黃金樣板（@CONTRACT/@TEST/@RISK/@GEMS-FLOW/Behavior:）+ TDD-first + GEMS 標籤 1 行簡化 + CYNEFIN 改行為數量 gate",
-      "status": "in-progress",
+      "status": "done",
       "priority": 1,
       "subtasks": [
         { "id": "M28-1", "label": "tdd-contract-prompt.md 黃金樣板 LOCKED（FLOW=method層級，Behavior:/FLOW/TEST三層對應）", "status": "done" },
         { "id": "M28-2", "label": "contract-gate.cjs v5.2 — v4 HARNESS CG-001~005 + v3 相容（auto-detect format）", "status": "done" },
         { "id": "M28-3", "label": "phase-2.cjs v7.1 — @TEST 路徑支援 + it()/test() 空殼 BLOCKER + v3 相容", "status": "done" },
-        { "id": "M28-4", "label": "phase-3.cjs P0 SVC/API 整合測試驗證", "status": "pending" },
-        { "id": "M28-5", "label": "phase-4.cjs 移除 Fillback/iteration_suggestions，SCAN 注入 flow+testPath 到 functions.json", "status": "pending" },
+        { "id": "M28-4", "label": "phase-3.cjs P0 SVC/API 整合測試驗證", "status": "done" },
+        { "id": "M28-5", "label": "phase-4.cjs 移除 Fillback/iteration_suggestions，SCAN 注入 flow+testPath 到 functions.json", "status": "done" },
         { "id": "M28-6", "label": "plan-generator.cjs v2.1 — v4 Step 0 寫 RED 測試 + parseV4Contracts()", "status": "done" },
-        { "id": "M28-7", "label": "sdid/SKILL.md 移除 CYNEFIN 語意自預測節點，CYNEFIN 改為行為數量 gate", "status": "pending" },
-        { "id": "M28-8", "label": "GEMS Scanner 讀簡化 1 行標籤 + 解析 @GEMS-FLOW 注入 functions.json behavior/flowComplexity", "status": "pending" },
-        { "id": "M28-9", "label": "修復 functions.json storyId 空值（SCAN linkage broken）", "status": "pending" },
+        { "id": "M28-7", "label": "sdid/SKILL.md 移除 CYNEFIN 語意自預測節點，CYNEFIN 改為行為數量 gate", "status": "done" },
+        { "id": "M28-8", "label": "GEMS Scanner 讀簡化 1 行標籤 + 解析 @GEMS-FLOW 注入 functions.json behavior/flowComplexity", "status": "done" },
+        { "id": "M28-9", "label": "修復 functions.json storyId 空值（SCAN linkage broken）", "status": "done" },
         { "id": "M28-10", "label": "contract-golden.template.v4.ts 完整範例（SIMPLE/COMPLEX/HOOK），@GEMS-VIEW 移除改 @GEMS-HOOK", "status": "done" }
       ]
     }

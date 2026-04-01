@@ -538,22 +538,25 @@ function generateRoadmap(hub) {
     lines.push('');
   }
 
-  // ── M28 HARNESS 演進進度 ──
-  lines.push(`## M28 — HARNESS 演進進度`);
-  lines.push('');
-  lines.push('| ID | 任務 | 狀態 |');
-  lines.push('|----|------|------|');
-  lines.push('| M28-1 | tdd-contract-prompt.md 黃金樣板 LOCKED | ✅ done |');
-  lines.push('| M28-2 | contract-gate.cjs CG-005（Behavior: 錯誤路徑 WARNING） | ⬜ pending |');
-  lines.push('| M28-3 | phase-2.cjs @TEST 路徑存在性驗證 + it()/test() 確認 | ⬜ pending |');
-  lines.push('| M28-4 | phase-3.cjs P0 SVC/API 整合測試驗證 | ⬜ pending |');
-  lines.push('| M28-5 | phase-4.cjs 移除 Fillback/iteration_suggestions，SCAN 注入 flow+testPath | ⬜ pending |');
-  lines.push('| M28-6 | plan-generator.cjs 第一步改為寫 @TEST 指定測試（RED） | ⬜ pending |');
-  lines.push('| M28-7 | sdid/SKILL.md 移除 CYNEFIN 語意自預測，保留行為數量 gate | ⬜ pending |');
-  lines.push('| M28-8 | GEMS Scanner 解析 @GEMS-FLOW 注入 functions.json behavior 欄位 | ⬜ pending |');
-  lines.push('| M28-9 | 修復 functions.json storyId 空值（SCAN linkage broken） | ⬜ pending |');
-  lines.push('| M28-10 | contract-golden.template.v4.ts 完整範例（SIMPLE/COMPLEX/HOOK） | ✅ done |');
-  lines.push('');
+  // ── M28 HARNESS 演進進度（動態從 milestones.json 讀取）──
+  try {
+    const msPath = path.join(__dirname, 'milestones.json');
+    const msData = JSON.parse(fs.readFileSync(msPath, 'utf8'));
+    const m28 = msData.milestones.find(m => m.id === 'M28');
+    if (m28 && m28.subtasks) {
+      const statusIcon = s => s === 'done' ? '✅ done' : s === 'in-progress' ? '🔄 in-progress' : '⬜ pending';
+      lines.push(`## M28 — HARNESS 演進進度`);
+      lines.push('');
+      lines.push('| ID | 任務 | 狀態 |');
+      lines.push('|----|------|------|');
+      for (const sub of m28.subtasks) {
+        // 短標籤：取 label 的首段（| 前）或全文
+        const shortLabel = sub.label.split('，')[0].slice(0, 55);
+        lines.push(`| ${sub.id} | ${shortLabel} | ${statusIcon(sub.status)} |`);
+      }
+      lines.push('');
+    }
+  } catch { /* milestones.json 不可用時靜默跳過 */ }
 
   // ── GEMS 標籤格式（v4）──
   lines.push(`## GEMS 標籤格式（v4 簡化版）`);

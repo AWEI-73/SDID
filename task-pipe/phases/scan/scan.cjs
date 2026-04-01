@@ -182,7 +182,10 @@ function runBuiltinScan(target, srcDirs, iteration, docsPath, backupsPath, iterP
       } catch { /* enhanced not available, skip index */ }
     }
 
-    // 產出 functions.json (v7.0 含行號)
+    // M28-8: contract cross-reference — 從 contract 注入 behavior/testPath/flowComplexity
+    const contractFlows = loadContractFlows(target, iteration);
+
+    // 產出 functions.json (v7.1 含 flowComplexity/behavior/testPath)
     const functionsJson = {
       version: scannerVersion,
       generatedBy: 'scan',
@@ -196,24 +199,36 @@ function runBuiltinScan(target, srcDirs, iteration, docsPath, backupsPath, iterP
         P3: scanResult.stats.p3
       },
       avgFunctionLines: scanResult.stats.avgFunctionLines || 0,
-      functions: scanResult.functions.map(f => ({
-        name: f.name,
-        file: f.file,
-        // v7.0: 新增行號欄位
-        startLine: f.startLine || f.line || null,
-        endLine: f.endLine || null,
-        commentLine: f.commentLine || null,
-        lines: f.lines || null,
-        // 原有欄位
-        risk: f.priority,
-        description: f.description || '',
-        signature: f.signature || '',
-        storyId: f.storyId || '',
-        flow: f.flow || '',
-        deps: f.deps || [],
-        depsRisk: f.depsRisk || '',
-        testStatus: f.testStatus || ''
-      })),
+      functions: scanResult.functions.map(f => {
+        const flow = f.flow || '';
+        // M28-8: flowComplexity = FLOW 步驟數（以 → 分隔）
+        const flowComplexity = flow ? flow.split('→').length : 0;
+        // M28-8: 從 contract 注入 behavior + testPath
+        const contractInfo = contractFlows[f.name] || null;
+        return {
+          name: f.name,
+          file: f.file,
+          // v7.0: 行號欄位
+          startLine: f.startLine || f.line || null,
+          endLine: f.endLine || null,
+          commentLine: f.commentLine || null,
+          lines: f.lines || null,
+          // 原有欄位
+          risk: f.priority,
+          description: f.description || '',
+          signature: f.signature || '',
+          // M28-9: storyId 保持 null 而非空字串，避免 linkage broken
+          storyId: f.storyId || null,
+          flow,
+          flowComplexity,
+          deps: f.deps || [],
+          depsRisk: f.depsRisk || '',
+          testStatus: f.testStatus || '',
+          // M28-8: contract 注入欄位
+          testPath: contractInfo?.testPath || null,
+          behavior: contractInfo?.behaviors || null,
+        };
+      }),
       // M17: untagged 函式清單
       untagged: (raw.untagged || []).map(f => ({
         name: f.name,
@@ -571,6 +586,35 @@ if (require.main === module) {
   }
 
   run({ target, iteration });
+}
+
+/**
+ * M28-8: 從 contract 讀取 @CONTRACT: 區塊，建立 name → { testPath, behaviors } 的映射
+ * 支援 v4（@CONTRACT:）格式；v3 或無 contract 時回傳 {}
+ */
+function loadContractFlows(target, iteration) {
+  const map = {};
+  try {
+    const iterNum = iteration.replace('iter-', '');
+    const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
+    if (!fs.existsSync(contractPath)) return map;
+    const content = fs.readFileSync(contractPath, 'utf8');
+    if (!/\/\/\s*@CONTRACT:\s*\w+/.test(content)) return map; // v3 → 不處理
+
+    const blockRegex = /\/\/\s*@CONTRACT:\s*(.+?)(?=\n\/\/\s*@CONTRACT:|\nexport\s+(?:interface|declare|type|class|function)|$)/gs;
+    for (const m of content.matchAll(blockRegex)) {
+      const block = m[0];
+      const name = m[1].trim().split('|')[0].trim();
+      if (!name) continue;
+      const testMatch = block.match(/\/\/\s*@TEST:\s*(.+\.(?:test|spec)\.tsx?)/);
+      const behaviorLines = [...block.matchAll(/\/\/\s*-\s*(.+)/g)].map(b => b[1].trim());
+      map[name] = {
+        testPath: testMatch ? testMatch[1].trim() : null,
+        behaviors: behaviorLines.length > 0 ? behaviorLines : null,
+      };
+    }
+  } catch { /* 非 BLOCKER */ }
+  return map;
 }
 
 module.exports = { run };

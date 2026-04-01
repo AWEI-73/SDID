@@ -176,7 +176,7 @@ Draft 完成 → CYNEFIN-CHECK（行為數量 gate）→ @PASS
 - 讀 [references/blueprint-design.md](references/blueprint-design.md) → CONTINUE 段落
 - 觸發條件：主藍圖 ACTIVE + 有下一個未開始 iter（`.gems/design/draft_iter-N.md` 不存在）
 - 執行步驟：讀主藍圖 → 找下一個未開始 iter → 補需求描述 + Demo Checkpoint → 產出 Draft → draft-gate 驗證 → 存檔
-- **Terminal**: Draft 產出 + gate 通過 → 自動進入 CYNEFIN-CHECK → FLOW-REVIEW → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
+- **Terminal**: Draft 產出 + gate 通過 → 自動進入 CYNEFIN-CHECK → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
 
 ### POC-FIX 模式
 - 讀 [references/poc-fix.md](references/poc-fix.md) 取得四階段執行規則（SETUP → VERIFY → CONSOLIDATE → BUILD+TEST）
@@ -188,7 +188,7 @@ Draft 完成 → CYNEFIN-CHECK（行為數量 gate）→ @PASS
 - 讀 [references/blueprint-design.md](references/blueprint-design.md) 取得完整規則
 - 第一步必須是問使用者問題，不是讀檔案
 - 禁止讀取 src/*、.gems/*（設計階段不需要看程式碼）
-- **Terminal**: 5輪對話完成 + Enhanced Draft 產出 → 自動進入 CYNEFIN-CHECK → FLOW-REVIEW → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
+- **Terminal**: 5輪對話完成 + Enhanced Draft 產出 → 自動進入 CYNEFIN-CHECK → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
 
 ### BUILD-AUTO 模式
 - 讀 [references/build-execution.md](references/build-execution.md) 取得 BUILD 規則
@@ -197,12 +197,12 @@ Draft 完成 → CYNEFIN-CHECK（行為數量 gate）→ @PASS
   - **MCP 不可用時**：直接執行 `node task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<project>`
   - ⚠️ 禁止直接 `node sdid-tools/mcp-server/adapters/loop.mjs`，這是 MCP adapter，不是 CLI 工具
 - 收到 @TASK 時直接修復，不要回讀 plan 或架構文件
-- **TDD 驗收規則**：
-  - Phase 2 讀 contract.ts 找 `@GEMS-TDD` 標籤 → vitest --run（有 @GEMS-TDD）或 tsc --noEmit（無 @GEMS-TDD）
-  - 測試在 contract 階段就要寫好（真正的 TDD：先測試後實作）
-  - Phase 1 骨架是 RED 狀態（測試 failing），Phase 2 修實作讓測試 GREEN
-  - 不能動測試檔（測試是規格）
-  - DB/UI/外部依賴的 Story 不加 @GEMS-TDD，Phase 2 只跑 tsc --noEmit
+- **TDD 驗收規則（v4 HARNESS）**：
+  - Phase 2 讀 contract.ts：v4（有 `@CONTRACT:`）→ 找 `@TEST:` 路徑；v3 → 找 `@GEMS-TDD:` 路徑
+  - 有測試路徑 → vitest --run；無測試路徑 → tsc --noEmit
+  - plan 的 Step 0：先寫 RED 測試（@TEST 指定路徑），Phase 1 骨架是 RED，Phase 2 修實作讓測試 GREEN
+  - 不能動測試檔（測試是規格，Behavior: 每行 = 一個 it()）
+  - DB/UI/外部依賴的 Story 不加 @TEST，Phase 2 只跑 tsc --noEmit
   - 舊 @GEMS-AC-* 標籤已 deprecated（v7.0），contract-gate 會輸出 @GUIDED 提示
 - **Terminal**: 所有 Phase `@PASS` → 回報完成的 Story 與 Phase 數量，停止，等待使用者下一指令
 
@@ -211,7 +211,7 @@ Draft 完成 → CYNEFIN-CHECK（行為數量 gate）→ @PASS
 - 適用：需求明確（滿足「需求明確」判斷標準 3 項以上）或使用者說「快速建」「練習」「小專案」
 - 如果使用者已描述清楚，跳過確認直接引導建立 `draft_iter-N.md`
 - 禁止讀取 `src/*`（設計階段不看程式碼）
-- **Terminal**: draft 產出 → 自動進入 CYNEFIN-CHECK → FLOW-REVIEW → CONTRACT → BUILD-AUTO，不等待使用者確認
+- **Terminal**: draft 產出 → 自動進入 CYNEFIN-CHECK → CONTRACT → BUILD-AUTO，不等待使用者確認
 
 ### RERUN-PHASE 模式
 - 使用者要求重跑特定 Phase（如「重跑 Phase 2」「Phase 3 重跑」）

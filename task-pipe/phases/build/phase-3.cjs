@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * BUILD Phase 3: 整合層 (v7.0)
+ * BUILD Phase 3: 整合層 (v7.1)
  * 合併原 Phase 6+7 的跨模組整合檢查
  *
  * 職責:
+ * - P0 SVC/API 整合測試非 Mock 驗證（M28-4）
  * - 路由整合（Page 組件已掛載）
  * - 模組匯出（barrel export 完整）
  * - UI Bind 驗證（Vanilla JS 專案）
@@ -49,6 +50,31 @@ function run(options) {
   const srcPath = getSrcDir(target, projectType);
 
   console.log(`\n🔗 整合層 | ${story}`);
+
+  // ============================================
+  // 0. P0 SVC/API 整合測試非 Mock 驗證（M28-4）
+  // ============================================
+  const p0MockIssues = checkP0SvcApiNonMock(target, iteration, story);
+  if (p0MockIssues.blockers.length > 0) {
+    const tasks = p0MockIssues.blockers.map(issue => ({
+      action: 'FIX_INTEGRATION_TEST',
+      file: issue.testPath,
+      expected: issue.message,
+      acSpec: `P0 SVC/API 整合測試禁止 mock 本地依賴`
+    }));
+    emitFix({
+      scope: `BUILD Phase 3 | ${story}`,
+      summary: `P0 SVC/API 整合測試包含本地 mock（${p0MockIssues.blockers.length} 個）`,
+      targetFile: p0MockIssues.blockers[0]?.testPath || 'src/',
+      missing: p0MockIssues.blockers.map(i => i.message),
+      nextCmd: getRetryCmd('BUILD', '3', { story, target: relativeTarget, iteration }),
+      tasks
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-3', story });
+    return { verdict: 'BLOCKER', reason: 'p0_svc_api_local_mock' };
+  }
+  if (p0MockIssues.checked > 0) {
+    console.log(`   ✅ P0 SVC/API 整合測試: ${p0MockIssues.checked} 個已驗（無本地 mock）`);
+  }
 
   // ============================================
   // 1. 路由整合檢查
@@ -245,6 +271,61 @@ function findExportIssues(srcPath, target, iteration, story) {
   }
 
   return { critical, warnings };
+}
+
+/**
+ * M28-4: P0 SVC/API 整合測試非 Mock 驗證
+ * 從 contract 找 P0 SVC/API @TEST 路徑，確認測試檔不 mock 本地依賴（src/）
+ * @returns {{ checked: number, blockers: [{testPath, message}] }}
+ */
+function checkP0SvcApiNonMock(target, iteration, story) {
+  const result = { checked: 0, blockers: [] };
+
+  const iterNum = iteration.replace('iter-', '');
+  const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
+  if (!fs.existsSync(contractPath)) return result;
+
+  let content;
+  try { content = fs.readFileSync(contractPath, 'utf8'); } catch { return result; }
+
+  const isV4 = /\/\/\s*@CONTRACT:\s*\w+/.test(content);
+  if (!isV4) return result; // v3 不做此檢查
+
+  // 從 @CONTRACT: 區塊找 P0 SVC/API 的 @TEST 路徑
+  const blockRegex = /\/\/\s*@CONTRACT:\s*(.+?)(?=\n\/\/\s*@CONTRACT:|\nexport\s+(?:interface|declare|type|class|function)|$)/gs;
+  for (const m of content.matchAll(blockRegex)) {
+    const block = m[0];
+    const headerParts = m[1].trim().split('|').map(s => s.trim());
+    const priority = headerParts[1] || '';
+    const type = headerParts[2] || '';
+    if (priority !== 'P0') continue;
+    if (!/^(SVC|API)$/.test(type)) continue;
+
+    const testMatch = block.match(/\/\/\s*@TEST:\s*(.+\.(?:test|spec)\.tsx?)/);
+    if (!testMatch) continue;
+    const testPath = testMatch[1].trim();
+    const testAbs = path.join(target, testPath);
+    if (!fs.existsSync(testAbs)) continue;
+
+    let testContent;
+    try { testContent = fs.readFileSync(testAbs, 'utf8'); } catch { continue; }
+
+    result.checked++;
+
+    // 找 vi.mock() 或 jest.mock() 呼叫本地路徑（相對路徑 './' / '../' 或含 'src/'）
+    const localMockPattern = /(?:vi|jest)\.mock\s*\(\s*['"](?:\.{1,2}\/|src\/)[^'"]+['"]/g;
+    const localMocks = [...testContent.matchAll(localMockPattern)].map(m2 => m2[0].slice(0, 60));
+
+    if (localMocks.length > 0) {
+      const name = headerParts[0] || 'Unknown';
+      result.blockers.push({
+        testPath,
+        message: `${name} (P0 ${type}): ${testPath} 包含本地 mock — ${localMocks[0]}...`
+      });
+    }
+  }
+
+  return result;
 }
 
 function findNewPages(srcPath) {

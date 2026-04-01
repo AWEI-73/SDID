@@ -1,5 +1,5 @@
 # SDID 快速導航
-> 自動生成 — 2026-04-01 11:07:28 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
+> 自動生成 — 2026-04-01 11:17:53 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
 
 ## 框架路線
 ARCHITECTURE.md v7.0
@@ -40,7 +40,6 @@ ARCHITECTURE.md v7.0
 _非 SDID 管理: ExamForge, OpenSpec-main, test-design-scoring, train-dashboard, 訓練資源管理_
 
 ## M28 — HARNESS 演進進度
-<!-- 此區塊為手動維護，update-hub.cjs 不覆蓋 -->
 
 | ID | 任務 | 狀態 |
 |----|------|------|
@@ -56,21 +55,13 @@ _非 SDID 管理: ExamForge, OpenSpec-main, test-design-scoring, train-dashboard
 | M28-10 | contract-golden.template.v4.ts 完整範例（SIMPLE/COMPLEX/HOOK） | ✅ done |
 
 ## GEMS 標籤格式（v4 簡化版）
-<!-- 此區塊為手動維護，update-hub.cjs 不覆蓋 -->
 
-### 程式碼端（實作檔，1 行）
-
+程式碼端（實作檔，1 行）：
 ```typescript
 /** GEMS: {Name} | {P0|P1} | {StoryId} | {FLOW} | deps:[{dep1,dep2}] */
 ```
 
-範例：
-```typescript
-/** GEMS: CategoryService | P0 | Story-2.0 | GETALL(Clear)→CREATE(Complicated)→UPDATE(Complicated) | deps:[SheetsClient,CoreTypes] */
-/** GEMS: useTrainingClasses | P1 | Story-3.2 | INIT(Clear)→FETCH(Complicated)→REFRESH(Complicated) | deps:[apiClient] */
-```
-
-### FLOW 規則
+FLOW 層級規則：
 
 | 層級 | FLOW 格式 | 範例 |
 |------|----------|------|
@@ -78,16 +69,7 @@ _非 SDID 管理: ExamForge, OpenSpec-main, test-design-scoring, train-dashboard
 | hook | 狀態轉換名 | `INIT(Clear)→FETCH(Complicated)→REFRESH(Complicated)` |
 | 單一函式 | 內部計算步驟 | `PARSE_DATE(Clear)→ADD_OFFSET(Clear)→FORMAT_ISO(Clear)` |
 
-只在 Complicated/Complex 步驟標注括號，Clear 省略括號也可接受。
-
-### 捨棄的欄位
-
-| 欄位 | 原因 |
-|------|------|
-| GEMS-FLOW（獨立行） | 合併入 1 行 GEMS 標籤 |
-| GEMS-DEPS-RISK | 冗餘，由 @RISK 在 contract 端表達 |
-| GEMS-WHY goal/guard/fail | 語意層，由 contract Behavior: 取代 |
-| @GEMS-VIEW | 裝飾性，改用 @GEMS-HOOK |
+捨棄：GEMS-FLOW 獨立行、GEMS-DEPS-RISK、GEMS-WHY、@GEMS-VIEW
 
 ## 工具快速參考
 

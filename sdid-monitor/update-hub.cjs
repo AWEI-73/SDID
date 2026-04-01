@@ -538,6 +538,42 @@ function generateRoadmap(hub) {
     lines.push('');
   }
 
+  // ── M28 HARNESS 演進進度 ──
+  lines.push(`## M28 — HARNESS 演進進度`);
+  lines.push('');
+  lines.push('| ID | 任務 | 狀態 |');
+  lines.push('|----|------|------|');
+  lines.push('| M28-1 | tdd-contract-prompt.md 黃金樣板 LOCKED | ✅ done |');
+  lines.push('| M28-2 | contract-gate.cjs CG-005（Behavior: 錯誤路徑 WARNING） | ⬜ pending |');
+  lines.push('| M28-3 | phase-2.cjs @TEST 路徑存在性驗證 + it()/test() 確認 | ⬜ pending |');
+  lines.push('| M28-4 | phase-3.cjs P0 SVC/API 整合測試驗證 | ⬜ pending |');
+  lines.push('| M28-5 | phase-4.cjs 移除 Fillback/iteration_suggestions，SCAN 注入 flow+testPath | ⬜ pending |');
+  lines.push('| M28-6 | plan-generator.cjs 第一步改為寫 @TEST 指定測試（RED） | ⬜ pending |');
+  lines.push('| M28-7 | sdid/SKILL.md 移除 CYNEFIN 語意自預測，保留行為數量 gate | ⬜ pending |');
+  lines.push('| M28-8 | GEMS Scanner 解析 @GEMS-FLOW 注入 functions.json behavior 欄位 | ⬜ pending |');
+  lines.push('| M28-9 | 修復 functions.json storyId 空值（SCAN linkage broken） | ⬜ pending |');
+  lines.push('| M28-10 | contract-golden.template.v4.ts 完整範例（SIMPLE/COMPLEX/HOOK） | ✅ done |');
+  lines.push('');
+
+  // ── GEMS 標籤格式（v4）──
+  lines.push(`## GEMS 標籤格式（v4 簡化版）`);
+  lines.push('');
+  lines.push('程式碼端（實作檔，1 行）：');
+  lines.push('```typescript');
+  lines.push('/** GEMS: {Name} | {P0|P1} | {StoryId} | {FLOW} | deps:[{dep1,dep2}] */');
+  lines.push('```');
+  lines.push('');
+  lines.push('FLOW 層級規則：');
+  lines.push('');
+  lines.push('| 層級 | FLOW 格式 | 範例 |');
+  lines.push('|------|----------|------|');
+  lines.push('| interface/service | method 名稱 | `GETALL(Clear)→CREATE(Complicated)` |');
+  lines.push('| hook | 狀態轉換名 | `INIT(Clear)→FETCH(Complicated)→REFRESH(Complicated)` |');
+  lines.push('| 單一函式 | 內部計算步驟 | `PARSE_DATE(Clear)→ADD_OFFSET(Clear)→FORMAT_ISO(Clear)` |');
+  lines.push('');
+  lines.push('捨棄：GEMS-FLOW 獨立行、GEMS-DEPS-RISK、GEMS-WHY、@GEMS-VIEW');
+  lines.push('');
+
   // ── 工具快速參考（v6）──
   lines.push(`## 工具快速參考`);
   lines.push('');

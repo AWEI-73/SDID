@@ -1,5 +1,5 @@
 # SDID 快速導航
-> 自動生成 — 2026-03-22 22:39:40 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
+> 自動生成 — 2026-04-01 09:14:41 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
 
 ## 框架路線
 ARCHITECTURE.md v7.0
@@ -11,12 +11,25 @@ ARCHITECTURE.md v7.0
 
 ## 專案動向
 
+### 工作流程管理 `@PASS`
+- iter: iter-5 | phase: DONE
+
 ### qs-new-app
 - iter: iter-1 | phase: —
 
 ### SDID `@PASS`
 - iter: iter-1 | phase: CONTRACT
 - 下一步: `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-1/contract_iter-1.ts --target=SDID --iter=1`
+
+### train-v2 `@PASS`
+- iter: iter-2 | phase: DONE
+
+### train-v3 `@PASS`
+- iter: iter-4 | phase: DRAFT_GATE
+- 下一步: `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-4.md --target=train-v3`
+
+### train-v4 `@PASS`
+- iter: iter-1 | phase: DONE
 
 ### training-dashboard `@PASS`
 - iter: iter-2 | phase: DONE
@@ -25,6 +38,21 @@ ARCHITECTURE.md v7.0
 - iter: iter-1 | phase: DONE
 
 _非 SDID 管理: ExamForge, OpenSpec-main, test-design-scoring, train-dashboard, 訓練資源管理_
+
+## M28 — HARNESS 演進進度
+
+| ID | 任務 | 狀態 |
+|----|------|------|
+| M28-1 | tdd-contract-prompt.md 黃金樣板 LOCKED | ✅ done |
+| M28-2 | contract-gate.cjs CG-005（Behavior: 錯誤路徑 WARNING） | ⬜ pending |
+| M28-3 | phase-2.cjs @TEST 路徑存在性驗證 + it()/test() 確認 | ⬜ pending |
+| M28-4 | phase-3.cjs P0 SVC/API 整合測試驗證 | ⬜ pending |
+| M28-5 | phase-4.cjs 移除 Fillback/iteration_suggestions，SCAN 注入 flow+testPath | ⬜ pending |
+| M28-6 | plan-generator.cjs 第一步改為寫 @TEST 指定測試（RED） | ⬜ pending |
+| M28-7 | sdid/SKILL.md 移除 CYNEFIN 語意自預測，保留行為數量 gate | ⬜ pending |
+| M28-8 | GEMS Scanner 解析 @GEMS-FLOW 注入 functions.json behavior 欄位 | ⬜ pending |
+| M28-9 | 修復 functions.json storyId 空值（SCAN linkage broken） | ⬜ pending |
+| M28-10 | contract-golden-template.md 完整參考文件 | ✅ done |
 
 ## 工具快速參考
 

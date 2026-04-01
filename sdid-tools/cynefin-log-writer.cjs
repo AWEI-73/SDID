@@ -102,27 +102,66 @@ function validateReport(report) {
 }
 
 /**
+ * 強制升級為 Complicated 的 hiddenStep 關鍵字。
+ * 任一 hiddenStep 包含以下關鍵字 → domain 強制 Complicated，needsTest 強制 true。
+ * 對應 cynefin-check.md「強制升級為 Complicated 的 Action 特徵」章節。
+ */
+const FORCE_COMPLICATED_KEYWORDS = [
+  'FK', '繼承', 'taskId', 'parentId', 'orderId', 'subtaskId',      // FK 繼承
+  'Tree', 'Flat', '打平', '巢狀', 'flatten', 'nested',              // Tree→Flat 映射
+  '跨實體', 'cross-entity', 'ID 補充', 'ID 注入',                   // 跨實體 ID 注入
+  '多目標', 'multi-target', '批次寫入', 'batch write',              // 多目標寫入
+  'IS_MOCK', 'mock/real', 'USE_REAL_API', '整合邊界',               // 整合邊界切換
+  'quota', 'rate-limit', 'GAS quota', '外部服務',                   // 外部服務呼叫
+];
+
+/**
+ * 檢查 action 是否命中強制 Complicated 特徵（機械規則）。
+ * 回傳命中的關鍵字列表，空陣列表示未命中。
+ */
+function detectForceComplicatedKeywords(action) {
+  const steps = Array.isArray(action.hiddenSteps) ? action.hiddenSteps : [];
+  const allText = steps.join(' ');
+  return FORCE_COMPLICATED_KEYWORDS.filter(kw =>
+    allText.toLowerCase().includes(kw.toLowerCase())
+  );
+}
+
+/**
  * needsTest 判斷規則（action 層級）
  * - domain === 'Complicated' || domain === 'Complex' → true
  * - hiddenSteps.length >= 2 → true
+ * - hiddenSteps 包含強制 Complicated 關鍵字 → true（即使 AI 標 Clear）
  * - 其他 → false
  */
 function computeNeedsTest(action) {
   if (action.domain === 'Complicated' || action.domain === 'Complex') return true;
   if (Array.isArray(action.hiddenSteps) && action.hiddenSteps.length >= 2) return true;
+  if (detectForceComplicatedKeywords(action).length > 0) return true;
   return false;
 }
 
 /**
  * 從 report.actions[] 中補上 needsTest 欄位（如果 AI 已填入 actions[]）
+ * 同時做強制 Complicated 升級（機械規則，覆蓋 AI 的 Clear 標記）。
  * 如果 report 沒有 actions[]，回傳空陣列
  */
 function enrichActions(report) {
   if (!Array.isArray(report.actions)) return [];
-  return report.actions.map(action => ({
-    ...action,
-    needsTest: action.needsTest !== undefined ? action.needsTest : computeNeedsTest(action),
-  }));
+  return report.actions.map(action => {
+    const forcedKeywords = detectForceComplicatedKeywords(action);
+    const forcedComplicated = forcedKeywords.length > 0 && action.domain === 'Clear';
+    const effectiveDomain = forcedComplicated ? 'Complicated' : action.domain;
+    const needsTest = action.needsTest !== undefined
+      ? action.needsTest
+      : computeNeedsTest({ ...action, domain: effectiveDomain });
+    return {
+      ...action,
+      domain: effectiveDomain,
+      needsTest,
+      ...(forcedComplicated ? { _domainUpgraded: `Clear→Complicated (keywords: ${forcedKeywords.join(', ')})` } : {}),
+    };
+  });
 }
 
 // ============================================
@@ -328,12 +367,21 @@ function buildLogContent(report, result, iterNum, enrichedActions) {
     lines.push(`needsTest:true  — ${needsTestActions.length} 個 action（vitest 驗收）`);
     lines.push(`needsTest:false — ${enrichedActions.length - needsTestActions.length} 個 action（直接執行或 SKIP）`);
     lines.push('');
+    const upgradedActions = enrichedActions.filter(a => a._domainUpgraded);
+    if (upgradedActions.length > 0) {
+      lines.push(`⚠ 機械規則升級 ${upgradedActions.length} 個 action 的 domain（Clear→Complicated）:`);
+      for (const a of upgradedActions) {
+        lines.push(`    [UPGRADED] ${a.name}: ${a._domainUpgraded}`);
+      }
+      lines.push('');
+    }
     for (const a of enrichedActions) {
       const marker = a.needsTest ? '[TEST]' : '[SKIP]';
+      const upgraded = a._domainUpgraded ? ' ⚠UPGRADED' : '';
       const steps = Array.isArray(a.hiddenSteps) && a.hiddenSteps.length > 0
         ? ` hidden:[${a.hiddenSteps.join(', ')}]`
         : '';
-      lines.push(`  ${marker} ${a.name} (${a.domain}) story:${a.story || '?'}${steps}`);
+      lines.push(`  ${marker} ${a.name} (${a.domain})${upgraded} story:${a.story || '?'}${steps}`);
     }
   }
 

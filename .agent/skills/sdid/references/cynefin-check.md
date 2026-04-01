@@ -43,6 +43,25 @@ Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHE
 - `hiddenSteps.length >= 2` → `needsTest: true`
 - 其他 → `needsTest: false`
 
+---
+
+### ⚠️ 強制升級為 Complicated 的 Action 特徵（不得標 Clear）
+
+以下任一特徵符合，**必須**將 domain 標為 `Complicated` 並補上對應 hiddenStep，不得以「看起來只是 map/loop」為由標 Clear：
+
+| 特徵 | 說明 | 必加 hiddenStep |
+|------|------|----------------|
+| **FK 繼承** | Action 的輸出物件需包含來自**上層物件**的 ID（如 `taskId` 來自 `project.id`、`orderId` 來自 `order.id`） | `"FK 繼承正確性"` |
+| **Tree → Flat 映射** | 將巢狀/階層結構（tree/nested）打平為 DB 可儲存的列格式（flat rows） | `"巢狀層級對應正確性"` |
+| **跨實體 ID 注入** | 子物件需在 mapping 時手動帶入父物件 ID，且此 ID 不在子物件原始資料中 | `"跨實體 ID 補充完整性"` |
+| **多目標寫入** | 單一 action 對 2 個以上資料表/Sheet 執行 append/update（批次寫入） | `"多目標寫入一致性"` |
+| **整合邊界切換** | 程式碼路徑依賴環境變數分支（如 `IS_MOCK`、`USE_REAL_API`），mock 路徑與 real 路徑行為不同 | `"mock/real 行為對稱性"` |
+| **外部服務呼叫** | 呼叫 GAS、Stripe、Firebase 等外部 API，有 quota、auth、rate-limit 等隱性邊界 | `"外部服務錯誤邊界"` |
+
+> **背景**：`seedMockData`（iter-5）因「看起來只是 loop+map」被標 Clear，但其中 milestone 需從 project 繼承 `taskId`（FK 繼承特徵），導致 `taskId` 漏填進 GAS，前端查無資料。上述規則直接從此 bug 歸納。
+
+---
+
 **needsTest 的影響**：
 - `needsTest: true` → CYNEFIN @PASS 後，Controller 派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），為此 action 寫測試檔並將 `@GEMS-TDD` 路徑加入 contract.ts，再由 design-review skill 審查，之後 Phase 2 執行 vitest
 - `needsTest: false` → Phase 2 只跑 `tsc --noEmit`（DB CRUD / UI / 外部 API 層）

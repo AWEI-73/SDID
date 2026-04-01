@@ -12,6 +12,24 @@
     { "id": "M17", "label": "M17 — GEMS Tags 正確模型：Spec 放完整 tags 防飄移（AI 開發時自然對齊），新增/漏掉的用 AST 找洞 → AI 補 GEMS-FLOW（人看的）+ 頂層行，[STEP] 執行鷹架用完不補", "status": "done", "priority": 2 },
     { "id": "M23", "label": "M23 — Per-step Subagent：每個 step 用獨立 subagent 執行，context 隔離，依複雜度選模型（機械任務用便宜模型）", "status": "done", "priority": 3 },
     { "id": "M16", "label": "M16 — 骨架映射強化：程式碼映射 + API 簽名對齊、context window 最小化避免後段壓縮", "status": "done", "priority": 3 },
-    { "id": "M27", "label": "M27 — DESIGN 評分拋棄式 Gate：DESIGN 階段（Blueprint→Contract）改為 generation loop，gate 給分 < 80 輸出 @REGEN-HINT 讓 AI 重生成整個 draft，品質問題（TAG/FLOW/ACC/BUDGET）降為 WARN 進 SCORE 機制，不再卡 patch loop", "status": "done" }
+    { "id": "M27", "label": "M27 — DESIGN 評分拋棄式 Gate：DESIGN 階段（Blueprint→Contract）改為 generation loop，gate 給分 < 80 輸出 @REGEN-HINT 讓 AI 重生成整個 draft，品質問題（TAG/FLOW/ACC/BUDGET）降為 WARN 進 SCORE 機制，不再卡 patch loop", "status": "done" },
+    {
+      "id": "M28",
+      "label": "M28 — HARNESS 演進：Contract 黃金樣板（@CONTRACT/@TEST/@RISK/@GEMS-FLOW/Behavior:）+ TDD-first + GEMS 標籤 1 行簡化 + CYNEFIN 改行為數量 gate",
+      "status": "in-progress",
+      "priority": 1,
+      "subtasks": [
+        { "id": "M28-1", "label": "tdd-contract-prompt.md 黃金樣板 LOCKED（FLOW=method層級，Behavior:/FLOW/TEST三層對應）", "status": "done" },
+        { "id": "M28-2", "label": "contract-gate.cjs CG-005（P0 Behavior: 必有錯誤路徑 WARNING）", "status": "pending" },
+        { "id": "M28-3", "label": "phase-2.cjs @TEST 路徑存在性驗證 + it()/test() 呼叫確認", "status": "pending" },
+        { "id": "M28-4", "label": "phase-3.cjs P0 SVC/API 整合測試驗證", "status": "pending" },
+        { "id": "M28-5", "label": "phase-4.cjs 移除 Fillback/iteration_suggestions，SCAN 注入 flow+testPath 到 functions.json", "status": "pending" },
+        { "id": "M28-6", "label": "plan-generator.cjs 第一步改為寫 @TEST 指定測試（RED）", "status": "pending" },
+        { "id": "M28-7", "label": "sdid/SKILL.md 移除 CYNEFIN 語意自預測節點，CYNEFIN 改為行為數量 gate", "status": "pending" },
+        { "id": "M28-8", "label": "GEMS Scanner 讀簡化 1 行標籤 + 解析 @GEMS-FLOW 注入 functions.json behavior/flowComplexity", "status": "pending" },
+        { "id": "M28-9", "label": "修復 functions.json storyId 空值（SCAN linkage broken）", "status": "pending" },
+        { "id": "M28-10", "label": "contract-golden.template.v4.ts 完整範例（SIMPLE/COMPLEX/HOOK），@GEMS-VIEW 移除改 @GEMS-HOOK", "status": "done" }
+      ]
+    }
   ]
 }

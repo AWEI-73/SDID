@@ -1,5 +1,5 @@
 # SDID 快速導航
-> 自動生成 — 2026-04-01 11:17:53 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
+> 自動生成 — 2026-04-01 11:18:48 UTC | 手動更新: `node sdid-monitor/update-hub.cjs`
 
 ## 框架路線
 ARCHITECTURE.md v7.0

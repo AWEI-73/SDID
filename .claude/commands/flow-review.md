@@ -1,6 +1,6 @@
 ---
 name: flow-review
-description: FLOW 審查與 CYNEFIN 節點分析。當使用者說「REVIEW FLOW」「FLOW 審查」「CYNEFIN 分析」「這個 FLOW 對嗎」「驗證 FLOW」，或在 contract 寫完後要驗證 STORY-ITEM 的 FLOW 語意時觸發。輸出：改寫的 FLOW（含域標記）+ @GEMS-WHY + POC 觸發清單，直接可貼回 contract.ts。
+description: FLOW 審查與 CYNEFIN 節點分析。只在使用者明確說「REVIEW FLOW」「FLOW 審查」「CYNEFIN 分析」「這個 FLOW 對嗎」「驗證 FLOW」時觸發。不自動觸發。輸出：改寫的 FLOW（含域標記）+ @GEMS-WHY + POC 觸發清單，直接可貼回 contract.ts。
 ---
 
 # FLOW-REVIEW — CYNEFIN 節點審查

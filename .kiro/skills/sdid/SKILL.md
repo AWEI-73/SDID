@@ -7,42 +7,59 @@ description: SDID v7.0 是結構化全端開發框架，涵蓋 Blueprint 5輪需
 
 > **本文件只做路由判斷。進入模式後讀對應 reference，不要在這裡找規則。**
 
-## 路由判斷（進入 skill 後唯一職責）
+## STEP 0 — 狀態確認（進入任何模式前必做）
 
-| 條件 | 模式 | 動作 |
-|------|------|------|
-| 使用者說「小修」「fix」「改一下」「quick fix」「micro fix」 | MICRO-FIX | 讀 [micro-fix.md](references/micro-fix.md) |
-| **客製化/第三方/特化模組開發**（「跑 POC」「原型驗證」「串接」「調整」「第三方」「客製」+ 非標準 CRUD） | **POC-FIX** | 開 POC 資料夾 → 反覆驗證 → 整合清除 → BUILD + 必寫測試 |
-| 有專案 + 主藍圖 ACTIVE + 有下一個未開始 iter（無對應 draft） | BLUEPRINT-CONTINUE | 讀 [blueprint-design.md](references/blueprint-design.md) → CONTINUE 段落 |
-| 無專案 + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話 |
-| 無專案 + 使用者需求明確 | DESIGN-TASKPIPE | 引導建立 `draft_iter-N.md`，進入主流程 |
-| 有專案但無 draft + 使用者需求模糊 | DESIGN-BLUEPRINT | 讀 [references/blueprint-design.md](references/blueprint-design.md) → 5 輪對話（迭代號自動遞增） |
-| 有專案但無 draft + 使用者需求明確 | DESIGN-TASKPIPE | 引導建立 `draft_iter-N.md`，進入主流程（新迭代） |
-| 有 draft，無 plan | BUILD-AUTO | 看 draft 類型自動選路線（見下方） |
-| 有 implementation_plan | BUILD-AUTO | 自動偵測路線繼續 BUILD |
-| 使用者說「快速建」「練習」「小專案」 | DESIGN-TASKPIPE | 引導建立 `draft_iter-N.md`，進入主流程 |
-| 使用者說「重跑 Phase N」「跑 Phase N」「Phase N 重跑」 | RERUN-PHASE | 呼叫 MCP `sdid-loop` tool，帶 `forceStart` 參數 |
-
-### Draft 類型自動判斷（BUILD-AUTO 進入時）
+先讀以下檔案，建立現狀認知，再做路由判斷。不要猜。
 
 ```
-.gems/design/blueprint.md 存在 → design-review skill（Blueprint gate）+ blueprint-gate.cjs → 自動銜接
-.gems/design/draft_iter-N.md 存在 → design-review skill（Draft gate）
-    ↓ @PASS
-CYNEFIN-CHECK（行為數量 gate：action 總數 > 8 → BLOCKER，needsTest:true → 需 @TEST）
-    ↓ @PASS
-TDD Contract Subagent（寫 @TEST 測試檔 RED → 黃金樣板 @CONTRACT/@TEST/@RISK/@GEMS-FLOW/Behavior:）
-    ↓ READY
-contract-gate.cjs v5.2（CG-001~005：@TEST 存在性 + 格式 + RED 確認）+ @CONTRACT-LOCK
-    ↓ @PASS
-Plan Writer（讀 contract v4 + blueprint → 產出 v4 plan）
-    — 每個 @CONTRACT → 一個 Task
-    — Behavior: 每行 → 一個 it() 測試案例
-    — 檔案路徑從 blueprint 路由結構圖取
-    — 格式：### Task N: + - [ ] Step + 完整程式碼
-    ↓
-BUILD Phase 1-4
-（MCP 可用時：sdid-loop 自動偵測狀態；MCP 不可用時：依序手動執行各步驟指令）
+1. .task-pipe/state.json
+   → 取得最近有 firstRunAt 的 key（格式：PHASE-step-N-Story-X.Y）
+   → 得知目前卡在哪個 phase/step/story
+   → 若檔案不存在：視為全新開始
+
+2. .gems/project-memory.json
+   → 取得 summary.currentIteration（N）、summary.lastPhase、summary.lastStory
+   → 若檔案不存在：N = 1，視為新專案
+
+3. .gems/iterations/iter-{N}/contract_iter-{N}.ts
+   → 存在 → state = HAS_CONTRACT
+
+4. .gems/iterations/iter-{N}/plan/implementation_plan_Story-*.md
+   → 存在 → state += HAS_PLAN
+
+5. .gems/design/draft_iter-{N}.md
+   → 存在 → state = HAS_DRAFT
+
+6. .gems/design/blueprint.md
+   → 存在 → 讀 status 欄位，確認是否 ACTIVE + 下一 iter 未開始
+```
+
+讀完後，用一行回報目前狀態，例如：
+> 「目前 iter-3，BUILD-phase-2-Story-1.0 中斷，HAS_CONTRACT + HAS_PLAN，進入路由判斷。」
+
+## 路由決策（依序判斷，第一個符合的條件勝出）
+
+```
+1. 說「fix」「小修」「quick fix」「micro fix」「改一下」?
+   YES → escalation check → MICRO-FIX 或 POC-FIX
+   NO  → 繼續
+
+2. 說「重跑 Phase N」「Phase N 重跑」「跑 Phase N」?
+   YES → RERUN-PHASE
+   NO  → 繼續
+
+3. 讀 .gems/，判斷現有狀態（state 優先於 intent）:
+   → contract_iter-N.ts 存在?
+       YES → BUILD-AUTO（plan 存在 → 直接 BUILD；plan 不存在 → 先寫 Plan）
+   → draft_iter-N.md 存在?
+       YES → BUILD-AUTO（entry: design-review → CYNEFIN-CHECK → CONTRACT → PLAN → BUILD）
+   → blueprint.md 存在且 ACTIVE + 下一 iter 無 draft?
+       YES → BLUEPRINT-CONTINUE
+   → 以上皆否 → 繼續
+
+4. 說「快速建」「練習」「小專案」，或需求明確（≥3 項標準）?
+   YES → DESIGN-TASKPIPE
+   NO  → DESIGN-BLUEPRINT（或問消歧問題）
 ```
 
 ### 路線選擇優先問題

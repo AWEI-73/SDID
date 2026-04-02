@@ -12,25 +12,30 @@ description: SDID v7.0 是結構化全端開發框架，涵蓋 Blueprint 5輪需
 先讀以下檔案，建立現狀認知，再做路由判斷。不要猜。
 
 ```
-1. .gems/project-memory.json
-   → 取得 summary.currentIteration（N）
+1. .task-pipe/state.json
+   → 取得最近有 firstRunAt 的 key（格式：PHASE-step-N-Story-X.Y）
+   → 得知目前卡在哪個 phase/step/story
+   → 若檔案不存在：視為全新開始
+
+2. .gems/project-memory.json
+   → 取得 summary.currentIteration（N）、summary.lastPhase、summary.lastStory
    → 若檔案不存在：N = 1，視為新專案
 
-2. .gems/iterations/iter-{N}/contract_iter-{N}.ts
+3. .gems/iterations/iter-{N}/contract_iter-{N}.ts
    → 存在 → state = HAS_CONTRACT
 
-3. .gems/iterations/iter-{N}/plan/implementation_plan_Story-*.md
+4. .gems/iterations/iter-{N}/plan/implementation_plan_Story-*.md
    → 存在 → state += HAS_PLAN
 
-4. .gems/design/draft_iter-{N}.md
+5. .gems/design/draft_iter-{N}.md
    → 存在 → state = HAS_DRAFT
 
-5. .gems/design/blueprint.md
+6. .gems/design/blueprint.md
    → 存在 → 讀 status 欄位，確認是否 ACTIVE + 下一 iter 未開始
 ```
 
 讀完後，用一行回報目前狀態，例如：
-> 「目前 iter-3，HAS_DRAFT，無 contract，進入路由判斷。」
+> 「目前 iter-3，BUILD-phase-2-Story-1.0 中斷，HAS_CONTRACT + HAS_PLAN，進入路由判斷。」
 
 ## 路由決策（依序判斷，第一個符合的條件勝出）
 

@@ -95,6 +95,10 @@ Behavior:  = 每一行對應 Plan 裡的一個 it() 測試案例
     → TDD Contract Subagent（讀 tdd-contract-prompt.md）
         職責：寫 contract_iter-N.ts。不寫 plan，不寫實作。
         產出：@CONTRACT + @TEST(RED) + @GEMS-FLOW + Behavior:
+        RED 定義：
+          ✅ 合格 RED = import fail、函式不存在、模組缺失 → 測試跑起來但因實作不存在而 fail
+          ❌ 不合格 = 測試本身語法錯誤、型別錯、測試條件太鬆（永遠會過）
+          規則：確認 RED 後不動 production code，留給 BUILD 寫實作
           ↓
     → contract-gate.cjs v5.2（@TEST 存在性 + RED 確認 + @CONTRACT-LOCK）
           ↓ @PASS

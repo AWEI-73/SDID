@@ -151,13 +151,22 @@ function checkContract(content, iterNum, target = null) {
     if (contracts.length === 0)
       B('CG-001', '有 @CONTRACT: 標籤但格式不符，應為: // @CONTRACT: Name | P0|P1 | SVC|ACTION|HTTP|HOOK|LIB | Story-X.Y');
 
-    // CG-001: @CONTRACT P0 必有 @TEST
+    // CG-001: 每個 P0 @CONTRACT 必須在自己的 block 中有 @TEST
+    // （不是檔案層級有 @TEST 就算，逐一檢查每個 P0 contract block）
     const testMatches = [...content.matchAll(/\/\/\s*@TEST:\s*(.+)/g)];
     const testPaths = testMatches.map(m => m[1].trim()).filter(Boolean);
 
     const p0Contracts = contracts.filter(c => c.priority === 'P0');
-    if (p0Contracts.length > 0 && testPaths.length === 0)
-      B('CG-001', `${p0Contracts.length} 個 P0 @CONTRACT 缺少 @TEST 路徑。P0 必填: // @TEST: src/modules/.../{name}.test.ts`);
+    const p0WithoutTest = p0Contracts.filter(c => {
+      // 截取該 @CONTRACT 到下一個 @CONTRACT 或 export 之間的 block
+      const afterIdx = (c.lineIdx || 0) + (c.raw.length || 0);
+      const rest = content.slice(afterIdx);
+      const nextBoundary = rest.search(/\/\/\s*@CONTRACT:|^export\s/m);
+      const block = nextBoundary >= 0 ? rest.slice(0, nextBoundary) : rest;
+      return !/\/\/\s*@TEST:\s*\S+/.test(block);
+    });
+    if (p0WithoutTest.length > 0)
+      B('CG-001', `P0 @CONTRACT 缺少 @TEST（逐 contract 檢查）: ${p0WithoutTest.map(c => c.name).join(', ')}。P0 必填: // @TEST: src/modules/.../{name}.test.ts`);
 
     // CG-002: @TEST 路徑格式（.test.ts / .spec.ts）
     const badTestPaths = testPaths.filter(p => !p.match(/\.(test|spec)\.(ts|tsx)$/));
@@ -377,10 +386,20 @@ v3 格式（@GEMS-STORY:）→ 舊規則相容
     if (isV4) {
       console.log('');
       console.log(`  @TEST 路徑已驗證存在（RED 狀態）`);
-      console.log(`  NEXT: plan-generator → Phase 1 建骨架 → Phase 2 跑 @TEST GREEN`);
+      console.log('');
+      console.log(`@REQUIRED_NEXT_ACTION`);
+      console.log(`  ⚠️  STOP — 先寫 Plan，再進 BUILD`);
+      console.log(`  ACTION: WRITE_PLAN`);
+      console.log(`  OUTPUT: .gems/iterations/iter-${args.iter}/plan/implementation_plan_Story-X.Y.md`);
+      console.log(`  REFERENCE: .agent/skills/sdid/references/plan-writer.md`);
+      console.log(`  RULE: Plan 不存在時 BUILD Phase 1 會 BLOCKER，不可直接寫程式碼`);
+      console.log('');
+      console.log(`  AFTER_PLAN:`);
+      console.log(`    node task-pipe/runner.cjs --phase=BUILD --step=1 --story=<Story-X.Y> --target=<project> --iteration=iter-${args.iter}`);
     } else {
       console.log('');
-      console.log(`  NEXT: 呼叫 sdid-loop 繼續流程（contract → plan-generator → BUILD）`);
+      console.log(`@REQUIRED_NEXT_ACTION`);
+      console.log(`  ACTION: WRITE_PLAN → 呼叫 sdid-loop 繼續流程（contract → plan-generator → BUILD）`);
     }
   } else {
     console.log(`═══════════════════════════════════════════════════════════`);

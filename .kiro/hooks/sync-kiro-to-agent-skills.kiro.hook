@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "Sync skills (三向：.kiro ↔ .agent ↔ .claude/commands)",
+  "description": "當 .kiro/skills/ 或 .agent/skills/ 或 .claude/commands/ 下的 .md 檔案被編輯時，自動三向同步",
+  "version": "2",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      ".kiro/skills/**/*.md",
+      ".agent/skills/**/*.md",
+      ".claude/commands/*.md"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "node sdid-tools/sync-skills.cjs \"${file}\"",
+    "timeout": 15
+  }
+}

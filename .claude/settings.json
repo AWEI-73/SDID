@@ -6,5 +6,18 @@
                 "C:/Users/user/Desktop/SDID/sdid-tools/mcp-server/index.mjs"
             ]
         }
+    },
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node sdid-tools/sync-skills.cjs --stdin"
+                    }
+                ]
+            }
+        ]
     }
 }

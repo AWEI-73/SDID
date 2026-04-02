@@ -1,4 +1,4 @@
----
+﻿---
 name: sdid
 description: SDID v7.0 是結構化全端開發框架，涵蓋 Blueprint 5輪需求設計、Draft-Contract 主流程、BUILD Phase 1-4 v7 自動化建置（TDD 驗收）。以下情境必須觸發：(1) 出現「SDID」「sdid-loop」「.gems/」「GEMS 標籤」「GEMS-FLOW」「GEMS-DEPS」「implementation_plan」「iter-N」「cynefin」等框架專有詞彙；(2) 建新專案且需結構化流程（Blueprint/Draft）；(3) 繼續 SDID 專案開發（BUILD 斷點、Phase 重跑、Story 續跑）；(4) 說「小修/micro fix/quick fix」且有明確模組脈絡；(5) 驗證第三方 API 或特化演算法的 POC；(6) 說「快速建/練習專案/小專案」要直接開發。不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作、一般 Docker/CI/CD 操作。
 ---
@@ -29,17 +29,19 @@ description: SDID v7.0 是結構化全端開發框架，涵蓋 Blueprint 5輪需
 .gems/design/blueprint.md 存在 → design-review skill（Blueprint gate）+ blueprint-gate.cjs → 自動銜接
 .gems/design/draft_iter-N.md 存在 → design-review skill（Draft gate）
     ↓ @PASS
-CYNEFIN-CHECK（強制）
+CYNEFIN-CHECK（行為數量 gate：action 總數 > 8 → BLOCKER，needsTest:true → 需 @TEST）
     ↓ @PASS
-flow-review skill（強制）
-    ↓ @PASS
-TDD Contract Subagent（needsTest:true → 寫 @GEMS-TDD 測試檔 → RED 驗證）
+TDD Contract Subagent（寫 @TEST 測試檔 RED → 黃金樣板 @CONTRACT/@TEST/@RISK/@GEMS-FLOW/Behavior:）
     ↓ READY
-design-review skill（Contract gate，最多重試 2 次）
+contract-gate.cjs v5.2（CG-001~005：@TEST 存在性 + 格式 + RED 確認）+ @CONTRACT-LOCK
     ↓ @PASS
-contract-gate.cjs + @CONTRACT-LOCK
-    ↓ @PASS
-spec-to-plan → BUILD Phase 1-4
+Plan Writer（讀 contract v4 + blueprint → 產出 v4 plan）
+    — 每個 @CONTRACT → 一個 Task
+    — Behavior: 每行 → 一個 it() 測試案例
+    — 檔案路徑從 blueprint 路由結構圖取
+    — 格式：### Task N: + - [ ] Step + 完整程式碼
+    ↓
+BUILD Phase 1-4
 （MCP 可用時：sdid-loop 自動偵測狀態；MCP 不可用時：依序手動執行各步驟指令）
 ```
 
@@ -90,25 +92,41 @@ spec-to-plan → BUILD Phase 1-4
   .gems/design/draft_iter-N.md
     └── design-review skill（Draft gate）
           ↓ @PASS
-  CYNEFIN-CHECK（強制）
+  CYNEFIN-CHECK（行為數量 gate）
+    — action 總數 > 8 → BLOCKER 強制拆 iter
+    — keyword 命中（FK/Tree→Flat/外部服務）→ needsTest: true
           ↓ @PASS
-  flow-review skill（強制）
-          ↓ @PASS
-  TDD Contract Subagent（needsTest:true → 寫 @GEMS-TDD 測試檔 → RED 驗證）
+  TDD Contract Subagent（黃金樣板 v4）
+    — 寫 @TEST 測試檔（RED 狀態）
+    — contract 格式：@CONTRACT/@TEST/@RISK/@GEMS-FLOW/Behavior:
+    — FLOW = method 層級，Behavior: 每行對應一個 it()
           ↓ READY
-  contract_iter-N.ts
-    └── design-review skill（Contract gate）→ contract-gate.cjs + @CONTRACT-LOCK
+  contract-gate.cjs v5.2
+    — CG-001: P0 必有 @TEST（BLOCKER）
+    — CG-003: @TEST 路徑實際存在（BLOCKER）
+    — @CONTRACT-LOCK 注入
           ↓ @PASS
-  spec-to-plan → implementation_plan_Story-X.Y.md
+  Plan Writer（讀 contract v4 + blueprint → 產出 v4 plan）
+    — 每個 @CONTRACT → 一個 Task
+    — Behavior: 每行 → 一個 it() 測試案例
+    — 檔案路徑從 blueprint 路由結構圖取
+    — 格式：### Task N: + - [ ] Step + 完整程式碼
           ↓
-  BUILD Phase 1-4（task-pipe/runner.cjs）
+  BUILD Phase 1（驗證 plan 結構 + 指引 agent 照 plan 執行）
+  BUILD Phase 2（@TEST 跑 vitest GREEN）
+  BUILD Phase 3（tsc --noEmit + barrel export）
+  BUILD Phase 4（SCAN → functions.json）
           ↓ 每個 Story @PASS
-  SCAN → functions.json
-          ↓
   VERIFY（blueprint-verify.cjs）
           ↓ @PASS
+  BLUEPRINT-BACKFILL（回補 blueprint.md）
+    — 迭代規劃表：更新本 iter 狀態為 ✅ DONE
+    — 模組 API 摘要：新增本 iter 產出的 API
+    — 已知技術債：記錄本 iter 發現但未修的問題
+    — 下一個 iter 的「可展示標準」從 iteration_suggestions 取
+          ↓ blueprint.md 更新完成
           ├─ 藍圖有下一個 iter → BLUEPRINT-CONTINUE（自動展開下一 iter draft）
-          └─ 無更多 iter → 專案完成
+          └─ 無更多 iter → 專案完成（blueprint 狀態全 ✅）
 ```
 
 ## CYNEFIN-CHECK + CONTRACT（進 PLAN 前強制執行）
@@ -117,23 +135,23 @@ spec-to-plan → BUILD Phase 1-4
 > 完整規則在 [cynefin-check.md](references/cynefin-check.md)，此處只提示時機。
 
 ```
-Draft 完成 → CYNEFIN-CHECK → @PASS
-  → flow-review skill（強制）→ @PASS
-  → TDD Contract Subagent（needsTest:true → 寫 @GEMS-TDD 測試檔）
-  → design-review skill（Contract gate）→ contract-gate.cjs → @PASS → spec-to-plan → BUILD Phase 1-4 → SCAN → VERIFY
+Draft 完成 → CYNEFIN-CHECK（行為數量 gate）→ @PASS
+  → TDD Contract Subagent（寫 @TEST 黃金樣板 v4）→ READY
+  → contract-gate.cjs v5.2 → @PASS → Plan Writer → BUILD Phase 1-4 → SCAN → VERIFY
 ```
 
 > 路徑：draft 放 `.gems/design/draft_iter-N.md`，contract 放 `.gems/iterations/iter-N/contract_iter-N.ts`。
-> contract.ts 是單一規格來源（source of truth）。draft 的 type 欄位只是路由提示，contract 的 @GEMS-API/@GEMS-CONTRACT 才是最終型別定義。
+> contract.ts 是單一規格來源（source of truth）。格式：@CONTRACT/@TEST/@RISK/@GEMS-FLOW/Behavior:。
 
-**四節點說明（缺一不可，依序強制）：**
+**三節點說明（缺一不可，依序強制）：**
 
 | 節點 | 工具/技能 | 目的 | log 產物 |
 |------|---------|------|---------|
-| CYNEFIN-CHECK | `sdid-tools/cynefin-log-writer.cjs` | 語意域分析，展開隱含複雜度 | `cynefin-check-pass-*.log` |
-| FLOW-REVIEW | flow-review skill（AI subagent） | 客觀審查 FLOW 設計是否有問題，產出 @GEMS-WHY | `flow-review-pass-*.log` |
-| CONTRACT | v5: `sdid-tools/blueprint/v5/contract-gate.cjs` | 從 draft 推導型別邊界，收斂 draft 的模糊 type | `contract-pass-*.log` + `contract_iter-N.ts` |
-| PLAN | `task-pipe/tools/spec-to-plan.cjs` | 機械轉換 contract → implementation_plan，骨架注入 contract 型別 | `gate-plan-pass-*.log` |
+| CYNEFIN-CHECK | `sdid-tools/cynefin-log-writer.cjs` | **行為數量 gate**（>8 BLOCKER）+ keyword → needsTest | `cynefin-check-pass-*.log` |
+| CONTRACT | TDD Contract Subagent + `contract-gate.cjs v5.2` | 黃金樣板 v4 + @TEST RED 存在性驗證 + @CONTRACT-LOCK | `contract-gate-pass-*.log` + `contract_iter-N.ts` |
+| PLAN | Plan Writer skill（讀 contract v4 + blueprint） | v4 plan：每個 @CONTRACT → Task，Behavior: → it()，完整程式碼 | `implementation_plan_Story-X.Y.md` |
+
+> **已移除**：FLOW-REVIEW 獨立節點（AI 語意自預測，不可靠）。FLOW 由 TDD Contract Subagent 在撰寫 Behavior: 時一併確認，method 層級 FLOW 寫入 @GEMS-FLOW。
 
 ### 通用規則
 1. 每完成一步，報告：「目前在 [模式] [步驟 N]，下一步是 [X]」
@@ -172,8 +190,9 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 ### BLUEPRINT-CONTINUE 模式
 - 讀 [references/blueprint-design.md](references/blueprint-design.md) → CONTINUE 段落
 - 觸發條件：主藍圖 ACTIVE + 有下一個未開始 iter（`.gems/design/draft_iter-N.md` 不存在）
+- **前置確認**：blueprint.md 的上一個 iter 狀態是否已標 ✅ DONE + 技術債已記錄 → 若未回補先補
 - 執行步驟：讀主藍圖 → 找下一個未開始 iter → 補需求描述 + Demo Checkpoint → 產出 Draft → draft-gate 驗證 → 存檔
-- **Terminal**: Draft 產出 + gate 通過 → 自動進入 CYNEFIN-CHECK → FLOW-REVIEW → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
+- **Terminal**: Draft 產出 + gate 通過 → 自動進入 CYNEFIN-CHECK → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
 
 ### POC-FIX 模式
 - 讀 [references/poc-fix.md](references/poc-fix.md) 取得四階段執行規則（SETUP → VERIFY → CONSOLIDATE → BUILD+TEST）
@@ -185,22 +204,33 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 - 讀 [references/blueprint-design.md](references/blueprint-design.md) 取得完整規則
 - 第一步必須是問使用者問題，不是讀檔案
 - 禁止讀取 src/*、.gems/*（設計階段不需要看程式碼）
-- **Terminal**: 5輪對話完成 + Enhanced Draft 產出 → 自動進入 CYNEFIN-CHECK → FLOW-REVIEW → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
+- **Terminal**: 5輪對話完成 + Enhanced Draft 產出 → 自動進入 CYNEFIN-CHECK → CONTRACT → draft-to-plan → BUILD-AUTO，不等待使用者確認
 
 ### BUILD-AUTO 模式
 - 讀 [references/build-execution.md](references/build-execution.md) 取得 BUILD 規則
-- **BUILD-AUTO = BUILD Phase 1-4 v7**
-  - **MCP 可用時**：透過 MCP `sdid-loop` 自動執行
-  - **MCP 不可用時**：直接執行 `node task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<project>`
-  - ⚠️ 禁止直接 `node sdid-tools/mcp-server/adapters/loop.mjs`，這是 MCP adapter，不是 CLI 工具
+- **BUILD-AUTO = Plan 執行層 + Gate 驗證層**
+
+  **⚠️ 前置檢查（必做）：**
+  - 確認 `.gems/iterations/iter-N/plan/implementation_plan_Story-X.Y.md` 存在
+  - **不存在 → STOP，先照 [references/plan-writer.md](references/plan-writer.md) 寫 Plan，再進 BUILD**
+  - 不可跳過 Plan 直接寫程式碼，Build Phase 1 也會 BLOCKER
+
+  **Plan 執行層（agent 主導）：**
+  1. 讀 v4 plan（`implementation_plan_Story-X.Y.md`）
+  2. 對每個 Task，依序執行 Step 1-5（寫測試 → RED → 寫實作 → GREEN → commit）
+  3. Step 2（RED）和 Step 4（GREEN）必須實際跑，不能跳過
+  4. 實作裡加 GEMS 一行標籤 + `[STEP]` 標記
+
+  **Gate 驗證層（cjs 腳本）：**
+  ```bash
+  node task-pipe/runner.cjs --phase=BUILD --step=1 --story=Story-X.Y --target=<project> --iteration=iter-N
+  node task-pipe/runner.cjs --phase=BUILD --step=2 --story=Story-X.Y --target=<project> --iteration=iter-N
+  node task-pipe/runner.cjs --phase=BUILD --step=3 --story=Story-X.Y --target=<project> --iteration=iter-N
+  node task-pipe/runner.cjs --phase=BUILD --step=4 --story=Story-X.Y --target=<project> --iteration=iter-N
+  ```
+
 - 收到 @TASK 時直接修復，不要回讀 plan 或架構文件
-- **TDD 驗收規則**：
-  - Phase 2 讀 contract.ts 找 `@GEMS-TDD` 標籤 → vitest --run（有 @GEMS-TDD）或 tsc --noEmit（無 @GEMS-TDD）
-  - 測試在 contract 階段就要寫好（真正的 TDD：先測試後實作）
-  - Phase 1 骨架是 RED 狀態（測試 failing），Phase 2 修實作讓測試 GREEN
-  - 不能動測試檔（測試是規格）
-  - DB/UI/外部依賴的 Story 不加 @GEMS-TDD，Phase 2 只跑 tsc --noEmit
-  - 舊 @GEMS-AC-* 標籤已 deprecated（v7.0），contract-gate 會輸出 @GUIDED 提示
+- 測試 FAIL 時修實作，不能動測試檔（測試是規格）
 - **Terminal**: 所有 Phase `@PASS` → 回報完成的 Story 與 Phase 數量，停止，等待使用者下一指令
 
 ### DESIGN-TASKPIPE 模式
@@ -208,7 +238,7 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 - 適用：需求明確（滿足「需求明確」判斷標準 3 項以上）或使用者說「快速建」「練習」「小專案」
 - 如果使用者已描述清楚，跳過確認直接引導建立 `draft_iter-N.md`
 - 禁止讀取 `src/*`（設計階段不看程式碼）
-- **Terminal**: draft 產出 → 自動進入 CYNEFIN-CHECK → FLOW-REVIEW → CONTRACT → BUILD-AUTO，不等待使用者確認
+- **Terminal**: draft 產出 → 自動進入 CYNEFIN-CHECK → CONTRACT → BUILD-AUTO，不等待使用者確認
 
 ### RERUN-PHASE 模式
 - 使用者要求重跑特定 Phase（如「重跑 Phase 2」「Phase 3 重跑」）
@@ -241,8 +271,10 @@ Draft 完成 → CYNEFIN-CHECK → @PASS
 | [build-execution.md](references/build-execution.md) | BUILD Phase 1-4 v7 + 錯誤處理 | 進入 BUILD-AUTO 時 |
 | [micro-fix.md](references/micro-fix.md) | MICRO-FIX 執行規則 | 進入 MICRO-FIX 時 |
 | [poc-fix.md](references/poc-fix.md) | POC-FIX 四階段執行規則 | 進入 POC-FIX 模式時 |
-| [cynefin-check.md](references/cynefin-check.md) | 進 PLAN 前語意域分析（強制執行） | Draft 完成後進 PLAN 前 |
+| [cynefin-check.md](references/cynefin-check.md) | 行為數量 gate（>8 BLOCKER）+ keyword → needsTest | Draft 完成後進 PLAN 前 |
 | [architecture-rules.md](references/architecture-rules.md) | 模組化架構規則 | Blueprint Round 3 或 PLAN Step 2 時 |
 | [action-type-mapping.md](references/action-type-mapping.md) | 動作類型映射 | Blueprint Round 5 或 PLAN Step 4 時 |
-| [tdd-contract-prompt.md](references/tdd-contract-prompt.md) | TDD Contract Subagent prompt（CYNEFIN @PASS 後寫 @GEMS-TDD 測試檔） | CYNEFIN @PASS → CONTRACT 寫入前 |
+| [tdd-contract-prompt.md](references/tdd-contract-prompt.md) | TDD Contract Subagent prompt（CYNEFIN @PASS 後寫 @TEST 黃金樣板 v4） | CYNEFIN @PASS → contract-gate 前 |
+| [plan-writer.md](references/plan-writer.md) | Plan Writer — contract v4 → v4 plan（### Task N: + 完整程式碼） | contract-gate @PASS 後 |
+| [contract-golden-template.md](references/contract-golden-template.md) | Contract 黃金樣板完整參考（@CONTRACT/@TEST/@RISK/@GEMS-FLOW/Behavior:） | 撰寫 contract 時參考 |
 | [SDID_ARCHITECTURE.md](references/SDID_ARCHITECTURE.md) | 框架全局說明（給人看，AI 不需每次讀） | 需要框架全貌時 |

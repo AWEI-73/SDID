@@ -52,7 +52,29 @@ function run(options) {
   console.log(`\n🔗 整合層 | ${story}`);
 
   // ============================================
-  // 0. P0 SVC/API 整合測試非 Mock 驗證（M28-4）
+  // 0a. GEMS-DEPS-RISK 整合測試自動觸發
+  //     contract 有 MEDIUM/HIGH deps risk → 掃 *.integration.test.ts
+  // ============================================
+  const depsRiskResult = runDepsRiskIntegrationTests(target, iteration, srcPath);
+  if (depsRiskResult.verdict === 'BLOCKER') {
+    emitFix({
+      scope: `BUILD Phase 3 | ${story}`,
+      summary: depsRiskResult.summary,
+      targetFile: depsRiskResult.testFile || 'src/',
+      missing: [depsRiskResult.summary],
+      nextCmd: getRetryCmd('BUILD', '3', { story, target: relativeTarget, iteration }),
+      tasks: [{ action: 'FIX_INTEGRATION_TEST', file: depsRiskResult.testFile, expected: depsRiskResult.summary }]
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-3', story });
+    return { verdict: 'BLOCKER', reason: 'integration_test_failed' };
+  }
+  if (depsRiskResult.verdict === 'WARN') {
+    console.log(`   ⚠️  ${depsRiskResult.summary}`);
+  } else if (depsRiskResult.verdict === 'PASS') {
+    console.log(`   ✅ 整合測試: ${depsRiskResult.summary}`);
+  }
+
+  // ============================================
+  // 0b. P0 SVC/API 整合測試非 Mock 驗證（M28-4）
   // ============================================
   const p0MockIssues = checkP0SvcApiNonMock(target, iteration, story);
   if (p0MockIssues.blockers.length > 0) {
@@ -153,6 +175,33 @@ function run(options) {
   }
 
   // ============================================
+  // 2b. GEMS-DEPS import 驗證
+  //     Check A: @CONTRACT(Story-X.Y) → src 必須有對應 GEMS tag
+  //     Check B: GEMS deps:[X] → import 必須存在
+  // ============================================
+  const depImportResult = checkGemsDepImports(target, iteration, story, srcPath);
+  if (depImportResult.verdict === 'BLOCKER') {
+    const tasks = depImportResult.violations.map(v => ({
+      action: v.type === 'missing_gems_tag' ? 'UPDATE_GEMS_TAG' : 'FIX_IMPORT',
+      file: v.file || 'src/',
+      expected: v.message,
+      acSpec: 'GEMS-DEPS 宣告的依賴必須出現在 import 中；contract @CONTRACT 必須有對應 GEMS tag'
+    }));
+    emitFix({
+      scope: `BUILD Phase 3 | ${story}`,
+      summary: `GEMS-DEPS 驗證失敗 (${depImportResult.violations.length} 個問題)`,
+      targetFile: depImportResult.violations[0]?.file || 'src/',
+      missing: depImportResult.violations.map(v => v.message),
+      nextCmd: getRetryCmd('BUILD', '3', { story, target: relativeTarget, iteration }),
+      tasks
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-3', story });
+    return { verdict: 'BLOCKER', reason: 'gems_dep_import_mismatch' };
+  }
+  if (depImportResult.verdict === 'PASS') {
+    console.log(`   ✅ GEMS-DEPS: ${depImportResult.checked} 個 tag 驗證通過`);
+  }
+
+  // ============================================
   // 全部通過
   // ============================================
   writeCheckpoint(target, iteration, story, '3', {
@@ -175,6 +224,109 @@ function run(options) {
   }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-3', story });
 
   return { verdict: 'PASS' };
+}
+
+/**
+ * 從 contract 推導整合測試需求：
+ *   - contract 有 @INTEGRATION-TEST 標籤 → 直接跑指定路徑
+ *   - contract 有 P0 或 P1+HOOK 但無 @INTEGRATION-TEST → 掃 src/__tests__/ 作為 fallback
+ *   - 找到測試就跑，沒有就 WARN
+ */
+function runDepsRiskIntegrationTests(target, iteration, srcPath) {
+  const iterNum = iteration.replace('iter-', '');
+  const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
+  if (!fs.existsSync(contractPath)) return { verdict: 'SKIP', summary: 'contract 不存在，跳過整合測試' };
+
+  let content;
+  try { content = fs.readFileSync(contractPath, 'utf8'); } catch { return { verdict: 'SKIP', summary: 'contract 讀取失敗' }; }
+
+  // 優先：讀 @INTEGRATION-TEST 標籤
+  const integrationTagMatches = [...content.matchAll(/\/\/\s*@INTEGRATION-TEST:\s*(.+\.(?:test|spec)\.tsx?)/g)];
+  const taggedFiles = integrationTagMatches
+    .map(m => m[1].trim())
+    .filter((f, i, arr) => arr.indexOf(f) === i) // 去重
+    .map(f => path.join(target, f))
+    .filter(f => fs.existsSync(f));
+
+  // Fallback：判斷是否需要整合測試（P0 或 P1+HOOK）
+  const needsIntegration = (() => {
+    if (/\/\/\s*@CONTRACT:\s*\w+\s*\|\s*P0\s*\|/.test(content)) return true;
+    if (/\/\/\s*@CONTRACT:\s*\w+\s*\|\s*P1\s*\|\s*HOOK/.test(content)) return true;
+    return false;
+  })();
+
+  let integrationTestFiles = taggedFiles;
+
+  if (integrationTestFiles.length === 0 && needsIntegration) {
+    // Fallback：掃 src/__tests__/
+    const testDirs = [
+      path.join(srcPath, '__tests__'),
+      path.join(target, '__tests__'),
+    ];
+    for (const dir of testDirs) {
+      if (!fs.existsSync(dir)) continue;
+      fs.readdirSync(dir)
+        .filter(f => /\.test\.(ts|tsx|js)$/.test(f))
+        .forEach(f => integrationTestFiles.push(path.join(dir, f)));
+    }
+  }
+
+  if (integrationTestFiles.length === 0) {
+    if (needsIntegration) {
+      return {
+        verdict: 'WARN',
+        summary: `contract 有 P0/P1-HOOK 但無整合測試 — 建議在 contract 加 @INTEGRATION-TEST 並補 src/__tests__/integration.test.ts`
+      };
+    }
+    return { verdict: 'SKIP', summary: '無整合測試需求，跳過' };
+  }
+
+  // 找 vitest 的 cwd
+  let vitestCwd = target;
+  const frontendDir = path.join(target, 'frontend');
+  if (fs.existsSync(path.join(frontendDir, 'package.json'))) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(frontendDir, 'package.json'), 'utf8'));
+      if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest) vitestCwd = frontendDir;
+    } catch { }
+  }
+  if (vitestCwd === target) {
+    const pkgPath = path.join(target, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        if (!pkg.devDependencies?.vitest && !pkg.dependencies?.vitest) {
+          return { verdict: 'SKIP', summary: 'vitest 未安裝，跳過整合測試' };
+        }
+      } catch { }
+    }
+  }
+
+  const relToVitestCwd = integrationTestFiles.map(f => path.relative(vitestCwd, f)).join(' ');
+  console.log(`   🧪 整合測試: ${integrationTestFiles.length} 個測試檔`);
+
+  try {
+    execSync(`npx vitest run ${relToVitestCwd}`, {
+      cwd: vitestCwd,
+      stdio: 'pipe',
+      timeout: 60000,
+    });
+    return {
+      verdict: 'PASS',
+      summary: `${integrationTestFiles.length} 個整合測試檔全部通過`,
+      testFile: relToVitestCwd
+    };
+  } catch (e) {
+    const output = (e.stdout || '').toString() + (e.stderr || '').toString();
+    const failMatch = output.match(/Tests\s+(\d+)\s+failed/);
+    const failCount = failMatch ? failMatch[1] : '?';
+    return {
+      verdict: 'BLOCKER',
+      summary: `整合測試失敗（${failCount} 個）— 修實作讓測試通過`,
+      testFile: relToVitestCwd,
+      output: output.slice(-500)
+    };
+  }
 }
 
 /**
@@ -326,6 +478,116 @@ function checkP0SvcApiNonMock(target, iteration, story) {
   }
 
   return result;
+}
+
+/**
+ * GEMS-DEPS import 驗證（Phase 3 v7.2 新增）
+ *
+ * Check A：contract 每個 @CONTRACT(Story-X.Y) → src 必須有對應 GEMS tag
+ *   → 抓「AI 改了 contract 但沒更新實作」的情況
+ *
+ * Check B：GEMS tag 的 deps:[X] → 該檔案必須有對應 import 語句
+ *   → 抓「GEMS tag 寫了 deps 但實際還是呼叫舊 API」的情況
+ *
+ * GAS 全域物件（CacheService 等）不需要 import，自動跳過。
+ */
+function checkGemsDepImports(target, iteration, story, srcPath) {
+  const GAS_GLOBALS = new Set([
+    'CacheService', 'SpreadsheetApp', 'DriveApp', 'PropertiesService',
+    'UrlFetchApp', 'HtmlService', 'ContentService', 'MailApp',
+    'LockService', 'Utilities', 'Session', 'ScriptApp', 'Logger',
+  ]);
+
+  // 讀 contract 取得 @CONTRACT 函式清單
+  const iterNum = iteration.replace('iter-', '');
+  const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
+  if (!fs.existsSync(contractPath)) return { verdict: 'SKIP', violations: [], checked: 0 };
+
+  let contractContent;
+  try { contractContent = fs.readFileSync(contractPath, 'utf8'); } catch {
+    return { verdict: 'SKIP', violations: [], checked: 0 };
+  }
+
+  // 提取 contract 中屬於本 story 的函式名稱
+  const contractNames = [];
+  const contractEntryRe = /\/\/\s*@CONTRACT:\s*(\w+)[^|]*\|[^|]*\|[^|]*\|\s*(Story-[\d.]+)/g;
+  for (const m of contractContent.matchAll(contractEntryRe)) {
+    if (m[2].trim() === story) contractNames.push(m[1].trim());
+  }
+  if (contractNames.length === 0) return { verdict: 'SKIP', violations: [], checked: 0 };
+
+  // 掃描 src（前端）+ backend-gas/src（後端）
+  const gemsForStory = []; // { file, name, deps, importLines }
+
+  function walkDir(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '__tests__') continue;
+        walkDir(full);
+      } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
+        parseGems(full);
+      }
+    }
+  }
+
+  function parseGems(filePath) {
+    let content;
+    try { content = fs.readFileSync(filePath, 'utf8'); } catch { return; }
+    // 格式：/** GEMS: name | priority | Story-X.Y | flow | deps:[...] */
+    const re = /\/\*\*\s*GEMS:\s*([^\s|*]+)\s*\|[^|]*\|\s*(Story-[\d.]+)\s*\|[^|*]*\|\s*deps:\[([^\]]*)\]\s*\*\//g;
+    for (const m of content.matchAll(re)) {
+      if (m[2].trim() !== story) continue;
+      const deps = m[3].split(',').map(d => d.trim()).filter(Boolean);
+      const importLines = content.split('\n').filter(l => /^import\s/.test(l.trim()));
+      gemsForStory.push({ file: filePath, name: m[1].trim(), deps, importLines });
+    }
+  }
+
+  walkDir(srcPath);
+  walkDir(path.join(target, 'backend-gas', 'src'));
+
+  const violations = [];
+
+  // Check A：每個 @CONTRACT 函式 → src 必須有對應 GEMS tag
+  for (const contractName of contractNames) {
+    const cn = contractName.toLowerCase();
+    const found = gemsForStory.some(t => {
+      const gn = t.name.toLowerCase();
+      // 允許 FromStore / Context / Provider 等後綴差異
+      const normalize = s => s.replace(/(fromstore|context|provider|manager|service|hook)$/i, '');
+      return normalize(cn) === normalize(gn) || cn.includes(gn) || gn.includes(cn);
+    });
+    if (!found) {
+      violations.push({
+        type: 'missing_gems_tag',
+        file: 'src/',
+        message: `@CONTRACT: ${contractName} (${story}) — src 找不到對應 GEMS tag，實作未更新或缺少 GEMS 標籤`,
+      });
+    }
+  }
+
+  // Check B：GEMS deps:[X] → 必須出現在 import 語句中
+  for (const tag of gemsForStory) {
+    for (const dep of tag.deps) {
+      if (!dep || GAS_GLOBALS.has(dep)) continue;
+      const inImports = tag.importLines.some(l => l.includes(dep));
+      if (!inImports) {
+        violations.push({
+          type: 'missing_import',
+          file: path.relative(target, tag.file),
+          message: `${tag.name}: GEMS deps:[${dep}] 宣告但 import 中找不到 — 實作可能仍直接呼叫舊 API`,
+        });
+      }
+    }
+  }
+
+  return {
+    verdict: violations.length > 0 ? 'BLOCKER' : 'PASS',
+    violations,
+    checked: gemsForStory.length,
+  };
 }
 
 function findNewPages(srcPath) {

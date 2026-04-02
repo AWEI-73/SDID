@@ -1,8 +1,8 @@
-# TDD Contract Subagent Prompt Template
+﻿# TDD Contract Subagent Prompt Template
 
 **用途**：CYNEFIN @PASS 後，針對 `needsTest:true` 的 action，寫好測試檔並將 `@TEST` 路徑加入 contract.ts，讓 Phase 2 可直接執行 vitest。
 
-**觸發時機**：CYNEFIN @PASS → FLOW-REVIEW @PASS → [此 subagent] → @TEST 路徑寫入 contract → contract-gate。
+**觸發時機**：CYNEFIN @PASS → [此 subagent] → @TEST 路徑寫入 contract → contract-gate。
 
 ---
 
@@ -65,6 +65,32 @@ FLOW step 的 complexity 標注（Clear/Complicated）= 該 method 是否命中 
 ❌ bad: update() → 更新資料
 ✅ good: update() → id 不存在拋 Error("NotFound")
 ```
+
+**Data Source Constraint（來源約束）— 必填條件**：
+
+當 action 的 `依賴` 欄位（draft）或 `@GEMS-DEPS` 含有本地 hook/service（如 `useGasDataStore`、`xService`），
+Behavior: **必須加一條否定斷言**，明示資料來源限制：
+
+```
+// 範例：useTaskManager 依賴 useGasDataStore
+// Behavior:
+// - useTaskManager(month) → 從 useGasDataStore 讀 tasks，過濾 month 回傳
+// - useTaskManager(month) → store loading 時回傳 loading:true
+// - useTaskManager() 不直接呼叫 gasGet（必須透過 useGasDataStore）  ← 來源約束，必填
+```
+
+對應的 TDD 測試（TDD Subagent 必須生出）：
+```typescript
+it('不直接呼叫 gasGet（透過 useGasDataStore 讀取）', () => {
+  renderHook(() => useTaskManager(3));
+  expect(mockGasGet).not.toHaveBeenCalled();
+});
+```
+
+**判斷是否需要來源約束**：
+- action 的 `依賴` 含 `use` 開頭的 hook → 必加
+- action 的 `依賴` 含 `Client`/`Service`/`Store` → 必加
+- action 是 GAS 後端 lib（deps: CacheService 等 GAS global）→ 跳過
 
 **Behavior: 與 FLOW 的對應關係：**
 
@@ -179,9 +205,10 @@ Agent tool (general-purpose):
     ```
 
     **禁止：**
-    - `expect(result).toBeTruthy()` — 太模糊
+    - `expect(result).toBeTruthy()` — 太模糊，任何非 null 都過
     - `expect(result).toBeDefined()` — 無意義
     - `expect(mock).toHaveBeenCalledTimes(N)` — 測 mock 不測行為
+    - `expect(result.current.error).toBeTruthy()` — error 是 `string | null`，必須用 `expect(typeof result.current.error).toBe('string')` 驗型別一致性
 
     ### Step 4：跑測試確認 RED
 
@@ -212,9 +239,46 @@ Agent tool (general-purpose):
     ```
 
     @GEMS-FLOW 規則：
-    - 保留原有 FLOW（若有），補全 hiddenSteps 對應的 step 標注
-    - 每個 hiddenStep 對應一個 Complicated 標注的 STEP
-    - 格式：`STEP_NAME(Clear|Complicated|Complex)`
+    - interface/service → method 名稱（GETALL→CREATE→UPDATE）
+    - hook → 狀態轉換（INIT→FETCH→REFRESH）
+    - 單一函式 → 內部計算步驟（PARSE→CALC→FORMAT）
+    - 括號內填複雜度：外部服務/FK/多寫入 → Complicated，其餘 → Clear
+
+    ### Step 6：整合測試（P0 或 P1+HOOK 時必做）
+
+    **觸發條件**：contract 有 P0（任何 type）或 P1+HOOK
+
+    整合測試測「多個模組串在一起跑」，不 mock 任何本地依賴。
+
+    **路徑慣例**：`src/__tests__/integration.test.ts`（整個 iter 共用，追加不覆蓋）
+
+    **寫法範例（前端 hook + API client，不 mock）**：
+    ```typescript
+    // @vitest-environment jsdom
+    import { renderHook, waitFor, act } from '@testing-library/react';
+    import { describe, it, expect, beforeEach } from 'vitest';
+
+    beforeEach(() => localStorage.clear());
+
+    describe('[Integration] useTaskManager ↔ gasApiClient', () => {
+      it('getTasks → 回傳 seed 資料', async () => {
+        const { useTaskManager } = await import('../modules/tasks/hooks/useTaskManager');
+        const { result } = renderHook(() => useTaskManager(2));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.tasks.length).toBeGreaterThan(0);
+      });
+    });
+    ```
+
+    **在 contract.ts 加 `@INTEGRATION-TEST` 標籤**：
+    ```typescript
+    // @CONTRACT: useTaskManager | P1 | HOOK | Story-X.Y
+    // @TEST: src/modules/tasks/hooks/__tests__/useTaskManager.test.ts
+    // @INTEGRATION-TEST: src/__tests__/integration.test.ts
+    // @RISK: P1 — ...
+    ```
+
+    Phase 3 gate 讀 `@INTEGRATION-TEST` 路徑，有就跑，失敗就 BLOCKER。
 
     ---
 
@@ -290,15 +354,13 @@ Agent tool (general-purpose):
 ```
 CYNEFIN-CHECK @PASS
     ↓
-FLOW-REVIEW @PASS（產出 flow-review-pass-*.log）
-    ↓
 [此 subagent] TDD Contract Writer
     ├─► needsTest:true → 寫測試檔（RED）→ 黃金樣板加入 contract.ts
     └─► needsTest:false → 不處理（DB/UI 層，Phase 2 只跑 tsc --noEmit）
     ↓ READY
 contract-gate.cjs → 驗證 @CONTRACT P0 必有 @TEST，@TEST 路徑存在 → @PASS
     ↓ @PASS
-spec-to-plan → BUILD Phase 1（骨架）→ Phase 2（@TEST 跑 GREEN）→ Phase 3（API 整合）
+Plan Writer → BUILD Phase 1（plan 結構驗證）→ Phase 2（@TEST 跑 GREEN）→ Phase 3（整合）
 ```
 
 ---

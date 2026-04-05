@@ -1,6 +1,11 @@
 ---
 name: sdid
-description: SDID router. Check state → check artifacts → pick mode.
+description: >
+  觸發：(1) 出現「SDID」「.gems/」「iter-N」「blueprint」「draft」「contract」
+  「implementation_plan」「cynefin」「GEMS 標籤」等框架詞彙；
+  (2) 開始或繼續結構化開發流程（新專案、新 iter、BUILD 斷點、Phase 重跑）；
+  (3) 說「小修」「micro fix」「quick fix」「只改一個地方」。
+  不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作。
 ---
 
 # SDID

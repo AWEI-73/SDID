@@ -22,7 +22,7 @@
 | Phase | 名稱 | 內容 |
 |-------|------|------|
 | 1 | 骨架映射層 | 讀 implementation_plan + contract_iter-N.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3） |
-| 2 | TDD 驗收層 | 讀 contract_iter-N.ts 找 @GEMS-TDD：有 → vitest --run（測試在 contract 階段寫好，Phase 1 RED，Phase 2 GREEN，不能動測試檔）；無 → tsc --noEmit（DB/UI 層只驗型別）|
+| 2 | TDD 驗收層 | 讀 contract_iter-N.ts 找 @TEST：有 → vitest --run（測試在 contract 階段寫好，Phase 1 RED，Phase 2 GREEN，不能動測試檔）；無 → tsc --noEmit（DB/UI 層只驗型別）|
 | 3 | 整合層 | 路由整合、barrel export（Level S 跳過） |
 | 4 | 標籤品質+Fillback層 | GEMS 標籤品質複查（全覆蓋）+ 產出 Fillback + iteration_suggestions |
 
@@ -45,10 +45,10 @@
 - 只讀 @TASK 指定的 FILE 和 error log
 - **例外**：@TASK 的 EXPECTED 含型別名稱但 FILE 裡找不到定義時，允許讀 `contract_iter-N.ts` 查型別簽名（僅此一個檔案，不讀 plan）
 
-### Phase 2 找不到 contract.ts 或 @GEMS-TDD
+### Phase 2 找不到 contract.ts 或 @TEST
 - 若 contract.ts 不存在：Phase 2 直接 BLOCK（contract-gate 應已通過）
-- 若 contract.ts 存在但無 @GEMS-TDD：Phase 2 只跑 tsc --noEmit（正常，DB/UI Story）
-- 若 @GEMS-TDD 指向的測試檔不存在：Phase 2 BLOCK + 提示在 contract 階段補寫測試檔
+- 若 contract.ts 存在但無 @TEST：Phase 2 只跑 tsc --noEmit（正常，DB/UI Story）
+- 若 @TEST 指向的測試檔不存在：Phase 2 BLOCK + 提示在 contract 階段補寫測試檔
 
 ### 收到 @TACTICAL_FIX
 - 讀 output 指定的 error log

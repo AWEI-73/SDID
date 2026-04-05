@@ -222,3 +222,6 @@ Scanner 讀此行注入 functions.json：
 | CG-003 | @TEST 路徑必須實際存在（RED 測試已寫） | BLOCKER |
 | CG-005 | Behavior: 至少有一條含 Error/拋出 的錯誤路徑（P0） | WARNING |
 | CG-006 | FLOW step 數 = Behavior: 行數（對應關係完整） | WARNING |
+| CG-007-L1 | Blueprint needsTest 動作必有對應 @CONTRACT + @TEST 路徑（需 `--blueprint`） | BLOCKER |
+| CG-007-L2 | CG-007 @TEST 路徑檔案必須實際存在 | BLOCKER |
+| CG-007-L3 | it() 案例數 ≥ Behavior: 條目數；Behavior 錯誤碼必出現在測試檔 | WARNING |

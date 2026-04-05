@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Contract Gate v5.2 — Per-iter Contract 格式門控（HARNESS）
+ * Contract Gate v5.3 — Per-iter Contract 格式門控（HARNESS）
  *
  * 自動偵測格式版本：
  *   v4（有 @CONTRACT:）→ HARNESS 規則
@@ -11,13 +11,17 @@
  *   CG-002 BLOCKER: @TEST 路徑必須以 .test.ts/.spec.ts 結尾
  *   CG-003 BLOCKER: @TEST 路徑必須實際存在（RED 測試已寫）
  *   CG-005 WARNING: P0 Behavior: 缺少錯誤路徑
+ *   CG-007 三層驗收（需 --blueprint）:
+ *     Layer 1 BLOCKER: Blueprint needsTest 動作必有對應 @CONTRACT + @TEST 路徑
+ *     Layer 2 BLOCKER: @TEST 路徑檔案必須存在
+ *     Layer 3 WARNING: it() 案例數 >= Behavior: 條目數；Behavior 錯誤碼必出現在測試檔
  *
  * Auto-patch:
  *   - @GEMS-STORIES 區塊 → @GEMS-STORY: 單行格式（v3）
  *   - @CONTRACT-LOCK 不存在 → @PASS 後自動注入
  *
  * 用法:
- *   node sdid-tools/blueprint/v5/contract-gate.cjs --contract=<path> --target=<project> --iter=<N>
+ *   node sdid-tools/blueprint/v5/contract-gate.cjs --contract=<path> --target=<project> --iter=<N> [--blueprint=<path>]
  *
  * 輸出:
  *   @PASS     — 可進入 plan-generator → BUILD
@@ -28,14 +32,46 @@ const fs = require('fs');
 const path = require('path');
 
 function parseArgs() {
-  const a = { contract: null, target: null, iter: 1, help: false };
+  const a = { contract: null, target: null, iter: 1, blueprint: null, help: false };
   for (const x of process.argv.slice(2)) {
     if (x.startsWith('--contract=')) a.contract = path.resolve(x.split('=').slice(1).join('='));
     else if (x.startsWith('--target=')) a.target = path.resolve(x.split('=').slice(1).join('='));
     else if (x.startsWith('--iter=')) a.iter = parseInt(x.split('=')[1]) || 1;
+    else if (x.startsWith('--blueprint=')) a.blueprint = path.resolve(x.split('=').slice(1).join('='));
     else if (x === '--help' || x === '-h') a.help = true;
   }
   return a;
+}
+
+// ── Parse Blueprint needsTest actions for given iter ──
+function parseBlueprintNeedsTest(blueprintPath, iterNum) {
+  if (!blueprintPath || !fs.existsSync(blueprintPath)) return null;
+  const content = fs.readFileSync(blueprintPath, 'utf8');
+
+  // Find ### 複雜度標註 section
+  const sectionMatch = content.match(/###\s*複雜度標註[^\n]*\n([\s\S]*?)(?=\n##|\n---|\s*$)/);
+  if (!sectionMatch) return null;
+
+  const sectionText = sectionMatch[1];
+  // Parse table rows: | Iter | Domain | needsTest 動作 | 風險備注 |
+  // Skip header (|---) and rows where iter doesn't match
+  const actions = [];
+  for (const line of sectionText.split('\n')) {
+    if (!/^\|/.test(line) || /^\|\s*[-:]+/.test(line)) continue; // skip separator
+    const cols = line.split('|').map(s => s.trim()).filter((_, i) => i > 0); // drop leading ''
+    if (cols.length < 3) continue;
+    const rowIter = parseInt(cols[0]);
+    if (isNaN(rowIter) || rowIter !== iterNum) continue;
+
+    const needsTestCol = cols[2] || '';
+    if (!needsTestCol || /^(無|-|—|\{)/.test(needsTestCol)) continue;
+
+    const names = needsTestCol.split(/[,，]/).map(s => s.trim()).filter(s =>
+      s && s !== '無' && !s.startsWith('{')
+    );
+    actions.push(...names);
+  }
+  return actions; // [] = no needsTest this iter, null = section missing
 }
 
 // ── Auto-patch: @GEMS-STORIES 區塊 → @GEMS-STORY: 單行格式 ──
@@ -103,7 +139,7 @@ function autoPatchContract(content) {
 
 // ── Gate checks ──
 /** GEMS: checkContract | P0 | DETECT_FORMAT(Clear)→CHECK_V4(Complicated)→CHECK_V3(Clear)→RETURN(Clear) | Story-2.0 */
-function checkContract(content, iterNum, target = null) {
+function checkContract(content, iterNum, target = null, blueprintPath = null) {
   const blockers = [];
   const guided = [];
   const warnings = [];
@@ -168,6 +204,64 @@ function checkContract(content, iterNum, target = null) {
         B('CG-003', `@TEST 路徑不存在（RED 測試尚未寫入）: ${missingTests.join(', ')}`);
     }
 
+    // CG-007: Blueprint needsTest 動作三層驗收（需 --blueprint）
+    if (blueprintPath) {
+      const needsTestActions = parseBlueprintNeedsTest(blueprintPath, iterNum);
+      if (needsTestActions === null) {
+        W('CG-007', 'Blueprint 缺少「### 複雜度標註」section，無法做 needsTest 交叉驗證（請先通過 BP-013）');
+      } else {
+        for (const actionName of needsTestActions) {
+          // Layer 1: contract 中必有對應 @CONTRACT block 且含 @TEST
+          const contractMatch = contracts.find(c =>
+            c.name.toLowerCase() === actionName.toLowerCase()
+          );
+          if (!contractMatch) {
+            B('CG-007', `[L1-路徑] Blueprint needsTest 動作 "${actionName}" 在 contract 中無對應 @CONTRACT block`);
+            continue;
+          }
+          const afterIdx = (contractMatch.lineIdx || 0) + (contractMatch.raw.length || 0);
+          const rest = content.slice(afterIdx);
+          const nextBoundary = rest.search(/\/\/\s*@CONTRACT:|^export\s/m);
+          const block = nextBoundary >= 0 ? rest.slice(0, nextBoundary) : rest;
+
+          const testPathMatch = block.match(/\/\/\s*@TEST:\s*(.+)/);
+          if (!testPathMatch) {
+            B('CG-007', `[L1-路徑] Blueprint needsTest 動作 "${actionName}" 的 @CONTRACT block 缺少 @TEST 路徑`);
+            continue;
+          }
+          const testPath = testPathMatch[1].trim();
+
+          // Layer 2: @TEST 檔案必須存在
+          if (target) {
+            const absPath = path.isAbsolute(testPath) ? testPath : path.join(target, testPath);
+            if (!fs.existsSync(absPath)) {
+              B('CG-007', `[L2-存在性] Blueprint needsTest 動作 "${actionName}" 的 @TEST 檔案不存在: ${testPath}`);
+              continue;
+            }
+
+            // Layer 3: 行為一致性（WARNING）
+            const testContent = fs.readFileSync(absPath, 'utf8');
+            const itCount = (testContent.match(/\bit\s*\(|\btest\s*\(/g) || []).length;
+            const behaviorLines = [...block.matchAll(/\/\/\s*-\s*(.+)/g)].map(m => m[1].trim());
+
+            if (behaviorLines.length > 0 && itCount < behaviorLines.length) {
+              W('CG-007', `[L3-行為] "${actionName}" 測試案例數 (${itCount}) 少於 Behavior 條目數 (${behaviorLines.length})，可能覆蓋不足`);
+            }
+
+            // 錯誤碼一致性：Behavior 中的 Error("Code") 必須出現在測試檔
+            const errorCodes = [];
+            for (const bl of behaviorLines) {
+              for (const m of bl.matchAll(/Error\(["']([^"']+)["']\)/g)) errorCodes.push(m[1]);
+            }
+            const missingCodes = errorCodes.filter(code => !testContent.includes(code));
+            if (missingCodes.length > 0) {
+              W('CG-007', `[L3-行為] "${actionName}" 測試檔未涵蓋 Behavior 錯誤碼: ${missingCodes.join(', ')}`);
+            }
+          }
+        }
+      }
+    }
+
     // CG-005（WARNING）: P0 Behavior: 必須有錯誤路徑（含 Error/拋出）
     const behaviorLines = [...content.matchAll(/\/\/\s*-\s*.+/g)].map(m => m[0]);
     const p0HasBehavior = /\/\/\s*Behavior[（(]/.test(content) || /\/\/\s*Behavior:/.test(content);
@@ -224,13 +318,14 @@ function main() {
   const args = parseArgs();
   if (args.help) {
     console.log(`
-Contract Gate v5.2 — Per-iter Contract 格式門控（HARNESS）
+Contract Gate v5.3 — Per-iter Contract 格式門控（HARNESS）
 
 用法:
-  node sdid-tools/blueprint/v5/contract-gate.cjs --contract=<path> --target=<project> --iter=<N>
+  node sdid-tools/blueprint/v5/contract-gate.cjs --contract=<path> --target=<project> --iter=<N> [--blueprint=<path>]
 
-v4 格式（@CONTRACT:）→ CG-001~005 HARNESS 規則
+v4 格式（@CONTRACT:）→ CG-001~005 + CG-007 HARNESS 規則
 v3 格式（@GEMS-STORY:）→ 舊規則相容
+--blueprint: 可選，提供後啟用 CG-007（Blueprint needsTest 三層驗收）
 @PASS 後自動注入 @CONTRACT-LOCK
 
 輸出: @PASS 或 @BLOCKER
@@ -256,7 +351,7 @@ v3 格式（@GEMS-STORY:）→ 舊規則相容
     content = patched;
   }
 
-  const { blockers, guided, warnings, isV4 } = checkContract(content, args.iter, args.target);
+  const { blockers, guided, warnings, isV4 } = checkContract(content, args.iter, args.target, args.blueprint);
   const passed = blockers.length === 0;
 
   // @CONTRACT-LOCK 注入（@PASS 時）
@@ -281,7 +376,7 @@ v3 格式（@GEMS-STORY:）→ 舊規則相容
   const logFile = path.join(logsDir, `contract-gate-${status}-${ts}.log`);
   const gateVer = isV4 ? 'v4-HARNESS' : 'v3-legacy';
   const logLines = [
-    `=== Contract Gate v5.2 (${gateVer}) ===`,
+    `=== Contract Gate v5.3 (${gateVer}) ===`,
     `Contract: ${path.basename(args.contract)}`,
     `Iter: ${args.iter}`,
     `Format: ${isV4 ? 'v4 (@CONTRACT/@TEST/Behavior:)' : 'v3 (@GEMS-STORY/@GEMS-TDD)'}`,
@@ -313,12 +408,13 @@ v3 格式（@GEMS-STORY:）→ 舊規則相容
   const relContract = path.relative(process.cwd(), args.contract);
   const relTarget = path.relative(process.cwd(), args.target) || '.';
   const relLog = path.relative(args.target, logFile);
-  const retryCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${relContract} --target=${relTarget} --iter=${args.iter}`;
+  const bpFlag = args.blueprint ? ` --blueprint=${path.relative(process.cwd(), args.blueprint)}` : '';
+  const retryCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${relContract} --target=${relTarget} --iter=${args.iter}${bpFlag}`;
 
   // 終端輸出
   console.log('');
   if (passed) {
-    console.log(`@PASS | contract-gate v5.2 (${gateVer}) | iter-${args.iter}`);
+    console.log(`@PASS | contract-gate v5.3 (${gateVer}) | iter-${args.iter}`);
     if (patches.length > 0) patches.forEach(p => console.log(`  ✅ auto-patch: ${p}`));
     if (warnings.length > 0) {
       console.log('');
@@ -354,7 +450,7 @@ v3 格式（@GEMS-STORY:）→ 舊規則相容
     }
   } else {
     console.log(`═══════════════════════════════════════════════════════════`);
-    console.log(`@BLOCKER | contract-gate v5.2 (${gateVer}) | ${blockers.length} item(s) to fix`);
+    console.log(`@BLOCKER | contract-gate v5.3 (${gateVer}) | ${blockers.length} item(s) to fix`);
     console.log(`@CONTEXT: Contract iter-${args.iter} | ${relContract}`);
     if (patches.length > 0) patches.forEach(p => console.log(`  ✅ auto-patch: ${p}`));
     console.log(`═══════════════════════════════════════════════════════════`);

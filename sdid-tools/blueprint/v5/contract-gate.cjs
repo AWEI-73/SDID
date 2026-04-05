@@ -10,7 +10,8 @@
  *   CG-001 BLOCKER: @CONTRACT P0 必有 @TEST
  *   CG-002 BLOCKER: @TEST 路徑必須以 .test.ts/.spec.ts 結尾
  *   CG-003 BLOCKER: @TEST 路徑必須實際存在（RED 測試已寫）
- *   CG-004 BLOCKER: CYNEFIN action 數 > 8 或 needsTest:true 缺 @TEST
+ *   CG-004 BLOCKER: CYNEFIN action 數 > 8（安全網，primary gate 在 draft 層）
+ *   CG-004 GUIDED: needsTest:true 交叉確認（@TEST 由 CG-001 把關，此為輔助）
  *   CG-005 WARNING: P0 Behavior: 缺少錯誤路徑
  *
  * Auto-patch:
@@ -183,20 +184,21 @@ function checkContract(content, iterNum, target = null) {
         B('CG-003', `@TEST 路徑不存在（RED 測試尚未寫入）: ${missingTests.join(', ')}`);
     }
 
-    // CG-004: CYNEFIN cross-check（行為數量 gate）
+    // CG-004: CYNEFIN cross-check（行為數量安全網 + needsTest 對齊）
+    // 注意：cynefin-check 應在 draft-gate 後已完成分析，此處只做結果交叉確認
     if (target) {
       const logsDir = path.join(target, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
       const cynefinReport = findLatestCynefinReport(logsDir);
       if (cynefinReport && Array.isArray(cynefinReport.actions)) {
-        // v4: 行為數量 gate
+        // 行為數量安全網（cynefin-check 未攔截時的最後防線）
         const totalActions = cynefinReport.actions.length;
-        if (cynefinReport.verdict === 'BLOCKER' || totalActions > 8)
-          B('CG-004', `CYNEFIN 報告：action 數量 ${totalActions} 超過上限（>8），需拆分 iter`);
-        // needsTest cross-check
+        if (totalActions > 8)
+          B('CG-004', `CYNEFIN 報告：action 數量 ${totalActions} 超過上限（>8）。此問題應在 draft 階段拆分，請回頭修改 draft_iter-${iterNum}.md`);
+        // needsTest cross-check → GUIDED（@TEST 已由 CG-001 把關，此為輔助提示）
         const needsTestActions = cynefinReport.actions.filter(a => a.needsTest === true);
         if (needsTestActions.length > 0 && testPaths.length === 0) {
           const names = needsTestActions.map(a => a.name).join(', ');
-          B('CG-004', `CYNEFIN 報告中有 ${needsTestActions.length} 個 needsTest:true action（${names}），但 contract 缺少 @TEST: 標籤`);
+          G('CG-G03', `CYNEFIN 報告中有 needsTest:true action（${names}），確認對應 @TEST: 標籤已填寫`);
         }
       }
     }

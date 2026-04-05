@@ -220,6 +220,5 @@ Scanner 讀此行注入 functions.json：
 | CG-001 | @CONTRACT P0 必有 @TEST | BLOCKER |
 | CG-002 | @TEST 路徑必須以 `.test.ts` 或 `.spec.ts` 結尾 | BLOCKER |
 | CG-003 | @TEST 路徑必須實際存在（RED 測試已寫） | BLOCKER |
-| CG-004 | cynefin-report needsTest:true 的 action 必有 @TEST | BLOCKER |
 | CG-005 | Behavior: 至少有一條含 Error/拋出 的錯誤路徑（P0） | WARNING |
 | CG-006 | FLOW step 數 = Behavior: 行數（對應關係完整） | WARNING |

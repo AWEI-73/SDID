@@ -1,8 +1,8 @@
 ﻿# TDD Contract Subagent Prompt Template
 
-**用途**：CYNEFIN @PASS 後，針對 `needsTest:true` 的 action，寫好測試檔並將 `@TEST` 路徑加入 contract.ts，讓 Phase 2 可直接執行 vitest。
+**用途**：Blueprint 複雜度標註確認後，針對 `needsTest 動作` 欄位列出的 actions，寫好測試檔並將 `@TEST` 路徑加入 contract.ts，讓 Phase 2 可直接執行 vitest。
 
-**觸發時機**：CYNEFIN @PASS → [此 subagent] → @TEST 路徑寫入 contract → contract-gate。
+**觸發時機**：Blueprint `### 複雜度標註` needsTest 欄確認 → [此 subagent] → @TEST 路徑寫入 contract → contract-gate。
 
 ---
 
@@ -135,18 +135,15 @@ Agent tool (general-purpose):
 
     ## 需要處理的 Actions
 
-    [直接貼入 cynefin-report.json 中 needsTest:true 的 actions[] 段落]
+    [從 Blueprint 「### 複雜度標註」表的 needsTest 動作欄位取得，格式如下]
 
-    ```json
-    [
-      {
-        "name": "actionName",
-        "story": "Story-X.Y",
-        "domain": "Complicated|Complex",
-        "hiddenSteps": ["步驟1", "步驟2"]
-      }
-    ]
     ```
+    Iter N — Domain: Complicated/Complex
+    needsTest 動作: actionName1, actionName2
+    風險備注: （選填）
+    ```
+
+    [再從對應的 draft_iter-N.md 找出每個 action 的 Signature、FLOW、DEPS]
 
     ---
 
@@ -186,7 +183,7 @@ Agent tool (general-purpose):
 
     使用 vitest。必須覆蓋：
     - 正常路徑（有具體輸入輸出值）
-    - hiddenSteps 指出的邊界條件
+    - draft 中 FLOW/DEPS 指出的邊界條件
     - 預期錯誤（有具體 Error code）
 
     **格式範例：**
@@ -300,7 +297,7 @@ Agent tool (general-purpose):
 
     ---
 
-    #### [actionName]（domain: Complicated/Complex）
+    #### [actionName]（domain: Complicated/Complex，來自 Blueprint 複雜度標註）
 
     **狀態：** ✅ TDD-WRITTEN / ❌ BLOCKED
 
@@ -329,14 +326,14 @@ Agent tool (general-purpose):
 ### 分派前準備
 
 ```
-1. 確認 cynefin-report.json 已產出（CYNEFIN @PASS 後）
-2. 確認 flow-review-pass-*.log 已產出（FLOW-REVIEW @PASS 後）
-3. 取得：
-   - cynefin-report.json 中 needsTest:true 的 actions[]
+1. 確認 Blueprint 已有「### 複雜度標註」section 且 needsTest 欄已填
+2. 取得：
+   - Blueprint 複雜度標註表中 needsTest 動作欄的 action 清單
+   - draft_iter-N.md 中對應 actions 的 Signature / FLOW / DEPS
    - contract_iter-N.ts 草稿（相關 @GEMS-STORY-ITEM 段落）
    - project path
-4. 填入 prompt 的三個佔位符
-5. Dispatch subagent（model: sonnet）
+3. 填入 prompt 的佔位符
+4. Dispatch subagent（model: sonnet）
 ```
 
 ### 收到結果後的處理
@@ -352,11 +349,11 @@ Agent tool (general-purpose):
 ## 與 SDID 流程的銜接點
 
 ```
-CYNEFIN-CHECK @PASS
+Blueprint 複雜度標註審查（BP-013 @PASS）
     ↓
 [此 subagent] TDD Contract Writer
-    ├─► needsTest:true → 寫測試檔（RED）→ 黃金樣板加入 contract.ts
-    └─► needsTest:false → 不處理（DB/UI 層，Phase 2 只跑 tsc --noEmit）
+    ├─► needsTest 動作 → 寫測試檔（RED）→ 黃金樣板加入 contract.ts
+    └─► 未列入 needsTest → 不處理（DB/UI 層，Phase 2 只跑 tsc --noEmit）
     ↓ READY
 contract-gate.cjs → 驗證 @CONTRACT P0 必有 @TEST，@TEST 路徑存在 → @PASS
     ↓ @PASS
@@ -374,7 +371,6 @@ contract-gate 在 @PASS 後驗證：
 | CG-001 | @CONTRACT P0 必有 @TEST | BLOCKER |
 | CG-002 | @TEST 路徑必須以 `.test.ts` 結尾 | BLOCKER |
 | CG-003 | @TEST 路徑必須實際存在（RED 測試已寫） | BLOCKER |
-| CG-004 | cynefin-report needsTest:true 的 action 必有 @TEST | BLOCKER |
 | CG-005 | Behavior: 至少有一條錯誤路徑（含 Error/拋出） | WARNING |
 
 ---

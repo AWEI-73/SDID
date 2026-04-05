@@ -372,6 +372,9 @@ contract-gate 在 @PASS 後驗證：
 | CG-002 | @TEST 路徑必須以 `.test.ts` 結尾 | BLOCKER |
 | CG-003 | @TEST 路徑必須實際存在（RED 測試已寫） | BLOCKER |
 | CG-005 | Behavior: 至少有一條錯誤路徑（含 Error/拋出） | WARNING |
+| CG-007-L1 | Blueprint needsTest 動作必有對應 @CONTRACT + @TEST（需 `--blueprint`） | BLOCKER |
+| CG-007-L2 | CG-007 @TEST 路徑檔案必須存在 | BLOCKER |
+| CG-007-L3 | it() 案例數 ≥ Behavior: 條目數；錯誤碼出現在測試檔 | WARNING |
 
 ---
 

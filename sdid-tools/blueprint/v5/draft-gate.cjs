@@ -38,7 +38,7 @@ function parseArgs() {
 // ── Valid action types ──
 const VALID_TYPES = new Set([
   'CONST', 'LIB', 'API', 'SVC', 'HOOK', 'UI', 'ROUTE', 'SCRIPT',
-  'CALC', 'CREATE', 'READ', 'MODIFY', 'DELETE',
+  'CALC', 'CREATE', 'READ', 'MODIFY', 'DELETE', 'TEST',
 ]);
 
 // ── Composite types → auto-patch splits them ──
@@ -233,10 +233,9 @@ function checkDraft(d, raw, blueprint) {
   const B = (code, msg) => blockers.push({ code, msg });
   const G = (code, msg) => guided.push({ code, msg });
 
-  // 判斷是否為 Foundation iter（iter-1 或 Story 全為 X.0）
+  // 判斷是否為 Foundation iter（iter-1 或模組名為 Foundation）
   // Foundation iter 豁免 UI 強制檢查
-  const isFoundationIter = d.iterNum === 1 ||
-    d.actions.every(a => /^Story-\d+\.0$/.test(a.storyId || '') || !a.storyId);
+  const isFoundationIter = d.iterNum === 1 || d.module === 'Foundation';
 
   // 大項 1: Header metadata
   if (!d.iterNum) B('DR-001', '缺少 **迭代**: iter-N');
@@ -386,8 +385,8 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
     : `<project>/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
   const nextContractCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractPath}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
 
-  // Foundation iter 判斷（Story 類型為 Foundation 或模組名為 Foundation）
-  const isFoundationIter = d.module === 'Foundation' || (d.storyType && d.storyType === 'Foundation');
+  // Foundation iter 判斷（iter-1 或模組名為 Foundation）
+  const isFoundationIter = d.iterNum === 1 || d.module === 'Foundation';
   const reportPath = relTarget
     ? `${relTarget}/.gems/iterations/iter-${iterNum}/cynefin-report.json`
     : `.gems/iterations/iter-${iterNum}/cynefin-report.json`;

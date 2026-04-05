@@ -60,16 +60,22 @@ src/
 
 ## 3. 迭代規劃
 
-| Iter | 模組 | 目標（一行） | 交付 |
-|------|------|-------------|------|
-| 1 | shared | 型別 + API 介面契約 + 前端殼 | INFRA |
-| 2 | {moduleA} | {一行描述} | FULL |
-| 3 | {moduleB} | {一行描述} | FULL |
+| Iter | 模組 | 目標（一行） | 交付 | 狀態 | 可展示標準 |
+|------|------|-------------|------|------|-----------|
+| 1 | shared | 型別 + API 介面契約 + 前端殼 | INFRA | [CURRENT] | {可觀察的完成標準} |
+| 2 | {moduleA} | {一行描述} | FULL | | {可觀察的完成標準} |
+| 3 | {moduleB} | {一行描述} | FULL | | {可觀察的完成標準} |
 
 ### 模組 API 摘要
 - shared: CoreTypes, ENV_CONFIG, I{Service}Contracts
 - {moduleA}: {fn}(args): ReturnType, {fn2}(args): ReturnType
 - {moduleB}: {fn3}(args): ReturnType
+
+### 已知技術債
+
+| 問題 | 位置 | 嚴重度 | 狀態 |
+|------|------|--------|------|
+| {技術債描述} | {模組/檔案} | HIGH/MED/LOW | 待處理 / ✅ iter-N 解決 |
 
 ---
 

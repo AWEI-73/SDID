@@ -516,15 +516,26 @@ needsTest 判斷規則（腳本自動計算，AI 也可手動填入）:
 
   fs.writeFileSync(logPath, logContent, 'utf8');
 
-  // 存 cynefin-report.json（供 ac-runner 讀取 actions[]）
+  // 存 cynefin-report.json（供 contract-gate CG-004 等下游工具讀取）
+  // 最小化輸出：只保留下游實際消費的欄位（domain/needsTest/totalActions/issues）
+  // 完整 narrative 分析保留在 .log 檔供人工除錯
   const reportJsonPath = path.join(logsDir, `cynefin-report-${ts}.json`);
-  const reportWithActions = {
-    ...report,
-    actions: enrichedActions,
-    generatedAt: new Date().toISOString(),
+  const minimalReport = {
     iteration: `iter-${args.iter}`,
+    generatedAt: new Date().toISOString(),
+    verdict: result.pass ? 'PASS' : 'NEEDS-FIX',
+    totalActions: enrichedActions.length,
+    issues: result.blockers.map(b => ({
+      module: b.module,
+      description: b.issue.description,
+    })),
+    actions: enrichedActions.map(a => ({
+      name: a.name,
+      domain: a.domain,
+      needsTest: a.needsTest,
+    })),
   };
-  fs.writeFileSync(reportJsonPath, JSON.stringify(reportWithActions, null, 2), 'utf8');
+  fs.writeFileSync(reportJsonPath, JSON.stringify(minimalReport, null, 2), 'utf8');
 
   const relPath = path.relative(args.target, logPath);
 

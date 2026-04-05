@@ -1,12 +1,23 @@
 ---
 name: flow-review
-description: FLOW 審查與 CYNEFIN 節點分析。只在使用者明確說「REVIEW FLOW」「FLOW 審查」「CYNEFIN 分析」「這個 FLOW 對嗎」「驗證 FLOW」時觸發。不自動觸發。輸出：改寫的 FLOW（含域標記）+ @GEMS-WHY + POC 觸發清單，直接可貼回 contract.ts。
+description: FLOW 審查與 CYNEFIN 節點分析。只在使用者明確說「REVIEW FLOW」「FLOW 審查」「CYNEFIN 分析」「這個 FLOW 對嗎」「驗證 FLOW」時觸發。不自動觸發。觸發時先讀 blueprint 的「複雜度標註」section 作為 domain 上下文，再做節點層級審查。輸出：改寫的 FLOW（含域標記）+ @GEMS-WHY + POC 觸發清單，直接可貼回 contract.ts。
 ---
 
 # FLOW-REVIEW — CYNEFIN 節點審查
 
 > 輸入：FLOW 字串 + 業務描述（從 draft 或使用者說明取得）
+> 上下文：blueprint `### 複雜度標註` section 的 domain 分類（先讀，作為節點分類的參考基準）
 > 輸出：標記過的 FLOW + @GEMS-WHY + POC 清單，全部落在 contract 格式內
+
+---
+
+## 前置：讀 Blueprint 複雜度標註
+
+觸發後先確認 blueprint 是否有 `### 複雜度標註（CYNEFIN 回填）` section：
+
+- **有**：讀取該 iter 的 `Domain` 欄，作為此次 FLOW 節點分類的參考基準。
+  例如 iter 標記為 `Complicated`，則節點傾向 Complicated/Clear，除非有明確 Complex 特徵。
+- **沒有**：繼續執行，但在輸出末尾加 `⚠ blueprint 缺少複雜度標註，請在 CYNEFIN-CHECK 後回填 ### 複雜度標註 section`。
 
 ---
 

@@ -85,6 +85,7 @@ function parseBlueprint(raw) {  const bp = {
     goal: '', oneLineGoal: '', exclusions: [],
     groups: [], entities: {}, routes: '', styleStrategy: '',
     iterationPlan: [], apiSummary: [], variationPoints: [],
+    cynefinRows: null, // null = section missing, [] = present but empty
   };
 
   // Title
@@ -158,6 +159,16 @@ function parseBlueprint(raw) {  const bp = {
   const apiSection = raw.match(/###\s*模組\s*API\s*摘要\s*\n([\s\S]*?)(?=\n---|\n##|$)/);
   if (apiSection) {
     bp.apiSummary = apiSection[1].split('\n').filter(l => /^\s*-\s/.test(l)).map(l => l.replace(/^\s*-\s*/, '').trim());
+  }
+
+  // Cynefin annotations table（複雜度標註）
+  const cynefinSection = raw.match(/###\s*複雜度標註[\s\S]*?\n\|[^\n]+\n\|[-|\s]+\n((?:\|[^\n]+\n?)+)/);
+  if (cynefinSection) {
+    const rows = cynefinSection[1].split('\n').filter(l => l.startsWith('|'));
+    bp.cynefinRows = rows.map(r => {
+      const cols = r.split('|').map(c => c.trim()).filter(Boolean);
+      return { iter: parseInt(cols[0]) || 0, domain: cols[1] || '', needsTest: cols[2] || '', riskNote: cols[3] || '' };
+    });
   }
 
   // Variation points table
@@ -250,6 +261,21 @@ function checkBlueprint(bp, raw) {
   if (placeholders.size > 0)
     B('BP-012', `發現 ${placeholders.size} 個未替換佔位符: ${[...placeholders].slice(0, 5).join(', ')}`);
 
+  // BP-013: 複雜度標註（CYNEFIN 回填）— 必要 section，格式驗證
+  const VALID_DOMAINS = new Set(['Clear', 'Complicated', 'Complex', 'Chaotic']);
+  if (bp.cynefinRows === null) {
+    B('BP-013', '缺少「### 複雜度標註（CYNEFIN 回填）」section — 必須在 CYNEFIN-CHECK 後回填 domain 分類');
+  } else {
+    const hasPlaceholder = bp.cynefinRows.some(r => /\{/.test(r.domain));
+    if (hasPlaceholder)
+      B('BP-013', '複雜度標註表格有未替換的佔位符，請填入實際 Domain 值（Clear/Complicated/Complex/Chaotic）');
+    else {
+      const badDomains = bp.cynefinRows.filter(r => r.domain && !VALID_DOMAINS.has(r.domain));
+      if (badDomains.length > 0)
+        W('BP-013', `複雜度標註 Domain 值無效: ${badDomains.map(r => `iter-${r.iter}="${r.domain}"`).join(', ')}（合法: Clear/Complicated/Complex/Chaotic）`);
+    }
+  }
+
   // BP-014: 排除項目
   if (bp.exclusions.length === 0)
     W('BP-014', '缺少「不做什麼」排除項目，建議至少列 2 項');
@@ -272,6 +298,7 @@ function getFixGuidance(code) {
     'BP-010': '加入 ### 模組 API 摘要',
     'BP-011': '確保 API 摘要的模組名與迭代規劃表一致',
     'BP-012': '替換所有 {placeholder} 為實際內容',
+    'BP-013': '加入 ### 複雜度標註（CYNEFIN 回填）表格：| Iter | Domain | needsTest 動作 | 風險備注 |，Domain 合法值: Clear/Complicated/Complex/Chaotic',
     'BP-014': '加入 **不做什麼**: 列出排除項目',
   };
   return g[code] || '參考 task-pipe/templates/blueprint-golden.template.v5.md';

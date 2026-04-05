@@ -319,26 +319,6 @@ Blueprint Gate v5.0 — 全局骨架品質門控
   const warns = issues.filter(i => i.level === 'WARN');
   const passed = args.strict ? issues.length === 0 : blockers.length === 0;
 
-  // Log 存檔
-  if (args.target) {
-    const currentIter = bp.iterationPlan.find(e => /CURRENT/i.test(e.status));
-    const iterNum = currentIter ? currentIter.iter : 1;
-    const logsDir = path.join(args.target, '.gems', 'iterations', `iter-${iterNum}`, 'logs');
-    if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const status = passed ? 'pass' : 'error';
-    const logFile = path.join(logsDir, `blueprint-gate-${status}-${ts}.log`);
-    const logLines = [
-      `=== Blueprint Gate v5.0 ===`,
-      `Blueprint: ${path.basename(args.blueprint)}`,
-      `Entities: ${Object.keys(bp.entities).length} | Iters: ${bp.iterationPlan.length}`,
-      `Result: ${passed ? 'PASS' : 'BLOCKER'}`,
-      '',
-      ...issues.map(i => `[${i.level}] ${i.code}: ${i.msg}`),
-    ];
-    fs.writeFileSync(logFile, logLines.join('\n'), 'utf8');
-  }
-
   const relBp = path.relative(process.cwd(), args.blueprint);
   const relTarget = args.target ? path.relative(process.cwd(), args.target) || '.' : null;
   // CURRENT iter 偵測（有狀態欄用 [CURRENT]，無狀態欄預設 iter-1）
@@ -381,7 +361,7 @@ Blueprint Gate v5.0 — 全局骨架品質門控
         logLines.push(``);
       }
     }
-    logLines.push(`=== NEXT ===`, retryCmd, ``);
+    logLines.push(`=== NEXT ===`, passed ? nextDraftCmd : retryCmd, ``);
     logLines.push(`=== GUARD ===`, `🚫 禁止修改 task-pipe/ sdid-tools/ | ✅ 只能修改 ${relBp}`);
     fs.writeFileSync(logFile, logLines.join('\n'), 'utf8');
     logPath = path.relative(args.target, logFile);
@@ -436,10 +416,6 @@ Blueprint Gate v5.0 — 全局骨架品質門控
     }
     console.log(`@NEXT_COMMAND`);
     console.log(`  ${retryCmd}`);
-    console.log('');
-    console.log(`@REMINDER`);
-    blockers.forEach(b => console.log(`  - FIX [${b.code}] ${relBp}`));
-    console.log(`  NEXT: ${retryCmd}`);
     console.log('');
     if (logPath) {
       console.log(`@READ: ${logPath}`);

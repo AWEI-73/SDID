@@ -383,7 +383,8 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
   const contractPath = relTarget
     ? `${relTarget}/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`
     : `<project>/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
-  const nextContractCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractPath}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
+  const bpFlag = args.blueprint ? ` --blueprint=${path.relative(process.cwd(), args.blueprint)}` : '';
+  const nextContractCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractPath}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}${bpFlag}`;
 
   // Foundation iter 判斷（iter-1 或模組名為 Foundation）
   const isFoundationIter = d.iterNum === 1 || d.module === 'Foundation';

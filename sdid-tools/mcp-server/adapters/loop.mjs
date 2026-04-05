@@ -260,7 +260,9 @@ export async function handler({ project, iter, story, forceStart }) {
         // v6 流程
         if (contractV6Path) {
           lines.push(`🚀 執行: contract-gate v5 (v6 路徑)`);
-          result = await runCli('blueprint/v5/contract-gate.cjs', [`--contract=${contractV6Path}`, `--target=${projectRoot}`, `--iter=${iterNum}`]);
+          const cgArgs1 = [`--contract=${contractV6Path}`, `--target=${projectRoot}`, `--iter=${iterNum}`];
+          if (blueprintPath) cgArgs1.push(`--blueprint=${blueprintPath}`);
+          result = await runCli('blueprint/v5/contract-gate.cjs', cgArgs1);
         } else if (draftV6Path) {
           lines.push(`🚀 執行: draft-gate v5 (v6 路徑)`);
           const draftArgs = [`--draft=${draftV6Path}`, `--target=${projectRoot}`];
@@ -662,6 +664,8 @@ export async function handler({ project, iter, story, forceStart }) {
           `--iter=${iterNum}`,
         ];
         if (state.draftPath) writerArgs.push(`--draft=${state.draftPath}`);
+        const bpPathForContract = stateMachine.findBlueprint(projectRoot);
+        if (bpPathForContract) writerArgs.push(`--blueprint=${bpPathForContract}`);
         result = await runCli('blueprint/v5/contract-gate.cjs', writerArgs);
         break;
       }

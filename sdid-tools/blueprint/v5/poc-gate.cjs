@@ -183,7 +183,10 @@ function main() {
   const contractPath = relTarget
     ? `${relTarget}/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`
     : `.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
-  const nextCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractPath}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
+  const bpAbsPath = args.target ? path.join(args.target, '.gems', 'design', 'blueprint.md') : null;
+  const bpExists = bpAbsPath && fs.existsSync(bpAbsPath);
+  const bpFlag = bpExists ? ` --blueprint=${path.relative(process.cwd(), bpAbsPath)}` : '';
+  const nextCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractPath}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}${bpFlag}`;
   const retryCmd = `node sdid-tools/blueprint/v5/poc-gate.cjs --poc=${relPoc}${relTarget ? ' --target=' + relTarget : ''} --iter=${iterNum}`;
 
   // Log 存檔

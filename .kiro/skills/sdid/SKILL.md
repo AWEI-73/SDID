@@ -3,8 +3,7 @@ name: sdid
 description: >
   觸發：(1) 出現「SDID」「.gems/」「iter-N」「blueprint」「draft」「contract」
   「implementation_plan」「cynefin」「GEMS 標籤」等框架詞彙；
-  (2) 開始或繼續結構化開發流程（新專案、新 iter、BUILD 斷點、Phase 重跑）；
-  (3) 說「小修」「micro fix」「quick fix」「只改一個地方」。
+  (2) 開始或繼續結構化開發流程（新專案、新 iter、BUILD 斷點、Phase 重跑）。
   不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作。
 ---
 
@@ -29,12 +28,14 @@ Blueprint → Draft → Contract → Plan → Build
 | 有 draft，沒有 contract | `TDD-CONTRACT` → 寫完 contract 進 PLAN-WRITE | `references/tdd-contract-prompt.md` |
 | 有 blueprint，沒有 draft | `BLUEPRINT-CONTINUE` | `references/blueprint-design.md` |
 | 什麼都沒有 / 需求不清楚 | `DESIGN-BLUEPRINT` | `references/blueprint-design.md` |
-| 只修小 bug | `MICRO-FIX` | `references/micro-fix.md` |
 | 重跑某個 phase | `RERUN-PHASE` | task-pipe runner |
+
+找到 Mode 後，載入對應 reference 並依照其指示執行。
 
 背景文件（需要時讀）：`ROADMAP.md` · `ARCHITECTURE.md` · `MEMORY_LAYER.md`
 
 ## PENDING
+- `references/micro-fix.md`
 - `references/poc-fix.md`
 - flow-review (optional)
 - `references/taskpipe-design.md`

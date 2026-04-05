@@ -62,9 +62,9 @@ src/
 
 | Iter | 模組 | 目標（一行） | 交付 | 狀態 | 可展示標準 |
 |------|------|-------------|------|------|-----------|
-| 1 | shared | 型別 + API 介面契約 + 前端殼 | INFRA | [CURRENT] | {可觀察的完成標準} |
-| 2 | {moduleA} | {一行描述} | FULL | | {可觀察的完成標準} |
-| 3 | {moduleB} | {一行描述} | FULL | | {可觀察的完成標準} |
+| 1 | shared | 型別 + API 介面契約 + 前端殼 | INFRA | {[CURRENT] / ✅ DONE} | {可觀察的完成標準} |
+| 2 | {moduleA} | {一行描述} | FULL | {[CURRENT] / ✅ DONE / 空白} | {可觀察的完成標準} |
+| 3 | {moduleB} | {一行描述} | FULL | {[CURRENT] / ✅ DONE / 空白} | {可觀察的完成標準} |
 
 ### 模組 API 摘要
 - shared: CoreTypes, ENV_CONFIG, I{Service}Contracts

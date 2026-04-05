@@ -272,7 +272,7 @@ function checkBlueprint(bp, raw) {
     else {
       const badDomains = bp.cynefinRows.filter(r => r.domain && !VALID_DOMAINS.has(r.domain));
       if (badDomains.length > 0)
-        W('BP-013', `複雜度標註 Domain 值無效: ${badDomains.map(r => `iter-${r.iter}="${r.domain}"`).join(', ')}（合法: Clear/Complicated/Complex/Chaotic）`);
+        B('BP-013', `複雜度標註 Domain 值無效: ${badDomains.map(r => `iter-${r.iter}="${r.domain}"`).join(', ')}（合法: Clear/Complicated/Complex/Chaotic）`);
     }
   }
 

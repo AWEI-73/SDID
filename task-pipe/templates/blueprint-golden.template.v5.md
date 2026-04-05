@@ -66,6 +66,21 @@ src/
 | 2 | {moduleA} | {一行描述} | FULL | {[CURRENT] / ✅ DONE / 空白} | {可觀察的完成標準} |
 | 3 | {moduleB} | {一行描述} | FULL | {[CURRENT] / ✅ DONE / 空白} | {可觀察的完成標準} |
 
+### 複雜度標註（CYNEFIN 回填）
+
+| Iter | Domain | needsTest 動作 | 風險備注 |
+|------|--------|----------------|---------|
+| 1 | {Clear / Complicated / Complex} | {functionA, functionB 或 無} | {選填，例如 FK 繼承、整合邊界} |
+| 2 | {Clear / Complicated / Complex} | {functionA 或 無} | |
+
+<!--
+  Domain 說明:
+    Clear       = 做法清楚，直接實作，tsc --noEmit 即可
+    Complicated = 有隱藏步驟或 FK 繼承，需 TDD 測試驗收
+    Complex     = 探索性，每 iter 最多 3 個動作，先 Probe
+  needsTest: 填 Complicated / Complex 動作的 techName，Clear 動作不用填
+-->
+
 ### 模組 API 摘要
 - shared: CoreTypes, ENV_CONFIG, I{Service}Contracts
 - {moduleA}: {fn}(args): ReturnType, {fn2}(args): ReturnType

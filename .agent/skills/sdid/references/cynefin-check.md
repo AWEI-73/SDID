@@ -63,10 +63,8 @@ Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHE
 ---
 
 **needsTest 的影響**：
-- `needsTest: true` → CYNEFIN @PASS 後，Controller 派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），為此 action 寫測試檔並將 `@GEMS-TDD` 路徑加入 contract.ts，再由 design-review skill 審查，之後 Phase 2 執行 vitest
+- `needsTest: true` → CYNEFIN @PASS 後，將此 action 回填到 Blueprint `### 複雜度標註` needsTest 欄，Controller 再派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），寫測試檔並將 `@TEST` 路徑加入 contract.ts，Phase 2 執行 vitest
 - `needsTest: false` → Phase 2 只跑 `tsc --noEmit`（DB CRUD / UI / 外部 API 層）
-
-將 actions[] 填入 JSON report，供 cynefin-log-writer.cjs 寫入 cynefin-report.json，再由 Controller 讀取決定哪些 action 需要 TDD Contract Subagent 寫測試。
 
 ---
 
@@ -178,22 +176,18 @@ Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHE
 
 ## 完成後
 
-產出 JSON report，儲存到：
-```
-{project}/.gems/iterations/iter-N/logs/cynefin-report-<timestamp>.json
-```
-
-執行以下指令寫入 log：
+執行以下指令寫入 log（供人工除錯用）：
 
 ```bash
-node sdid-tools/cynefin-log-writer.cjs --report-file=<上述路徑> --target=<project> --iter=<N>
+node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=<N>
 ```
 
 log 寫入成功後才算 `@PASS`，loop 才會放行進入 **CONTRACT** 節點。
 
 > ⚠️ CYNEFIN-CHECK @PASS 後（強制依序）：
-> 1. **FLOW-REVIEW**（flow-review skill）→ 客觀審查 FLOW 設計，產出 @GEMS-WHY + `flow-review-pass-*.log`
-> 2. 若有 `needsTest: true` 的 action → 派 **TDD Contract Subagent**（寫測試檔 + 加 @GEMS-TDD）
-> 3. **design-review skill** 審查 contract → **CONTRACT Gate**（contract-gate.cjs v5）
-> 4. CONTRACT @PASS → **PLAN**（spec-to-plan.cjs，機械轉換）
-> 5. PLAN → **BUILD Phase 1-4**
+> 1. **將 needsTest 動作回填到 Blueprint** `### 複雜度標註` needsTest 欄（Blueprint 為唯一來源）
+> 2. **FLOW-REVIEW**（flow-review skill，可選）→ 審查 FLOW 設計，產出 @GEMS-WHY + `flow-review-pass-*.log`
+> 3. 若 Blueprint 複雜度標註 needsTest 欄有 action → 派 **TDD Contract Subagent**（寫測試檔 + 加 @TEST）
+> 4. **design-review skill** 審查 contract → **CONTRACT Gate**（contract-gate.cjs v5）
+> 5. CONTRACT @PASS → **PLAN**（spec-to-plan.cjs，機械轉換）
+> 6. PLAN → **BUILD Phase 1-4**

@@ -20,7 +20,7 @@ draft_iter-N.md
         ↓ @PASS
   CYNEFIN-CHECK（強制）
         ↓ @PASS
-  TDD Contract Subagent（needsTest:true → 寫 @GEMS-TDD 測試檔）
+  TDD Contract Subagent（Blueprint 複雜度標註 needsTest 欄有動作 → 寫 @TEST 測試檔）
         ↓ READY
   contract_iter-N.ts
     └── design-review skill（Contract gate）→ contract-gate.cjs

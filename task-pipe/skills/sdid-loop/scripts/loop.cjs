@@ -376,11 +376,11 @@ function main() {
 
         log(`\n✅ ${state.iteration} 所有階段已完成！`, 'green');
 
-        // 文件驅動路線偵測：state.draftPath 有值 → Blueprint，否則 → Task-Pipe
+        // Blueprint 路線：所有 iter 完成後進入下一個 iter 或最終完成
         const iterNum = parseInt(state.iteration.replace('iter-', ''), 10);
         const draftPath = state.draftPath || null;
 
-        if (draftPath) {
+        if (true) { // Blueprint is the only route
             // Blueprint Flow: COMPLETE 後應走 blueprint-expand（進入下一個 iter）
 
             // 從 iterationPlan 找下一個 [STUB] 的 iter 編號
@@ -433,28 +433,20 @@ function main() {
                     log(`  ⚠ 找不到 draft 路徑，請手動指定`, 'yellow');
                 }
             }
-        } else {
-            // Task-Pipe Flow: 自我迭代，從 suggestions 產生下一個 iteration 的 requirement_draft
-            const nextIter = generateNextIteration(projectPath, state.iteration);
-
-            if (nextIter) {
-                log(`\n🔄 自動產生 ${nextIter.iteration} 需求草稿`, 'blue');
-                log(`   來源: ${nextIter.suggestionsCount} 個 suggestions`, 'cyan');
-                log(`   草稿: ${nextIter.draftPath}`, 'cyan');
-                log(`\n@NEXT_ACTION`, 'yellow');
-                log(`請檢閱 ${nextIter.draftPath}，確認需求後再次執行此腳本。`, 'yellow');
-                log(`或直接執行: node loop.cjs --project=${projectPath}`, 'yellow');
-            } else {
-                log('\n' + COMPLETE_SIGNAL, 'green');
-                log('無更多迭代建議，專案開發完成！', 'green');
-            }
         }
         return;
     }
     
-    // SPEC_TO_PLAN: Task-Pipe 三段式品質關卡（對齊 Blueprint 標準）
-    // Step A: CYNEFIN-CHECK → Step B: spec-to-plan → Step C: CONTRACT quality gate → BUILD
+    // SPEC_TO_PLAN: v5 legacy Task-Pipe 路線（已退休，不再作為主流程入口）
+    // 保留此 block 僅供 legacy 專案偵測；新專案走 Blueprint → Draft → Contract 主流程
     if (state.phase === 'SPEC_TO_PLAN') {
+        log(`\n⚠️  [Legacy] SPEC_TO_PLAN 是 v5 Task-Pipe 路線，目前已退休。`, 'yellow');
+        log(`  請將 draft_iter-N.md 放到 .gems/design/ 並重新執行，進入新版 Blueprint 主流程。`, 'yellow');
+        log(`\n@NEXT_ACTION`, 'yellow');
+        log(`node sdid-tools/blueprint/v5/draft-gate.cjs --draft=<draft> --target=${projectPath}`, 'yellow');
+        return;
+    }
+    if (false && state.phase === 'SPEC_TO_PLAN_LEGACY') {
         const iterNum = state.iteration.replace('iter-', '');
         const iterPath = path.join(projectPath, '.gems', 'iterations', state.iteration);
         const logsDir = path.join(iterPath, 'logs');
@@ -669,27 +661,6 @@ function main() {
         log('\n✅ [Task-Pipe] PLAN 完成（CYNEFIN ✓ + spec-to-plan ✓ + CONTRACT Quality Gate ✓ + scaffold ✓）', 'green');
         log('\n@NEXT_ACTION', 'yellow');
         log('請再次執行此腳本繼續 BUILD Phase 1。', 'yellow');
-        return;
-    }
-
-    // CYNEFIN_CHECK: AI 語意域分析（不走 runner，直接輸出 @TASK 指引）
-    if (state.phase === 'CYNEFIN_CHECK') {
-        const iterPath = path.join(projectPath, '.gems', 'iterations', state.iteration);
-        const pocPath = path.join(iterPath, 'poc');
-        let inputFile = null;
-        if (fs.existsSync(pocPath)) {
-            const specFile = fs.readdirSync(pocPath).find(f => f.startsWith('requirement_spec_'));
-            const draftFile = fs.readdirSync(pocPath).find(f => f.startsWith('requirement_draft_'));
-            inputFile = specFile || draftFile;
-        }
-        const inputPath = inputFile ? path.join(pocPath, inputFile) : `${iterPath}/poc/requirement_spec_${state.iteration}.md`;
-
-        log(`\n🔍 CYNEFIN-CHECK: 語意域分析`, 'cyan');
-        log(`\n@TASK`, 'yellow');
-        log(`ACTION: 讀 .agent/skills/sdid/references/cynefin-check.md 對以下文件做語意域分析`, 'yellow');
-        log(`FILE: ${inputPath}`, 'yellow');
-        log(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectPath} --iter=${state.iteration.replace('iter-', '')}`, 'yellow');
-        log(`\n@REMINDER: 分析完成後必須執行 cynefin-log-writer.cjs 存 log，@PASS 才能進 PLAN`, 'yellow');
         return;
     }
 

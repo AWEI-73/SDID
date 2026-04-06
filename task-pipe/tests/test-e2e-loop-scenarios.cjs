@@ -2,16 +2,20 @@
 /**
  * E2E Loop Scenario Test
  * 
- * 三個情境，每個情境模擬完整的狀態偵測 → loop 輸出 → 銜接驗證
- * 
- * 情境 A: Blueprint Flow  (blueprint-loop.cjs)
- *   GATE → PLAN → BUILD-1 → BUILD-2 → ... → SHRINK → VERIFY
- * 
- * 情境 B: Task-Pipe Flow  (taskpipe-loop.cjs)
- *   POC-1 → POC-2 → ... → PLAN-1 → ... → BUILD-1 → ... → SCAN
- * 
- * 情境 C: Quickstart Flow (taskpipe-loop.cjs --new)
- *   直接建立新專案骨架 → BUILD-1
+ * 四個情境，每個情境模擬完整的狀態偵測 → loop 輸出 → 銜接驗證
+ *
+ * Canonical flow: Blueprint → Draft → Contract → Plan → Build 1-4 → Scan → Verify → Complete
+ *
+ * 情境 A: Blueprint Flow (sdid-loop)
+ *   GATE → CONTRACT → PLAN → BUILD-1 → BUILD-2 → ... → VERIFY → COMPLETE
+ *
+ * 情境 B: Legacy Route Detection（v5 Task-Pipe 路線殘留相容性驗證）
+ *   POC-1 → ... → PLAN → BUILD → SCAN（v5 legacy，確保 loop 不 crash）
+ *
+ * 情境 C: Quickstart Flow (--new)
+ *   直接建立新專案骨架 → GATE
+ *
+ * 情境 D: 中斷恢復 (State Ledger vs Filesystem)
  */
 
 const fs = require('fs');
@@ -205,9 +209,11 @@ console.log('═'.repeat(60));
 
 
 // ============================================
-// SCENARIO B: Task-Pipe Flow
+// SCENARIO B: Legacy Route Detection（v5 Task-Pipe 相容性）
+// Task-Pipe 已退休為主流程路線。此 Scenario 僅驗證 loop 在偵測到
+// legacy state（POC/PLAN phases）時不 crash，並能正常輸出。
 // ============================================
-console.log('\n🟢 Scenario B: Task-Pipe Flow (taskpipe-loop.cjs)');
+console.log('\n🟢 Scenario B: Legacy Route Detection (v5 Task-Pipe 相容性)');
 console.log('═'.repeat(60));
 
 // B1: 全新專案，初始 state = POC-1 → 應偵測到 POC

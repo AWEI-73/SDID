@@ -19,8 +19,6 @@ const { detectProjectType, getGreenfieldGuide, getSrcDir } = require('../../lib/
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { createErrorHandler, handlePhaseSuccess, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
 const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePending, emitTaskBlock, emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cjs');
-// v2.0: 引入前端規格提取函式
-const { extractFrontendSpecs } = require('../../tools/quality-check/poc-quality-checker.cjs');
 const { getNextCmd, getRetryCmd, getPassCmd } = require('../../lib/shared/next-command-helper.cjs');
 // v3.0: 引入 Plan 標籤規格提取函式
 const { extractPlanSpec, extractFunctionManifest, getStoryContext } = require('../../lib/plan/plan-spec-extractor.cjs');
@@ -138,9 +136,6 @@ mkdir -p ${planPath}
   const storyContext = getStoryContext(planFile);
   const planSpecsBlock = generatePlanSpecsBlock(planSpec, manifest, story);
 
-  // v6.0: 讀取 ac.ts（或 contract.ts）取得 AC ID 清單，供骨架映射層使用
-  const acInfo = readAcSpec(target, iteration);
-
   // 判斷是 Story-1.0 還是後續模組
   const storyMatch = story.match(/Story-(\d+)\.(\d+)/);
   const storyX = storyMatch ? parseInt(storyMatch[1]) : 1;
@@ -207,9 +202,6 @@ mkdir -p ${planPath}
   // VSC 檢查結束
   // ========================================
 
-  // v2.0: 前端規格 block（提前宣告避免 TDZ）
-  let frontendSpecsBlock = '';
-
   // ========================================
   // 🔍 前端專案檢查（Story-1.0 專用）
   // ========================================
@@ -230,13 +222,6 @@ mkdir -p ${planPath}
       console.log('\n🎨 偵測到 POC 但尚未移植 UI，自動執行移植...');
       try {
         const pocPath = path.join(pocDir, pocFile);
-
-        // 提取並產生 frontendSpecsBlock 用於報錯時提供更多上下文
-        const pocContent = fs.readFileSync(pocPath, 'utf8');
-        const frontendSpecs = extractFrontendSpecs(pocContent);
-        if (frontendSpecs.hasFrontendSpecs) {
-          frontendSpecsBlock = generateFrontendSpecsBlock(frontendSpecs);
-        }
 
         // 檢查移植工具是否存在
         const migrateTool = path.resolve(__dirname, '../../tools/poc/migrate-poc-ui.cjs');
@@ -338,24 +323,6 @@ mkdir -p ${planPath}
   // 前端檢查結束
   // ========================================
 
-  // v2.0: 從 POC 提取前端規格（補充提取，若 Foundation 區塊未處理）
-  if (!frontendSpecsBlock) {
-    const pocDirV2 = path.join(target, `.gems/iterations/${iteration}/poc`);
-    if (fs.existsSync(pocDirV2)) {
-      const pocFilesV2 = fs.readdirSync(pocDirV2);
-      const pocFileV2 = pocFilesV2.find(f => f.includes('POC') && (f.endsWith('.html') || f.endsWith('.tsx')));
-      if (pocFileV2) {
-        const pocContent = fs.readFileSync(path.join(pocDirV2, pocFileV2), 'utf8');
-        const frontendSpecs = extractFrontendSpecs(pocContent);
-
-        if (frontendSpecs.hasFrontendSpecs) {
-          frontendSpecsBlock = generateFrontendSpecsBlock(frontendSpecs);
-        }
-      }
-    }
-  }
-
-
   // 綠地專案：顯示初始化指引
   if (isGreenfield) {
     const guide = getGreenfieldGuide(projectType);
@@ -441,20 +408,15 @@ modules/[module-name]/
         '每個函式加入 GEMS 標籤（註解格式，任何語言都能用）',
         '模組不能直接引用另一模組內部檔案',
         isFoundation ? 'Story-1.0 必須完成所有橫向分層才能進 Phase 2' : 'Module N 必須透過 index.* Facade 暴露 API',
-        frontendSpecsBlock ? '🔒 遵守 POC 定義的前端規格 (見下方 FRONTEND_SPECS)' : null,
         planSpecsBlock ? '📝 參考 PLAN_SPECS 區塊，直接複製 GEMS 標籤到源碼' : null
       ].filter(Boolean),
-      // v2.0: 前端規格區塊 (如果存在)
-      frontendSpecs: frontendSpecsBlock || null,
       // v3.0: Plan 標籤規格區塊
       planSpecs: planSpecsBlock || null,
       task: [
         `讀取 ${planFile}（PLAN 階段已確定技術棧與檔案結構）`,
-        acInfo.hasAc ? `讀取 ${acInfo.acFile}（contract 規格 + @GEMS-TDD 路徑，Phase 2 會執行這些測試）` : null,
         isFoundation ? '初始化橫向分層結構（依 PLAN 定義）' : '建立模組垂直分片結構（依 PLAN 定義）',
         '依序實作每個 Item 的功能程式碼',
         '加入 GEMS 標籤（P0-P3 全部覆蓋，參考 PLAN_SPECS 區塊）',
-        acInfo.acIds.length > 0 ? `@GEMS-TDD 測試檔在 Phase 2 執行（${acInfo.acIds.join(', ')}），骨架函式名稱/簽名需與測試 import 一致` : null,
         projectType !== 'gas' ? '執行 getDiagnostics() 確認 0 errors' : 'GAS 專案略過型別檢查',
         isFoundation ? '⚠️ 只建立 Plan 定義的檔案，禁止預建後續 Story 的模組目錄或檔案' : null,
         isFoundation ? '⚠️ src/modules/ 只建空目錄，不要在裡面建任何子模組' : null
@@ -490,7 +452,7 @@ modules/[module-name]/
     const failed = checks.filter(c => !c.pass);
 
     if (failed.length === 0) {
-      // v3.2: 骨架偵測 — 如果 draft-to-plan 已預生成骨架，直接提示進 Phase 2
+      // 骨架偵測 — 如果骨架已預生成，直接提示進 Phase 2
       if (!isFoundation && manifest.hasManifest && manifest.functions.length > 0) {
         const scaffoldFiles = manifest.functions
           .filter(fn => fn.file)
@@ -498,8 +460,8 @@ modules/[module-name]/
         const existingScaffolds = scaffoldFiles.filter(f => fs.existsSync(f));
 
         if (existingScaffolds.length > 0 && existingScaffolds.length === scaffoldFiles.length) {
-          // 所有骨架檔案都已存在（由 draft-to-plan 預生成）
-          console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在（draft-to-plan 預生成）`);
+          // 所有骨架檔案都已存在
+          console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在`);
 
           // 組出需要 AI 實作的 @TASK 清單
           const relPlanFile = path.relative(target, planFile);
@@ -543,7 +505,7 @@ modules/[module-name]/
           return { verdict: 'PASS', scaffoldMode: true };
         } else if (existingScaffolds.length > 0) {
           // 部分骨架存在
-          console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在（部分預生成）`);
+          console.log(`\n🦴 骨架偵測: ${existingScaffolds.length}/${scaffoldFiles.length} 個骨架檔案已存在（部分）`);
         }
       }
       // v3.1: 範圍檢查 - 偵測 Plan 外的多餘檔案（Story-1.0 及後續 Story 都檢查）
@@ -572,28 +534,6 @@ modules/[module-name]/
             story
           });
           return { verdict: 'PENDING', reason: 'extra_files_detected', extraFiles };
-        }
-      }
-
-      // v2.5: 前端規格對齊驗證 (CSS-LOCK + UI-BIND)
-      const specAlignResult = validateFrontendSpecAlignment(target, iteration, srcDir);
-      if (specAlignResult.length > 0) {
-        const specFailed = specAlignResult.filter(c => !c.pass);
-        if (specFailed.length > 0) {
-          emitFix({
-            scope: `BUILD Phase 1 | ${story}`,
-            summary: '前端規格對齊失敗 (CSS-LOCK / UI-BIND)',
-            targetFile: 'src/',
-            missing: specFailed.map(c => c.name),
-            nextCmd: '請根據 requirement_spec 中定義的前端規格修正以下問題'
-          }, {
-            projectRoot: target,
-            iteration: parseInt(iteration.replace('iter-', '')),
-            phase: 'build',
-            step: 'phase-1',
-            story
-          });
-          return { verdict: 'PENDING', reason: 'frontend_spec_mismatch', failed: specFailed };
         }
       }
 
@@ -747,20 +687,15 @@ src/modules/[module-name]/
       '模組不能直接 import 另一模組內部檔案',
       isFoundation ? 'Story-1.0 必須完成 package.json 與所有橫向分層才能進 Phase 2' : 'Module N 必須透過 index.ts Facade 暴露 API',
       projectType !== 'gas' ? '型別檢查 0 errors 才進 Phase 2' : 'GAS 專案略過型別檢查',
-      frontendSpecsBlock ? '🔒 遵守 POC 定義的前端規格 (見下方 FRONTEND_SPECS)' : null,
       planSpecsBlock ? '📝 參考 PLAN_SPECS 區塊，直接複製 GEMS 標籤到源碼' : null
     ].filter(Boolean),
-    // v2.0: 前端規格區塊 (如果存在)
-    frontendSpecs: frontendSpecsBlock || null,
     // v3.0: Plan 標籤規格區塊
     planSpecs: planSpecsBlock || null,
     task: [
       `讀取 ${planFile}（參考 PLAN Step 2.5 架構審查結果與語言要求）`,
-      acInfo.hasAc ? `讀取 ${acInfo.acFile}（contract 規格 + @GEMS-TDD 路徑，Phase 2 會執行這些測試）` : null,
       '檢查並建立環境 (package.json, tsconfig.json) 若不存在',
       '依序實作每個 Item 的功能程式碼',
       '加入 GEMS 標籤（P0-P3 全部覆蓋，參考 PLAN_SPECS 區塊）',
-      acInfo.acIds.length > 0 ? `@GEMS-TDD 測試檔在 Phase 2 執行（${acInfo.acIds.join(', ')}），骨架函式名稱/簽名需與測試 import 一致` : null,
       projectType !== 'gas' ? '執行 getDiagnostics() 確認 0 errors' : '確認程式碼完成',
       isFoundation ? '⚠️ 只建立 Plan 定義的檔案，禁止預建後續 Story 的模組目錄或檔案' : null,
       isFoundation ? '⚠️ src/modules/ 只建空目錄，不要在裡面建任何子模組' : null
@@ -869,31 +804,6 @@ function mapCheckToTask(check, target, srcDir, planFile, story) {
     expected: name,
     reference: relPlan
   };
-}
-
-/**
- * v7.0: 讀取 contract_iter-N.ts，取得 @GEMS-TDD 路徑清單
- * 供骨架映射層使用，讓 AI 知道 Phase 2 會執行哪些測試檔（骨架簽名需與 import 一致）
- */
-function readAcSpec(target, iteration) {
-  const iterNum = iteration.replace('iter-', '');
-  const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
-  if (!fs.existsSync(contractPath)) return { hasAc: false, acFile: null, acIds: [] };
-
-  try {
-    const content = fs.readFileSync(contractPath, 'utf8');
-    // 提取 @GEMS-TDD 路徑
-    const tddPaths = [];
-    const pattern = /\/\/\s*@GEMS-TDD:\s*(.+)/g;
-    let m;
-    while ((m = pattern.exec(content)) !== null) {
-      const p = m[1].trim();
-      if (!tddPaths.includes(p)) tddPaths.push(p);
-    }
-    return { hasAc: tddPaths.length > 0, acFile: path.relative(target, contractPath), acIds: tddPaths };
-  } catch {
-    return { hasAc: false, acFile: null, acIds: [] };
-  }
 }
 
 function extractItems(content) {
@@ -1138,123 +1048,6 @@ function detectHasRouting(target, srcDir) {
 }
 
 /**
- * v2.5: 前端規格對齊驗證
- * 從 requirement_spec 讀取 @GEMS-CSS-LOCK 和 @GEMS-UI-BIND
- * 然後去實際原始碼中比對，確認值有對齊
- */
-function validateFrontendSpecAlignment(target, iteration, srcDir) {
-  const results = [];
-
-  // 1. 找 requirement_spec（先找當前迭代，沒有就往前迭代找）
-  let specPath = path.join(target, `.gems/iterations/${iteration}/poc/requirement_spec_${iteration}.md`);
-  if (!fs.existsSync(specPath)) {
-    // Fallback：往前面的迭代找（POC spec 通常在 iter-1）
-    const iterNum = parseInt(iteration.replace('iter-', ''));
-    for (let i = iterNum - 1; i >= 1; i--) {
-      const fallbackPath = path.join(target, `.gems/iterations/iter-${i}/poc/requirement_spec_iter-${i}.md`);
-      if (fs.existsSync(fallbackPath)) {
-        specPath = fallbackPath;
-        break;
-      }
-    }
-  }
-  if (!fs.existsSync(specPath)) return results; // 沒有 spec 就跳過（不阻擋）
-
-  const specContent = fs.readFileSync(specPath, 'utf8');
-
-  // 2. 提取 CSS-LOCK 規格：格式為 `--variable: #value` 或 `--variable: value`
-  const cssLockSection = specContent.match(/@GEMS-CSS-LOCK\)?[\s\S]*?(?=###|---|$)/i);
-  const cssLocks = [];
-  if (cssLockSection) {
-    const varMatches = cssLockSection[0].matchAll(/`(--[\w-]+):\s*([^`]+)`/g);
-    for (const m of varMatches) {
-      cssLocks.push({ variable: m[1].trim(), value: m[2].trim() });
-    }
-    // 也擷取非反引號格式：圓角: `24px`
-    const plainMatches = cssLockSection[0].matchAll(/[：:]\s*`([^`]+)`/g);
-    for (const m of plainMatches) {
-      const val = m[1].trim();
-      if (!val.startsWith('--')) {
-        cssLocks.push({ variable: null, value: val });
-      }
-    }
-  }
-
-  // 3. 提取 UI-BIND 規格：格式為 `bindName` -> `dataSource` ...
-  const uiBindSection = specContent.match(/@GEMS-UI-BIND\)?[\s\S]*?(?=###|---|$)/i);
-  const uiBinds = [];
-  if (uiBindSection) {
-    const bindMatches = uiBindSection[0].matchAll(/`(\w+)`\s*->\s*`([^`]+)`/g);
-    for (const m of bindMatches) {
-      uiBinds.push({ name: m[1].trim(), source: m[2].trim() });
-    }
-  }
-
-  // 如果沒有前端規格，不驗
-  if (cssLocks.length === 0 && uiBinds.length === 0) return results;
-
-  // 4. 讀取所有 CSS 檔案內容
-  let allCssContent = '';
-  const cssFiles = findSourceFilesFlat(target, ['.css']);
-  const srcCssFiles = findSourceFilesFlat(srcDir, ['.css']);
-  const combinedCss = [...new Set([...cssFiles, ...srcCssFiles])];
-  for (const f of combinedCss) {
-    try { allCssContent += fs.readFileSync(f, 'utf8') + '\n'; } catch { }
-  }
-
-  // 5. 讀取所有 TS/JS 檔案內容
-  let allTsContent = '';
-  const tsFiles = findSourceFilesFlat(srcDir, ['.ts', '.tsx', '.js', '.jsx']);
-  for (const f of tsFiles) {
-    try { allTsContent += fs.readFileSync(f, 'utf8') + '\n'; } catch { }
-  }
-
-  // 6. 驗證 CSS-LOCK
-  for (const lock of cssLocks) {
-    if (lock.variable) {
-      // 驗證 CSS 變數值：搜尋 --variable: value 或 --variable : value
-      const escaped = lock.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const pattern = new RegExp(`${lock.variable.replace(/[-]/g, '\\-')}\\s*:\\s*${escaped}`);
-      const found = pattern.test(allCssContent);
-      results.push({
-        name: `CSS-LOCK ${lock.variable}`,
-        pass: found,
-        detail: found
-          ? `${lock.variable}: ${lock.value} ✓`
-          : `規格要求 ${lock.variable}: ${lock.value}，但 CSS 中未找到此值`
-      });
-    } else if (lock.value) {
-      // 純值驗證（如 24px）
-      const found = allCssContent.includes(lock.value);
-      results.push({
-        name: `CSS-LOCK 值 ${lock.value}`,
-        pass: found,
-        detail: found
-          ? `值 ${lock.value} ✓`
-          : `規格要求值 ${lock.value}，但 CSS 中未找到`
-      });
-    }
-  }
-
-  // 7. 驗證 UI-BIND
-  const allContent = allTsContent + '\n' + allCssContent;
-  for (const bind of uiBinds) {
-    // 檢查 source 關鍵字是否出現在源碼中
-    const sourceKey = bind.source.split(/\s+/)[0]; // 取第一個關鍵字，如 'flowers'
-    const found = allContent.includes(sourceKey);
-    results.push({
-      name: `UI-BIND ${bind.name}`,
-      pass: found,
-      detail: found
-        ? `${bind.name} -> ${bind.source} ✓`
-        : `規格要求 ${bind.name} 綁定到 ${bind.source}，但源碼中未找到 "${sourceKey}"`
-    });
-  }
-
-  return results;
-}
-
-/**
  * 扁平搜尋指定目錄下的所有檔案（不遞迴到 node_modules、__tests__）
  */
 function findSourceFilesFlat(dir, extensions, files = []) {
@@ -1271,80 +1064,6 @@ function findSourceFilesFlat(dir, extensions, files = []) {
     }
   } catch { }
   return files;
-}
-
-/**
- * v2.0: 生成前端規格區塊 (用於注入到 prompt)
- * 應用 Prompt Repetition 策略強化約束傳遞
- */
-function generateFrontendSpecsBlock(frontendSpecs) {
-  const lines = [];
-
-  lines.push(`\n${'='.repeat(60)}`);
-  lines.push(`🔒 前端規格約束 (BUILD 必須嚴格遵守)`);
-  lines.push(`${'='.repeat(60)}\n`);
-
-  // UI Bindings
-  if (frontendSpecs.uiBindings.length > 0) {
-    lines.push(`### @GEMS-UI-BIND (資料→UI 綁定)`);
-    for (const bind of frontendSpecs.uiBindings) {
-      lines.push(`- ${bind.property}:${bind.value} → ${bind.selector}${bind.styles ? ` (${bind.styles})` : ''}`);
-    }
-    lines.push('');
-  }
-
-  // CSS Locks
-  if (frontendSpecs.cssLocks.length > 0) {
-    lines.push(`### @GEMS-CSS-LOCK (鎖定 CSS)`);
-    for (const lock of frontendSpecs.cssLocks) {
-      lines.push(`- ${lock.component}: ${lock.classes.join(' ')}`);
-    }
-    lines.push('');
-  }
-
-  // Form Specs
-  if (frontendSpecs.formSpecs.length > 0) {
-    lines.push(`### @GEMS-FORM-SPEC (表單欄位)`);
-    for (const spec of frontendSpecs.formSpecs) {
-      const required = spec.required.join(', ') || '-';
-      const optional = spec.optional.join(', ') || '-';
-      lines.push(`- ${spec.module}: Required=[${required}], Optional=[${optional}]`);
-    }
-    lines.push('');
-  }
-
-  // Animations
-  if (frontendSpecs.animations.length > 0) {
-    lines.push(`### @GEMS-ANIMATION (動畫效果)`);
-    for (const anim of frontendSpecs.animations) {
-      lines.push(`- ${anim.name}: ${anim.timing}${anim.description ? ` (${anim.description})` : ''}`);
-    }
-    lines.push('');
-  }
-
-  // Prompt Repetition: 重複關鍵約束
-  lines.push(`${'─'.repeat(40)}`);
-  lines.push(`[REPEAT] 讓我重複一遍關鍵約束：\n`);
-
-  if (frontendSpecs.uiBindings.length > 0) {
-    lines.push(`[UI-BIND 重點]`);
-    frontendSpecs.uiBindings.slice(0, 3).forEach(bind => {
-      lines.push(`  • ${bind.property}:${bind.value} → ${bind.selector}`);
-    });
-    lines.push('');
-  }
-
-  if (frontendSpecs.cssLocks.length > 0) {
-    lines.push(`[CSS-LOCK 重點]`);
-    frontendSpecs.cssLocks.slice(0, 3).forEach(lock => {
-      lines.push(`  • ${lock.component}: ${lock.classes.slice(0, 5).join(' ')}...`);
-    });
-    lines.push('');
-  }
-
-  lines.push(`${'='.repeat(60)}\n`);
-
-  return lines.join('\n');
 }
 
 /**
@@ -1404,10 +1123,6 @@ function generatePlanSpecsBlock(planSpec, manifest, story) {
       lines.push(` * GEMS-DEPS: [TODO.deps]`);
       lines.push(` * GEMS-DEPS-RISK: LOW`);
       lines.push(` */`);
-      if (fn.priority === 'P0' || fn.priority === 'P1') {
-        lines.push(`// AC-X.Y`);
-        lines.push(`// [STEP] Step1`);
-      }
       // 從 signature 推導函式骨架
       const sigClean = sig.replace(/`/g, '');
       const argsMatch = sigClean.match(/\(([^)]*)\)/);
@@ -1430,7 +1145,6 @@ function generatePlanSpecsBlock(planSpec, manifest, story) {
 
   lines.push(`${'─'.repeat(40)}`);
   lines.push(`[摘要] 共 ${fnCount} 個函式 | P0: ${p0Count} | P1: ${p1Count}`);
-  lines.push(`[提醒] P0/P1 函式必須有 [STEP] 錨點對應 GEMS-FLOW`);
   lines.push(`${'='.repeat(60)}\n`);
 
   return lines.join('\n');

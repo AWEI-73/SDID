@@ -360,6 +360,15 @@
       border-color: #4a3500;
     }
 
+    /* ── Optional/auxiliary node (flow-review, etc.) ── */
+    .node.opt {
+      opacity: 0.5;
+      border-style: dashed;
+      cursor: default;
+      font-style: italic;
+    }
+    .node.opt:hover { opacity: 0.72; }
+
     /* ── Retry badge ── */
     .retry-dot {
       position: absolute;
@@ -822,11 +831,18 @@
         preParts.push(node('Blueprint', 'blueprint', getLogStatus(bpLogs), bpLogs[bpLogs.length - 1] || null, bpLogs.length));
         preParts.push(A);
       }
-      preParts.push(node('Draft',       'draft',       getLogStatus(dgLogs), dgLogs[dgLogs.length - 1] || null, dgLogs.length));
+      preParts.push(node('Draft',    'draft',    getLogStatus(dgLogs), dgLogs[dgLogs.length - 1] || null, dgLogs.length));
       preParts.push(A);
-      preParts.push(node('Flow-Review', 'flow-review', getLogStatus(frLogs), frLogs[frLogs.length - 1] || null, frLogs.length));
-      preParts.push(A);
-      preParts.push(node('Contract',    'contract',    getLogStatus(ctLogs), ctLogs[ctLogs.length - 1] || null, ctLogs.length));
+      // Flow-Review: optional auxiliary review — shown as faded indicator only when logs exist
+      if (frLogs.length) {
+        const frStatus = getLogStatus(frLogs);
+        const frIcon = frStatus === 'pass' ? '✓ ' : frStatus === 'error' ? '✕ ' : '~ ';
+        const frClick = frLogs[frLogs.length - 1] ? `onclick="loadLog('${escAttr(pname)}','${selIter}','${escAttr(frLogs[frLogs.length - 1])}')"` : '';
+        const frTip = TIPS['flow-review'] ? ` data-tip="${TIPS['flow-review']} (optional)"` : '';
+        preParts.push(`<div class="node opt ${frStatus || 'pending'}"${frTip} ${frClick}>${frIcon}flow-review</div>`);
+        preParts.push(A);
+      }
+      preParts.push(node('Contract', 'contract', getLogStatus(ctLogs), ctLogs[ctLogs.length - 1] || null, ctLogs.length));
       preParts.push(A);
       preParts.push(node('Plan',        'plan',        getLogStatus(plLogs), plLogs[plLogs.length - 1] || null, plLogs.length));
 

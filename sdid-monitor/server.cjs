@@ -228,7 +228,7 @@ function parseGatePhases(logs) {
     blueprintGate: null,  // blueprint-gate-pass/error
     draftGate: null,      // draft-gate-pass/error
     // cynefin: removed — Cynefin 已整合至 Blueprint R4，不再是獨立 gate
-    flowReview: null,     // flow-review-pass/error
+    flowReview: null,     // flow-review-pass/error (optional auxiliary review, not a mandatory gate)
     contract: null,       // contract-pass / contract-gate-pass
     plan: null,           // gate-plan-pass
     scan: null,           // scan-scan-pass/error
@@ -346,12 +346,9 @@ function deriveStatus(logs, gemsRoot) {
     currentPhase = 'PLAN'; badge = null; badgeClass = 'idle';
   } else if (gatePhases.contract === 'error') {
     currentPhase = 'CONTRACT'; badge = '@BLOCK'; badgeClass = 'block';
-  } else if (gatePhases.flowReview === 'pass') {
-    currentPhase = 'CONTRACT'; badge = null; badgeClass = 'idle';
-  } else if (gatePhases.flowReview === 'error') {
-    currentPhase = 'FLOW-REVIEW'; badge = '@BLOCK'; badgeClass = 'block';
   } else if (gatePhases.draftGate === 'pass') {
-    currentPhase = 'FLOW-REVIEW'; badge = null; badgeClass = 'idle';
+    // flow-review is optional — draftGate pass goes directly to CONTRACT
+    currentPhase = 'CONTRACT'; badge = null; badgeClass = 'idle';
   } else if (gatePhases.draftGate === 'error') {
     currentPhase = 'DRAFT-GATE'; badge = '@BLOCK'; badgeClass = 'block';
   } else if (gatePhases.blueprintGate === 'pass') {
@@ -365,7 +362,7 @@ function deriveStatus(logs, gemsRoot) {
   if (isComplete) {
     progress = 100;
   } else {
-    const preBuildGates = ['blueprintGate', 'draftGate', 'flowReview', 'contract'];
+    const preBuildGates = ['blueprintGate', 'draftGate', 'contract']; // flowReview is optional, excluded from progress
     const preBuildPassed = preBuildGates.filter(k => gatePhases[k] === 'pass').length;
     progress += Math.round((preBuildPassed / preBuildGates.length) * 25);
     if (gatePhases.plan === 'pass') progress += 5;

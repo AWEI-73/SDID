@@ -532,15 +532,13 @@ origLog('═══════════════════════�
   const s0 = stateMachine.detectFullState(proj, 'iter-1', null);
   assert('閉環 Step 0: draft → GATE', s0?.phase === 'GATE', `got: ${s0?.phase}`);
 
-  // 7.2 gate-check-pass → CYNEFIN_CHECK
+  // 7.2 gate-check-pass → CONTRACT（直通，不再經 CYNEFIN_CHECK）
   writeLog(proj, 1, 'gate-check-pass');
   const s1 = stateMachine.inferStateFromLogs(proj, 1, [], []);
-  assert('閉環 Step 1: gate-check-pass → CYNEFIN_CHECK', s1?.phase === 'CYNEFIN_CHECK', `got: ${s1?.phase}`);
+  assert('閉環 Step 1: gate-check-pass → CONTRACT', s1?.phase === 'CONTRACT', `got: ${s1?.phase}`);
 
-  // 7.3 cynefin-check-pass → CONTRACT
-  writeLog(proj, 1, 'cynefin-check-pass');
-  const s2 = stateMachine.inferStateFromLogs(proj, 1, [], []);
-  assert('閉環 Step 2: cynefin-check-pass → CONTRACT', s2?.phase === 'CONTRACT', `got: ${s2?.phase}`);
+  // 7.3 contract（s2 = s1，cynefin-check-pass 已不再是必要中繼點）
+  const s2 = s1;
 
   // 7.4 contract-pass → PLAN
   writeLog(proj, 1, 'contract-pass');

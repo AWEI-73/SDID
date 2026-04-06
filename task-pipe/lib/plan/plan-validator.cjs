@@ -176,13 +176,13 @@ function validatePlan(planPath) {
   const hasSourceContract = /SOURCE_CONTRACT:\s*\S+/.test(content);
   const hasSliceCount = /SLICE_COUNT:\s*\d+/.test(content);
   if (!hasPlanTrace) {
-    warnings.push({ rule: 'PLAN_TRACE', message: '缺少 @PLAN_TRACE 標記（spec-to-plan 轉換來源可追蹤性），建議由 spec-to-plan 產出' });
+    errors.push({ rule: 'PLAN_TRACE', message: '缺少 @PLAN_TRACE 標記（Contract → Plan 轉換來源可追蹤性）— Plan 必須由 spec-to-plan 從 contract 產出並包含此標記', severity: 'BLOCKER' });
   } else {
     if (!hasSourceContract) {
-      warnings.push({ rule: 'PLAN_TRACE_SOURCE', message: '@PLAN_TRACE 缺少 SOURCE_CONTRACT 欄位' });
+      errors.push({ rule: 'PLAN_TRACE_SOURCE', message: '@PLAN_TRACE 缺少 SOURCE_CONTRACT 欄位（Plan 必須可追溯至來源 contract）', severity: 'BLOCKER' });
     }
     if (!hasSliceCount) {
-      warnings.push({ rule: 'PLAN_TRACE_COUNT', message: '@PLAN_TRACE 缺少 SLICE_COUNT 欄位' });
+      errors.push({ rule: 'PLAN_TRACE_COUNT', message: '@PLAN_TRACE 缺少 SLICE_COUNT 欄位（slice 數量必須顯式宣告，與 §4 Item 對齊）', severity: 'BLOCKER' });
     }
     // 若 SLICE_COUNT 存在，與 §4 Item 數量交叉驗證
     const sliceCountMatch = content.match(/SLICE_COUNT:\s*(\d+)/);

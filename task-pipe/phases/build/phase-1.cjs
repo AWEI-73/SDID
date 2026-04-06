@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { writeCheckpoint } = require('../../lib/checkpoint.cjs');
-const { detectProjectType, getGreenfieldGuide, getSrcDir } = require('../../lib/shared/project-type.cjs');
+const { detectProjectType, getGreenfieldGuide, getSrcDir, getSrcDirs } = require('../../lib/shared/project-type.cjs');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { createErrorHandler, handlePhaseSuccess, MAX_ATTEMPTS } = require('../../lib/shared/error-handler.cjs');
 const { anchorOutput, anchorPass, anchorError, anchorErrorSpec, anchorTemplatePending, emitTaskBlock, emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cjs');
@@ -126,6 +126,8 @@ mkdir -p ${planPath}
   const projectInfo = detectProjectType(target);
   const { type: projectType, config: typeConfig, isGreenfield } = projectInfo;
   const srcDir = getSrcDir(target, projectType);
+  // multi-root: 取得所有 srcDirs（blueprint.md 的 **源碼路徑** 欄位或 auto-glob）
+  const srcDirs = getSrcDirs(target);
 
   const content = fs.readFileSync(planFile, 'utf8');
   const items = extractItems(content);
@@ -327,12 +329,15 @@ mkdir -p ${planPath}
   if (isGreenfield) {
     const guide = getGreenfieldGuide(projectType);
 
-    // Foundation Story 綠地：自動建立標準目錄骨架
+    // Foundation Story 綠地：自動建立標準目錄骨架（每個 srcDir root 各自建立）
     if (isFoundation) {
-      const scaffoldResult = autoScaffoldFoundation(target, srcDir, projectType, manifest);
-      if (scaffoldResult.created.length > 0) {
-        console.log(`\n🏗️  Auto-scaffold: 建立 ${scaffoldResult.created.length} 個標準目錄`);
-        scaffoldResult.created.forEach(d => console.log(`   ✅ ${d}`));
+      for (const sd of srcDirs) {
+        const scaffoldResult = autoScaffoldFoundation(target, sd, projectType, manifest);
+        if (scaffoldResult.created.length > 0) {
+          const relRoot = path.relative(target, sd).replace(/\\/g, '/');
+          console.log(`\n🏗️  Auto-scaffold [${relRoot}]: 建立 ${scaffoldResult.created.length} 個標準目錄`);
+          scaffoldResult.created.forEach(d => console.log(`   ✅ ${d}`));
+        }
       }
     }
 
@@ -433,21 +438,31 @@ modules/[module-name]/
     return { verdict: 'PENDING', items, projectType, isGreenfield: true };
   }
 
-  // 棕地專案：檢查現有源碼
-  const srcFiles = findSourceFiles(srcDir, typeConfig.extensions);
+  // 棕地專案：從所有 srcDirs 收集源碼（multi-root 支援）
+  const srcFiles = srcDirs.flatMap(sd => findSourceFiles(sd, typeConfig.extensions));
 
-  // Foundation Story 棕地：也執行 auto-scaffold（補缺少的標準目錄）
+  // Foundation Story 棕地：對每個 srcDir root 各自 auto-scaffold（補缺少的標準目錄）
   if (isFoundation) {
-    const scaffoldResult = autoScaffoldFoundation(target, srcDir, projectType, manifest);
-    if (scaffoldResult.created.length > 0) {
-      console.log(`\n🏗️  Auto-scaffold: 建立 ${scaffoldResult.created.length} 個標準目錄`);
-      scaffoldResult.created.forEach(d => console.log(`   ✅ ${d}`));
+    for (const sd of srcDirs) {
+      const scaffoldResult = autoScaffoldFoundation(target, sd, projectType, manifest);
+      if (scaffoldResult.created.length > 0) {
+        const relRoot = path.relative(target, sd).replace(/\\/g, '/');
+        console.log(`\n🏗️  Auto-scaffold [${relRoot}]: 建立 ${scaffoldResult.created.length} 個標準目錄`);
+        scaffoldResult.created.forEach(d => console.log(`   ✅ ${d}`));
+      }
     }
   }
 
   if (srcFiles.length > 0) {    // Story-1.0 需要額外檢查橫向分層與環境設定
+    // multi-root: 對每個 srcDir 各自執行 validateModule0Structure，check 帶 srcDir 標記
     const checks = isFoundation
-      ? validateModule0Structure(target, srcDir, projectType)
+      ? srcDirs.flatMap(sd => {
+          const rootChecks = validateModule0Structure(target, sd, projectType);
+          const relRoot = path.relative(target, sd).replace(/\\/g, '/');
+          return srcDirs.length > 1
+            ? rootChecks.map(c => ({ ...c, name: `[${relRoot}] ${c.name}`, srcDir: sd }))
+            : rootChecks.map(c => ({ ...c, srcDir: sd }));
+        })
       : validatePhase1(srcFiles);
     const failed = checks.filter(c => !c.pass);
 
@@ -570,7 +585,7 @@ modules/[module-name]/
       if (errorHandler.shouldBlock()) {
         // 達到重試上限 - 仍然用指令式輸出，但標記為 BLOCKER
         const tasks = failed.map(c => {
-          const taskInfo = mapCheckToTask(c, target, srcDir, planFile, story);
+          const taskInfo = mapCheckToTask(c, target, c.srcDir || srcDir, planFile, story);
           return taskInfo;
         });
 
@@ -592,7 +607,7 @@ modules/[module-name]/
 
       // 正常重試 - 指令式任務清單
       const tasks = failed.map(c => {
-        const taskInfo = mapCheckToTask(c, target, srcDir, planFile, story);
+        const taskInfo = mapCheckToTask(c, target, c.srcDir || srcDir, planFile, story);
         return taskInfo;
       });
 

@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 /**
- * Cynefin Log Writer v1.0
+ * @deprecated v7.0+ — Cynefin 分析已整合至 Blueprint R4 設計審查，不再是獨立 workflow step。
+ *
+ * 此工具為 INTERNAL / LEGACY ONLY。
+ * 不得在 operator-facing output 中引導使用者執行此工具。
+ * 不得在主流程 next step 中出現此工具。
+ *
+ * 主流程（Blueprint Flow）:
+ *   Blueprint → Draft（draft-gate）→ Contract（contract-gate）→ spec-to-plan → BUILD
+ *   Cynefin 語意域分析已內嵌於 Blueprint R4 / design-reviewer-prompt 設計審查流程。
+ *
+ * ─────────────────────────────────────────────
+ * Cynefin Log Writer v1.0 (legacy internal)
  * 接收 AI 產出的 cynefin review report，格式化存成 log 檔
  *
- * 用法:
+ * 用法（僅限內部/遷移用途）:
  *   node sdid-tools/cynefin-log-writer.cjs --report=<json-string> --target=<project> --iter=<N>
  *   node sdid-tools/cynefin-log-writer.cjs --report-file=<path> --target=<project> --iter=<N>
- *
- * 輸出:
- *   @PASS        — 無 BLOCKER，log 存檔完成
- *   @NEEDS-FIX   — 有 BLOCKER，log 存檔完成，AI 需要修改文件後重跑
- *
- * Log 命名:
- *   cynefin-check-pass-<timestamp>.log
- *   cynefin-check-fail-<timestamp>.log
  */
 
 'use strict';

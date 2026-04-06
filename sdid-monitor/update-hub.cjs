@@ -384,7 +384,7 @@ function deriveBadge(projData) {
     { re: /^contract-/,            phase: 'CONTRACT',     badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
     { re: /^draft-gate-/,          phase: 'DRAFT_GATE',   badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
     { re: /^blueprint-gate-/,      phase: 'BLUEPRINT_GATE', badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
-    { re: /^cynefin-check-/,       phase: 'CYNEFIN',      badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
+    // cynefin-check-* logs: legacy artifact, Cynefin 已整合至 Blueprint R4（不再產生新 log）
     // v5 legacy
     { re: /^gate-verify-error-/,   phase: 'VERIFY',       badge: '@BLOCK' },
     { re: /^gate-check-/,          phase: 'GATE',         badge: (l) => l.includes('pass') ? '@PASS' : '@BLOCK' },
@@ -494,7 +494,8 @@ function generateRoadmap(hub) {
           const bpFlag2 = fs.existsSync(bpForProject) ? ` --blueprint=${name}/.gems/design/blueprint.md` : '';
           nextCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/${iter}/contract_iter-${iterN}.ts --target=${name} --iter=${iterN}${bpFlag2}`;
         } else if (phase === 'CYNEFIN' || phase === 'CYNEFIN_CHECK') {
-          nextCmd = `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${name} --iter=${iterN}`;
+          // Legacy — Cynefin 已整合至 Blueprint R4 設計審查，不再是獨立步驟
+          nextCmd = `# [Deprecated] Cynefin 分析已內嵌於 Blueprint R4。請依 Blueprint Flow: draft-gate → contract-gate → spec-to-plan → BUILD`;
         } else if (phase === 'FLOW_REVIEW') {
           nextCmd = `# AI skill: invoke flow-review skill → writes flow-review-pass-{ts}.log to .gems/iterations/${iter}/logs/`;
         } else if (phase === 'PLAN') {
@@ -587,7 +588,6 @@ function generateRoadmap(hub) {
   lines.push('node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=.gems/design/blueprint.md --target=<proj>');
   lines.push('node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-N.md --target=<proj>');
   lines.push('node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-N/contract_iter-N.ts --target=<proj> --iter=N');
-  lines.push('node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<proj> --iter=N');
   lines.push('node task-pipe/tools/spec-to-plan.cjs --target=<proj> --iteration=iter-N');
   lines.push('node task-pipe/runner.cjs --phase=BUILD --step=N --story=Story-X.Y --target=<proj> --iteration=iter-N');
   lines.push('node task-pipe/runner.cjs --phase=SCAN --target=<proj> --iteration=iter-N');
@@ -759,7 +759,7 @@ function generateMarkdown(hub) {
   lines.push(`blueprint-gate-{pass|error}-{ts}.log`);
   lines.push(`draft-gate-{pass|error}-{ts}.log`);
   lines.push(`contract-gate-{pass|error}-{ts}.log`);
-  lines.push(`cynefin-check-{pass|fail}-{ts}.log`);
+  // cynefin-check-* logs: legacy artifact (Cynefin 已整合至 Blueprint R4)
   lines.push(`pocfix-active-{ts}.log`);
   lines.push(`pocfix-pass-{ts}.log`);
   lines.push(`build-phase-{N}-Story-{X.Y}-{status}-{ts}.log`);

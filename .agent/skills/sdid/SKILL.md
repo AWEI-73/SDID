@@ -9,7 +9,7 @@ description: >
 
 # SDID
 
-Blueprint → Draft → Contract → Plan → Build
+Blueprint → Draft → Contract → Plan → Build → Scan → Verify
 
 ## STEP 0 — 確認現況
 
@@ -38,5 +38,4 @@ Blueprint → Draft → Contract → Plan → Build
 - `references/micro-fix.md`
 - `references/poc-fix.md`
 - flow-review (optional)
-- `references/taskpipe-design.md`
 - `references/architecture-rules.md`

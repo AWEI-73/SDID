@@ -13,10 +13,9 @@ const orchestrator = require(path.join(TOOLS_DIR, '..', 'sdid-core', 'orchestrat
 
 export const schema = {
   title: 'SDID Loop (主入口)',
-  description: `🔁 唯一主流程入口 — 所有 SDID 開發流程必須從此工具開始，禁止直接呼叫其他 sdid-* 工具。自動偵測專案狀態並執行下一步，支援兩條路線（文件驅動自動偵測）：
-  Blueprint: GATE → CYNEFIN → CONTRACT → PLAN → BUILD (Phase 1-4) → SCAN → VERIFY
-  Task-Pipe: POC → CYNEFIN → spec-to-plan → CONTRACT-QUALITY-GATE → BUILD → SCAN → VERIFY
-  POC-FIX / MICRO-FIX 路線自動偵測。
+  description: `🔁 唯一主流程入口 — 所有 SDID 開發流程必須從此工具開始，禁止直接呼叫其他 sdid-* 工具。自動偵測專案狀態並執行下一步。
+  Blueprint（唯一主流程）: GATE → CONTRACT → PLAN → BUILD (Phase 1-4) → SCAN → VERIFY
+  POC-FIX / MICRO-FIX 路線自動偵測。Task-Pipe 路線已於 v6 退休，不再作為有效入口。
 每次呼叫會：(1) 偵測路線+當前階段（由文件存在與否決定，不靠 route 參數） (2) 執行對應工具 (3) 回傳結果 + @TASK 或 @NEXT 指示。
 收到 @TASK 時請修改程式碼，修完後再次呼叫此工具。收到 @PASS 時直接再次呼叫。
 ⛔ 嚴禁在 sdid-loop 之外自行呼叫 sdid-blueprint-gate、sdid-spec-gen、sdid-spec-gate、sdid-build、sdid-scan、sdid-micro-fix-gate、sdid-poc-scaffold。
@@ -47,10 +46,10 @@ export async function handler({ project, iter, story, forceStart }) {
     if (buildMatch) {
       state = { ...baseState, phase: 'BUILD', step: parseInt(buildMatch[1] || '1'), story: story || baseState.plannedStories?.[0] };
     } else {
-      const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX', 'CYNEFIN-CHECK': 'CYNEFIN_CHECK', 'CYNEFIN': 'CYNEFIN_CHECK', 'CONTRACT': 'CONTRACT' };
+      const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX', 'CONTRACT': 'CONTRACT' };
       const phase = phaseMap[forceStart.toUpperCase()];
       if (!phase) {
-        return { content: [{ type: 'text', text: `ERROR: 無效的 forceStart: ${forceStart}\n有效值: GATE, PLAN, BUILD-N, VERIFY, POC, SCAN, POC-FIX, MICRO-FIX, CONTRACT\n💡 SHRINK 已移為可選工具，請直接執行: node task-pipe/tools/shrink-tags.cjs --target=<project>` }] };
+        return { content: [{ type: 'text', text: `ERROR: 無效的 forceStart: ${forceStart}\n有效值: GATE, PLAN, BUILD-N, VERIFY, POC, SCAN, POC-FIX, MICRO-FIX, CONTRACT\n💡 SHRINK 已移為可選工具，請直接執行: node task-pipe/tools/shrink-tags.cjs --target=<project>\n⚠️  CYNEFIN-CHECK 已移除，Cynefin 分析現在內嵌於 Blueprint R4 review，不是獨立 phase。` }] };
       }
       state = { ...baseState, phase };
     }
@@ -60,7 +59,7 @@ export async function handler({ project, iter, story, forceStart }) {
   }
 
   const iterNum = parseInt((state.iteration || state.iter || 'iter-1').replace('iter-', ''), 10);
-  // 文件驅動路線偵測：有 draft → Blueprint，有 spec → Task-Pipe
+  // 文件驅動路線偵測：有 draft → Blueprint（唯一主流程），有 spec → LegacySpec（deprecated）
   const detectedRoute = state.route || stateMachine.detectRoute(projectRoot, `iter-${iterNum}`);
 
   const lines = [];
@@ -447,26 +446,14 @@ export async function handler({ project, iter, story, forceStart }) {
       break;
     }
     case 'CYNEFIN_CHECK': {
-      // Cynefin 語意域分析 — AI 手動執行，不走 runner
-      const iterPath = path.join(projectRoot, '.gems', 'iterations', `iter-${iterNum}`);
-      const designPath = path.join(projectRoot, '.gems', 'design');
-      let inputFile = null;
-      if (fs.existsSync(designPath)) {
-        const files = fs.readdirSync(designPath);
-        inputFile = files.find(f => f.startsWith(`draft_iter-${iterNum}`) && f.endsWith('.md'))
-          || files.find(f => f.startsWith('draft_iter-') && f.endsWith('.md'));
-      }
-      const inputPath = inputFile ? path.join(designPath, inputFile) : path.join(designPath, `draft_iter-${iterNum}.md`);
-
-      lines.push(`🔍 CYNEFIN-CHECK: 語意域分析`);
+      // CYNEFIN_CHECK 已不再是 state-machine phase（v6 起移除）
+      // Cynefin 三問分析現在內嵌於 Blueprint R4 review，不是獨立 gate
+      lines.push('⚠️  CYNEFIN_CHECK 已於 v6 移除，不再是獨立 phase。');
+      lines.push('   Cynefin 域分析現在內嵌於 Blueprint R4 review（設計審查時自動執行）。');
+      lines.push('   若需要手動觸發 Cynefin 分析，請使用 /flow-review 或 design-review skill。');
       lines.push('');
-      lines.push('@TASK');
-      lines.push(`ACTION: 讀 .agent/skills/sdid/references/cynefin-check.md 對以下文件做語意域分析`);
-      lines.push(`FILE: ${inputPath}`);
-      lines.push(`EXPECTED: 產出 report JSON → 執行 node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${projectRoot} --iter=${iterNum}`);
-      lines.push('');
-      lines.push('@REMINDER: 分析完成後必須執行 cynefin-log-writer.cjs 存 log，@PASS 才能進 CONTRACT');
-
+      lines.push('@NEXT_ACTION');
+      lines.push('請直接呼叫 sdid-loop 繼續，系統會自動偵測當前 phase（應為 CONTRACT）。');
       return { content: [{ type: 'text', text: lines.join('\n') }] };
     }
     case 'CONTRACT': {

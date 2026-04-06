@@ -147,7 +147,7 @@ function sortIters(iters) {
 function detectFlowType(logs, gemsRoot) {
   // v7 gate prefixes
   const hasV7Gates = logs.some(l =>
-    /^(draft-gate|cynefin-check|flow-review|contract-gate|contract|blueprint-gate|gate-plan|gate-verify)-/.test(l)
+    /^(draft-gate|flow-review|contract-gate|contract|blueprint-gate|gate-plan|gate-verify)-/.test(l)
   );
   if (hasV7Gates) return 'blueprint';
   // Legacy fallback
@@ -227,7 +227,7 @@ function parseGatePhases(logs) {
   const gates = {
     blueprintGate: null,  // blueprint-gate-pass/error
     draftGate: null,      // draft-gate-pass/error
-    cynefin: null,        // cynefin-check-pass/fail
+    // cynefin: removed — Cynefin 已整合至 Blueprint R4，不再是獨立 gate
     flowReview: null,     // flow-review-pass/error
     contract: null,       // contract-pass / contract-gate-pass
     plan: null,           // gate-plan-pass
@@ -241,9 +241,8 @@ function parseGatePhases(logs) {
     if (/^draft-gate-(pass|error)-/.test(log)) {
       gates.draftGate = log.includes('pass') ? 'pass' : 'error'; continue;
     }
-    if (/^cynefin-check-(pass|fail)-/.test(log)) {
-      gates.cynefin = log.includes('pass') ? 'pass' : 'error'; continue;
-    }
+    // cynefin-check-* logs: legacy artifact，忽略（不影響現行 workflow state）
+    if (/^cynefin-check-(pass|fail)-/.test(log)) { continue; }
     if (/^flow-review-(pass|error)-/.test(log)) {
       gates.flowReview = log.includes('pass') ? 'pass' : 'error'; continue;
     }
@@ -351,12 +350,8 @@ function deriveStatus(logs, gemsRoot) {
     currentPhase = 'CONTRACT'; badge = null; badgeClass = 'idle';
   } else if (gatePhases.flowReview === 'error') {
     currentPhase = 'FLOW-REVIEW'; badge = '@BLOCK'; badgeClass = 'block';
-  } else if (gatePhases.cynefin === 'pass') {
-    currentPhase = 'FLOW-REVIEW'; badge = null; badgeClass = 'idle';
-  } else if (gatePhases.cynefin === 'error') {
-    currentPhase = 'CYNEFIN'; badge = '@BLOCK'; badgeClass = 'block';
   } else if (gatePhases.draftGate === 'pass') {
-    currentPhase = 'CYNEFIN'; badge = null; badgeClass = 'idle';
+    currentPhase = 'FLOW-REVIEW'; badge = null; badgeClass = 'idle';
   } else if (gatePhases.draftGate === 'error') {
     currentPhase = 'DRAFT-GATE'; badge = '@BLOCK'; badgeClass = 'block';
   } else if (gatePhases.blueprintGate === 'pass') {
@@ -370,7 +365,7 @@ function deriveStatus(logs, gemsRoot) {
   if (isComplete) {
     progress = 100;
   } else {
-    const preBuildGates = ['blueprintGate', 'draftGate', 'cynefin', 'flowReview', 'contract'];
+    const preBuildGates = ['blueprintGate', 'draftGate', 'flowReview', 'contract'];
     const preBuildPassed = preBuildGates.filter(k => gatePhases[k] === 'pass').length;
     progress += Math.round((preBuildPassed / preBuildGates.length) * 25);
     if (gatePhases.plan === 'pass') progress += 5;

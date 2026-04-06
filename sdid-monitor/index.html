@@ -681,7 +681,6 @@
       // v7 Pipeline gates
       'blueprint': '主藍圖設計驗證 blueprint-gate.cjs',
       'draft': 'Per-iter 功能需求 + TDD 測試需求',
-      'cynefin': '語意域分析，展開隱含複雜度',
       'flow-review': 'FLOW 設計客觀審查，產出 @GEMS-WHY',
       'contract': '型別邊界 + @CONTRACT-LOCK 封版',
       'plan': 'spec-to-plan 機械轉換 → implementation_plan',
@@ -813,7 +812,7 @@
       // ── Pre-Build Pipeline ────────────────────────────────────
       const bpLogs  = logs.filter(f => /^blueprint-gate-/.test(f)).sort();
       const dgLogs  = logs.filter(f => /^draft-gate-/.test(f)).sort();
-      const cyLogs  = logs.filter(f => /^cynefin-check-/.test(f)).sort();
+      // cyLogs: removed — cynefin-check-* logs are legacy artifacts, not active pipeline nodes
       const frLogs  = logs.filter(f => /^flow-review-/.test(f)).sort();
       const ctLogs  = logs.filter(f => /^(contract-gate|contract)-/.test(f)).sort();
       const plLogs  = logs.filter(f => /^gate-plan-/.test(f)).sort();
@@ -824,8 +823,6 @@
         preParts.push(A);
       }
       preParts.push(node('Draft',       'draft',       getLogStatus(dgLogs), dgLogs[dgLogs.length - 1] || null, dgLogs.length));
-      preParts.push(A);
-      preParts.push(node('Cynefin',     'cynefin',     getLogStatus(cyLogs), cyLogs[cyLogs.length - 1] || null, cyLogs.length));
       preParts.push(A);
       preParts.push(node('Flow-Review', 'flow-review', getLogStatus(frLogs), frLogs[frLogs.length - 1] || null, frLogs.length));
       preParts.push(A);

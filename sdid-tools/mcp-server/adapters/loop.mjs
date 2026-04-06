@@ -64,7 +64,7 @@ export async function handler({ project, iter, story, forceStart }) {
 
   const lines = [];
   lines.push('══════════════════════════════════════════════════');
-  lines.push('  SDID Loop — Multi-Route Navigator');
+  lines.push('  SDID Loop — Blueprint Flow');
   lines.push('══════════════════════════════════════════════════');
   lines.push('');
   lines.push(`📁 專案: ${projectRoot}`);
@@ -389,7 +389,7 @@ export async function handler({ project, iter, story, forceStart }) {
           fs.readdirSync(logsDir).some(f => f.startsWith('poc-step-3-tdd-pass'));
         if (fs.existsSync(contractPath) && !tddPassed) {
           lines.push('');
-          lines.push('📋 [Task-Pipe] POC Step 3 TDD LITE Gate（contract 寫完後強制 AC cross-check）');
+          lines.push('📋 [POC] Step 3 TDD LITE Gate（contract 寫完後強制 AC cross-check）');
           lines.push('');
           lines.push('@TASK');
           lines.push(`ACTION: 對 ${contractPath} 執行 TDD LITE 交叉驗證（在進 Step 4 前完成）`);
@@ -416,7 +416,7 @@ export async function handler({ project, iter, story, forceStart }) {
         if (pocFiles.length > 0 && !htmlQualityPassed) {
           const pocHtml = path.join(pocDir, pocFiles[0]);
           lines.push('');
-          lines.push('📋 [Task-Pipe] POC Step 4 HTML Quality Gate（design-quality-gate.md 75pt 評分）');
+          lines.push('📋 [POC] Step 4 HTML Quality Gate（design-quality-gate.md 75pt 評分）');
           lines.push('');
           lines.push('@TASK');
           lines.push(`ACTION: 讀 .agent/skills/sdid/references/design-quality-gate.md POC.HTML 節點評分細則`);

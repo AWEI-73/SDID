@@ -50,16 +50,13 @@
             "3": {
                 "name": "整合層",
                 "file": "phase-3.cjs",
-                "description": "跨模組整合檢查：路由、模組匯出、SKIP[INTEGRATION] AC",
+                "description": "跨模組整合檢查：路由、模組匯出",
                 "actions": [
                     "Check route integration",
                     "Verify module exports (index.ts facade)",
-                    "Run SKIP[INTEGRATION] AC via ac-runner if applicable",
                     "Check dependency direction"
                 ],
-                "requires": [
-                    "ac_results"
-                ],
+                "requires": [],
                 "produces": [],
                 "skipInLevels": [
                     "S"

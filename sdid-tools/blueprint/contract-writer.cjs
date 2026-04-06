@@ -465,7 +465,7 @@ function runGate(parsed, content, draftActions) {
       warnings.push({
         code: 'CONTRACT-AC01',
         message: `${ac.id} 缺少欄位: ${missing.join(', ')}`,
-        fix: `補齊 ${missing.join(' / ')} 後 ac-runner 才能機械驗收`,
+        fix: `補齊 ${missing.join(' / ')} — 確保所有 @GEMS-AC 欄位完整，以利後續 @TEST 路徑覆蓋後由 contract-gate.cjs 驗收`,
       });
     }
   }

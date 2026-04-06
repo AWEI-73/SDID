@@ -1,0 +1,26 @@
+{
+  "allowedCommands": [
+    "node task-pipe/skills/sdid-loop/scripts/loop.cjs",
+    "node task-pipe/runner.cjs",
+    "node sdid-tools/blueprint/v5/blueprint-gate.cjs",
+    "node sdid-tools/blueprint/v5/draft-gate.cjs",
+    "node sdid-tools/blueprint/v5/contract-gate.cjs",
+    "node sdid-tools/blueprint/v5/poc-gate.cjs",
+    "node sdid-tools/blueprint/v5/adversarial-reviewer.cjs",
+    "node sdid-tools/blueprint/contract-writer.cjs",
+    "node sdid-tools/blueprint/verify.cjs",
+    "node sdid-tools/cynefin-log-writer.cjs",
+    "node sdid-tools/plan-to-scaffold.cjs",
+    "node sdid-tools/poc-to-scaffold.cjs",
+    "node sdid-tools/poc-fix/micro-fix-gate.cjs",
+    "node sdid-tools/state-guide.cjs",
+"node sdid-core/state-machine.cjs",
+    "node task-pipe/tools/spec-to-plan.cjs",
+    "node task-pipe/tools/project-status.cjs",
+    "node task-pipe/tools/shrink-tags.cjs",
+    "node task-pipe/tools/health-report.cjs",
+    "node task-pipe/tools/quality-check/poc-quality-checker.cjs",
+    "node sdid-monitor/server.cjs",
+    "node sdid-monitor/update-hub.cjs"
+  ]
+}

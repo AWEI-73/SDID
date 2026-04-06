@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * spec-to-plan.cjs — 機械轉換入口（contract 或 spec → plan）
+ * spec-to-plan.cjs — Contract → Plan 機械轉換入口（v7 contract-only）
  *
- * 優先讀 contract_iter-N.ts 的 @GEMS-STORIES（Blueprint 路線）
- * Fallback 讀 requirement_spec_iter-N.md 的 5.5 函式規格表（Task-Pipe 路線）
- * → 直接產出 implementation_plan_Story-X.Y.md
+ * 唯一主流程：contract_iter-N.ts → generatePlansFromContract() → implementation_plan_*
+ *
+ * 若偵測到 legacy requirement_spec_* artifact → 輸出 migration 訊息並停止
+ * Task-Pipe spec 路線已於 v6 退休，請使用 Blueprint 主流程
  *
  * 用法:
  *   node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-1
@@ -12,7 +13,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { generatePlansFromContract, generatePlansFromSpec } = require('../lib/plan/plan-generator.cjs');
+const { generatePlansFromContract } = require('../lib/plan/plan-generator.cjs');
 const { anchorPass, anchorError } = require('../lib/shared/log-output.cjs');
 
 function parseArgs() {
@@ -37,57 +38,53 @@ function main() {
   const iterDir = path.join(args.target, '.gems', 'iterations', args.iteration);
   const pocDir = path.join(iterDir, 'poc');
 
-  // 優先找 contract（Blueprint 路線）
-  // v6: contract 在 iter-N/ 下；v5 legacy fallback: iter-N/poc/
+  // 偵測 legacy spec artifact（Task-Pipe 遺留）→ deprecation + stop
+  if (fs.existsSync(pocDir)) {
+    const legacySpec = fs.readdirSync(pocDir).find(f => f.startsWith('requirement_spec_'));
+    if (legacySpec) {
+      console.error('\n⚠️  [Deprecated] 偵測到 legacy Task-Pipe artifact: ' + legacySpec);
+      console.error('   requirement_spec_* 路線已於 v6 退休。');
+      console.error('   請使用 Blueprint 主流程：');
+      console.error('   1. 將需求整理成 draft_iter-1.md 放到 .gems/design/');
+      console.error('   2. 完成 CONTRACT 階段產出 contract_iter-N.ts');
+      console.error('   3. 再次執行 spec-to-plan');
+      console.error('\n@MIGRATION: Blueprint → Draft → Contract → spec-to-plan → Plan → BUILD');
+      process.exit(1);
+    }
+  }
+
+  // 唯一主流程：contract_iter-N.ts（v6: iter-N/ 下；v5 fallback: iter-N/poc/）
   const contractPathV6 = path.join(iterDir, `contract_iter-${iterNum}.ts`);
   const contractPathV5 = path.join(pocDir, `contract_iter-${iterNum}.ts`);
   const contractPath = fs.existsSync(contractPathV6) ? contractPathV6
     : fs.existsSync(contractPathV5) ? contractPathV5 : null;
-  const hasContract = contractPath !== null;
 
-  // Fallback 找 spec（Task-Pipe 路線）
-  let specPath = null;
-  if (!hasContract && fs.existsSync(pocDir)) {
-    const f = fs.readdirSync(pocDir).find(f => f.startsWith('requirement_spec_'));
-    if (f) specPath = path.join(pocDir, f);
-  }
-
-  if (!hasContract && !specPath) {
+  if (!contractPath) {
     anchorError('BLOCKER',
-      `找不到 contract_iter-${iterNum}.ts 或 requirement_spec_${args.iteration}.md`,
-      `Blueprint 路線: 先完成 CONTRACT 階段（contract 位置: .gems/iterations/${args.iteration}/contract_iter-${iterNum}.ts）\nTask-Pipe 路線: 先完成 POC Step 5`,
+      `找不到 contract_iter-${iterNum}.ts`,
+      `先完成 CONTRACT 階段（contract 位置: .gems/iterations/${args.iteration}/contract_iter-${iterNum}.ts）`,
       { projectRoot: args.target, iteration: iterNum, phase: 'poc', step: 'spec-to-plan' }
     );
     process.exit(1);
   }
 
-  const source = hasContract ? 'contract' : 'spec';
-  console.log(`\n📐 spec-to-plan (機械轉換)`);
-  console.log(`   來源: ${source === 'contract' ? path.basename(contractPath) : path.basename(specPath)}`);
+  console.log(`\n📐 spec-to-plan (Contract → Plan 機械轉換)`);
+  console.log(`   來源: ${path.basename(contractPath)}`);
   console.log(`   迭代: ${args.iteration}`);
   console.log('');
 
-  let result;
-  if (hasContract) {
-    result = generatePlansFromContract(contractPath, iterNum, args.target, { dryRun: args.dryRun });
-  } else {
-    result = generatePlansFromSpec(specPath, iterNum, args.target, { dryRun: args.dryRun });
-  }
+  const result = generatePlansFromContract(contractPath, iterNum, args.target, { dryRun: args.dryRun });
 
   if (result.errors.length > 0) {
     anchorError('BLOCKER',
       `plan-generator 失敗: ${result.errors.join('; ')}`,
-      source === 'contract'
-        ? `確認 contract 的 @GEMS-STORY / @GEMS-STORY-ITEM 格式正確`
-        : `確認 spec 的 5.5 函式規格表格式正確`,
+      `確認 contract 的 @GEMS-STORY / @GEMS-STORY-ITEM 格式正確`,
       { projectRoot: args.target, iteration: iterNum, phase: 'poc', step: 'spec-to-plan' }
     );
     process.exit(1);
   }
 
-  const sourceFile = source === 'contract'
-    ? path.relative(args.target, contractPath)
-    : path.relative(args.target, specPath);
+  const sourceFile = path.relative(args.target, contractPath);
 
   for (const g of result.generated) {
     console.log(`   ✅ ${g.storyId} → ${g.file} (${g.functionCount} 函式)`);
@@ -96,17 +93,12 @@ function main() {
     console.log(`  TARGET_PLAN: ${g.file}`);
     console.log(`  SLICE_COUNT: ${g.functionCount}`);
   }
-  if (result.acGenerated) {
-    console.log(`   ✅ ac.ts → ${result.acGenerated} (純計算函式骨架，請填入 INPUT/EXPECT)`);
-  } else {
-    console.log(`   ⚠  ac.ts 未產出（spec 無純計算函式，Phase 2 將 SKIP）`);
-  }
 
   const firstStory = result.generated[0]?.storyId;
   const nextCmd = `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${firstStory} --target=${args.target} --iteration=${args.iteration}`;
 
   anchorPass('poc', 'spec-to-plan',
-    `spec-to-plan 完成 — ${result.generated.length} 個 Story plan 產出${result.acGenerated ? '，ac.ts 骨架已產出（請填入 INPUT/EXPECT）' : ''}，直接進 BUILD`,
+    `spec-to-plan 完成 — ${result.generated.length} 個 Story plan 產出，直接進 BUILD`,
     nextCmd,
     {
       projectRoot: args.target,

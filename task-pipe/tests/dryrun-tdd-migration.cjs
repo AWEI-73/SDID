@@ -58,7 +58,7 @@ const badPathContent = [
   'export interface TrainingClass { id: string; }',
 ].join('\n');
 const r3 = checkContract(badPathContent, 1);
-assert('bad TDD path → CG-G01 guided', r3.guided.some(g => g.code === 'CG-G01'));
+assert('bad TDD path → CG-003 blocker', r3.blockers.some(b => b.code === 'CG-003'));
 
 // 無 @GEMS-STORY → blocker
 const noStoryContent = [
@@ -73,9 +73,9 @@ console.log('\n[3] contract-golden.template.v3.ts');
 const fs = require('fs');
 const path = require('path');
 const templateContent = fs.readFileSync(
-  path.join(__dirname, '../templates/contract-golden.template.v3.ts'), 'utf8'
+  path.join(__dirname, '../templates/contract-golden.template.v4.ts'), 'utf8'
 );
-assert('template has @GEMS-TDD', templateContent.includes('@GEMS-TDD'));
+assert('template has @TEST', templateContent.includes('@TEST'));
 assert('template no @GEMS-AC:', !templateContent.includes('@GEMS-AC:'));
 assert('template no @GEMS-AC-FN', !templateContent.includes('@GEMS-AC-FN'));
 assert('template no @GEMS-AC-SKIP', !templateContent.includes('@GEMS-AC-SKIP'));
@@ -89,13 +89,10 @@ assert('ac-golden has @GEMS-TDD', acGoldenContent.includes('@GEMS-TDD'));
 assert('ac-golden has vitest describe', acGoldenContent.includes('describe('));
 assert('ac-golden no @GEMS-AC-FN', !acGoldenContent.includes('@GEMS-AC-FN'));
 
-// ── 5. ac-runner.cjs 有 deprecated 標頭 ──
-console.log('\n[5] ac-runner.cjs deprecated');
-const acRunnerContent = fs.readFileSync(
-  path.join(__dirname, '../../sdid-tools/ac-runner.cjs'), 'utf8'
-);
-assert('ac-runner has @deprecated', acRunnerContent.includes('@deprecated'));
-assert('ac-runner deprecated mentions v7.0', acRunnerContent.includes('v7.0'));
+// ── 5. ac-runner.cjs 已刪除（v7.0+ 完全退休）──
+console.log('\n[5] ac-runner.cjs deleted');
+const acRunnerPath = path.join(__dirname, '../../sdid-tools/ac-runner.cjs');
+assert('ac-runner file does not exist', !fs.existsSync(acRunnerPath));
 
 // ── 結果 ──
 console.log(`\n${'─'.repeat(50)}`);

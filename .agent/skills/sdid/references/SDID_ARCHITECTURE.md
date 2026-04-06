@@ -317,6 +317,7 @@ export function functionName(...) { ... }
 
 > v7.0 移除：`// AC-X.Y` 行（AC 機制 deprecated）、`✓✓` 狀態欄（v5.0 已移除）
 > TDD 驗收在 contract 層用 `@TEST: src/...test.ts` 標記；needsTest 動作由 Blueprint `### 複雜度標註` 管理，Phase 2 機械執行
+> TDD Contract Subagent 需先自行執行測試確認 RED；contract-gate 僅做 Blueprint / Contract / @TEST / Behavior 靜態對齊驗證，不執行測試本身
 
 ---
 

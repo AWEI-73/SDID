@@ -130,6 +130,7 @@ Agent tool (general-purpose):
     - 測試是規格，不是實作的附屬品
     - Phase 2 只改實作讓測試 GREEN，不能動測試檔
     - Behavior: 必須可否定（具體錯誤碼/輸出值），不能是描述性文字
+    - TDD Contract Subagent 必須先自行執行測試確認 RED，再回報 READY；contract-gate 只驗證 @TEST / Behavior 對齊，不負責執行測試
 
     ---
 

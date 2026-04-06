@@ -2,19 +2,26 @@
 /**
  * AC Runner v3.0 — vitest orchestrator
  *
- * @deprecated v7.0 — 此工具已 deprecated，不再由 BUILD Phase 2 呼叫。
- *   新機制：contract_iter-N.ts 使用 @GEMS-TDD 標籤指向測試檔路徑。
- *   Phase 2 直接跑 vitest --run（有 @GEMS-TDD）或 tsc --noEmit（無 @GEMS-TDD）。
- *   保留此檔案供舊版 iter 向後相容，新專案請勿使用 @GEMS-AC-* 標籤。
- *   參考: task-pipe/templates/examples/ac-golden.ts（已更新為 TDD 範例）
+ * @deprecated v7.0+ — LEGACY ARCHIVE 候選，僅供舊版 iter 向後相容，禁止新專案使用。
+ *   ── 現況說明（2026-04-06）──
+ *   此工具在主流程中已被棄用，不再由 BUILD Phase 2 呼叫。
+ *   新機制（v7 主線）：
+ *     - needsTest 來源：Blueprint 複雜度標註（### 複雜度標註 表格），非 cynefin-report.json
+ *     - contract 用 @TEST 標籤指向測試檔路徑（非舊版 @GEMS-TDD）
+ *     - Phase 2 直接跑 vitest --run（有 @TEST）或 tsc --noEmit（無 @TEST）
+ *     - TDD 驗收由 CG-007（contract-gate v5.3）靜態驗證
+ *   ── Archive 條件 ──
+ *   若確認所有活躍 iter 已遷移至 @TEST + Blueprint 複雜度標註，可將此檔移至
+ *   sdid-tools/legacy/ac-runner.cjs 並從 phase-2.cjs 移除引用。
+ *   在此之前保留此檔案，僅做舊版 @GEMS-AC-* 的相容層。
  *
- * 讀取 contract_iter-N.ts 的 @GEMS-AC 標記
+ * 讀取 contract_iter-N.ts 的 @GEMS-AC 標記（舊版格式）
  * 讀 cynefin-report.json → needsTest:true 的 AC 生成 vitest test → vitest run
  * needsTest:false 的 CALC AC 走舊的直接執行模式（向後相容）
  *
  * 設計原則:
  *   - contract.ts 在 Gate 階段鎖定（有 contract-pass.log），AI 無法在 BUILD 時修改
- *   - CYNEFIN 決定哪些 action needsTest: true
+ *   - CYNEFIN 決定哪些 action needsTest: true（舊版：從 cynefin-report.json 讀取）
  *   - needsTest:true → 生成 vitest test 檔（支援 SETUP 前置步驟）
  *   - needsTest:false → 直接 require 執行比對（v2.0 相容模式）
  *   - UI/Hook/整合類 AC 繼續靠 POC.HTML 人工確認

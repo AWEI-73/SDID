@@ -159,7 +159,7 @@ function generateReport(draft, allIssues, args, rawContent = '') {
       return { passed: false, blockers: 1, warns: warns.length, issues: [...allIssues, { level: 'BLOCKER', code: 'SCORE-001', msg: `Blueprint Score ${score.total}/100 低於門檻 ${SCORE_THRESHOLD}` }] };
     }
 
-    const nextCmd = `node sdid-tools/blueprint/draft-to-plan.cjs --draft=${args.draft} --iter=${args.iter || 1} --target=<project>`;
+    const nextCmd = `node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-${args.iter || 1}`;
     const summary = `Blueprint Gate 通過 (${blockers.length} blocker, ${warns.length} warn)`;
 
     if (projectRoot) {

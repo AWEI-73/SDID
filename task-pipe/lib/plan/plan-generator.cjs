@@ -177,9 +177,13 @@ function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = 
     const depsRisk = depsStr === '無' ? 'LOW' : (depsStr.split(',').length >= 3 ? 'HIGH' : 'MEDIUM');
     const filePath = inferFilePath(item.name, item.type, story.module, srcRoot);
 
+    // v4: 找對應 @CONTRACT block 的 risk/behaviors（供 PRESERVE 標注）
+    const v4Slice = v4Info ? v4Info.find(c => c.name === item.name) : null;
+    const riskLine = v4Slice?.risk ? `\n**Risk**: ${v4Slice.risk}` : '';
+
     return `### Item ${i + 1}: ${item.name}
 
-**Type**: ${item.type} | **Priority**: ${item.priority}
+**Type**: ${item.type} | **Priority**: ${item.priority}${riskLine}
 
 \`\`\`typescript
 // @GEMS-FUNCTION: ${item.name}

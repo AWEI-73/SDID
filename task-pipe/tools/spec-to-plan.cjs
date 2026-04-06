@@ -85,8 +85,16 @@ function main() {
     process.exit(1);
   }
 
+  const sourceFile = source === 'contract'
+    ? path.relative(args.target, contractPath)
+    : path.relative(args.target, specPath);
+
   for (const g of result.generated) {
     console.log(`   ✅ ${g.storyId} → ${g.file} (${g.functionCount} 函式)`);
+    console.log(`@PLAN_TRACE | ${g.storyId}`);
+    console.log(`  SOURCE_CONTRACT: ${sourceFile}`);
+    console.log(`  TARGET_PLAN: ${g.file}`);
+    console.log(`  SLICE_COUNT: ${g.functionCount}`);
   }
   if (result.acGenerated) {
     console.log(`   ✅ ac.ts → ${result.acGenerated} (純計算函式骨架，請填入 INPUT/EXPECT)`);

@@ -41,6 +41,7 @@
 | `@NEEDS_CLARIFICATION` | 需要澄清 | POC 模糊消除 |
 | `@GEMS-VERIFIED` | POC 功能驗證標籤 | POC Step 4 |
 | `@GEMS-CONTRACT` | 契約設計標籤 | POC Step 3 |
+| `@PLAN_TRACE` | contract→plan 轉換可追蹤記錄（SOURCE_CONTRACT / TARGET_PLAN / SLICE_COUNT） | spec-to-plan @PASS 時 |
 
 ### 已移除/合併的標記
 

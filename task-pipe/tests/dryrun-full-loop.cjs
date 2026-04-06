@@ -89,12 +89,12 @@ origLog('═══════════════════════�
   fs.rmSync(proj, { recursive: true, force: true });
 }
 
-// 1.3 detectRoute — v5 legacy Task-Pipe
+// 1.3 detectRoute — v5 legacy spec → LegacySpec（deprecated signal，不是主流程 route）
 {
   const proj = mkTmp('route-tp');
   writeFile(proj, '.gems/iterations/iter-1/poc/requirement_spec_iter-1.md', '# Spec\n');
   const route = stateMachine.detectRoute(proj, 'iter-1');
-  assert('detectRoute: v5 spec → Task-Pipe', route === 'Task-Pipe', `got: ${route}`);
+  assert('detectRoute: v5 spec → LegacySpec (deprecated)', route === 'LegacySpec', `got: ${route}`);
   fs.rmSync(proj, { recursive: true, force: true });
 }
 

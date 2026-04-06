@@ -167,12 +167,12 @@ function detectActiveIter(projectRoot) {
  *
  * v5 legacy fallback：
  *   poc-consolidation-log.md → POC-FIX
- *   requirement_spec_*       → Task-Pipe
+ *   requirement_spec_*       → LegacySpec（deprecated，不再作為有效主流程 route）
  *   requirement_draft_*      → Blueprint
  *
  * @param {string} projectRoot
  * @param {string} [iter] - 如 'iter-2'，省略則自動偵測 active iter
- * @returns {'Blueprint'|'Task-Pipe'|'POC-FIX'|'Unknown'}
+ * @returns {'Blueprint'|'LegacySpec'|'POC-FIX'|'Unknown'}
  */
 function detectRoute(projectRoot, iter) {
   const activeIter = iter || detectActiveIter(projectRoot);
@@ -197,11 +197,11 @@ function detectRoute(projectRoot, iter) {
     const pocDir = path.join(projectRoot, '.gems', 'iterations', `iter-${i}`, 'poc');
     if (!fs.existsSync(pocDir)) continue;
     const files = fs.readdirSync(pocDir);
-    if (files.some(f => f.startsWith('requirement_spec_'))) return 'Task-Pipe';
+    if (files.some(f => f.startsWith('requirement_spec_'))) return 'LegacySpec'; // deprecated — not an active route
     if (files.some(f => f.startsWith('requirement_draft_') || f.startsWith('draft_iter-'))) return 'Blueprint';
   }
 
-  if (fs.existsSync(path.join(projectRoot, 'requirement-spec.md'))) return 'Task-Pipe';
+  if (fs.existsSync(path.join(projectRoot, 'requirement-spec.md'))) return 'LegacySpec'; // deprecated — not an active route
   if (fs.existsSync(path.join(projectRoot, 'requirement-draft.md'))) return 'Blueprint';
 
   const specsDir = path.join(projectRoot, '.gems', 'specs');

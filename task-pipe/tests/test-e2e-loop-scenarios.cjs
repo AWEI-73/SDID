@@ -9,8 +9,8 @@
  * 情境 A: Blueprint Flow (sdid-loop)
  *   GATE → CONTRACT → PLAN → BUILD-1 → BUILD-2 → ... → VERIFY → COMPLETE
  *
- * 情境 B: Legacy Route Detection（v5 Task-Pipe 路線殘留相容性驗證）
- *   POC-1 → ... → PLAN → BUILD → SCAN（v5 legacy，確保 loop 不 crash）
+ * 情境 B: Legacy State Handling（v5 legacy phase 相容性驗證）
+ *   POC-1 → ... → PLAN → BUILD → SCAN（v5 legacy state，確保 loop 不 crash；LegacySpec 不再是主流程）
  *
  * 情境 C: Quickstart Flow (--new)
  *   直接建立新專案骨架 → GATE
@@ -209,11 +209,11 @@ console.log('═'.repeat(60));
 
 
 // ============================================
-// SCENARIO B: Legacy Route Detection（v5 Task-Pipe 相容性）
-// Task-Pipe 已退休為主流程路線。此 Scenario 僅驗證 loop 在偵測到
-// legacy state（POC/PLAN phases）時不 crash，並能正常輸出。
+// SCENARIO B: Legacy State Handling（v5 legacy phase 相容性）
+// Task-Pipe 已完全退休。此 Scenario 驗證 loop 在偵測到 legacy POC/PLAN
+// phase states 時不 crash，並能正常輸出（LegacySpec 偵測不再當主流程執行）。
 // ============================================
-console.log('\n🟢 Scenario B: Legacy Route Detection (v5 Task-Pipe 相容性)');
+console.log('\n🟢 Scenario B: Legacy State Handling (v5 POC/PLAN phase 相容性)');
 console.log('═'.repeat(60));
 
 // B1: 全新專案，初始 state = POC-1 → 應偵測到 POC

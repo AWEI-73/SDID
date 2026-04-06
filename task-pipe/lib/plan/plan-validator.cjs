@@ -170,6 +170,24 @@ function validatePlan(planPath) {
     }
   }
 
+  // ── Rule 11: PLAN_TRACE — @PLAN_TRACE 轉換標記（v4 plan 可追蹤性）──
+  const hasPlanTrace = /@PLAN_TRACE\s*\|/.test(content);
+  if (!hasPlanTrace) {
+    warnings.push({ rule: 'PLAN_TRACE', message: '缺少 @PLAN_TRACE 標記（spec-to-plan 轉換來源可追蹤性），建議由 spec-to-plan 產出' });
+  }
+
+  // ── Rule 12: ITEM_COUNT_MATCH — §3 table rows 數量 == §4 Item headers 數量 ──
+  // 確保 contract block = slice = plan task 的 1:1 對應
+  if (hasSection3 && hasSection4 && tableRows.length > 0 && itemHeaders.length > 0) {
+    if (tableRows.length !== itemHeaders.length) {
+      errors.push({
+        rule: 'ITEM_COUNT_MATCH',
+        message: `§3 工作項目 ${tableRows.length} 列 ≠ §4 Item 數量 ${itemHeaders.length}（contract slice 與 plan task 必須 1:1 對應）`,
+        severity: 'BLOCKER'
+      });
+    }
+  }
+
   // ── Rule 9 (P8): Plan 檔案路徑驗證 ──
   // 掃描 plan 中所有 FILE 欄位引用的路徑，驗證是否存在
   if (planPath) {
@@ -224,7 +242,8 @@ function validatePlan(planPath) {
     hasGemsFunction,
     hasGemsContract,
     hasFileRefs: hasSection5 || hasInlineFiles || hasFileTable,
-    hasArchReview: hasSection8
+    hasArchReview: hasSection8,
+    hasPlanTrace,
   };
 
   return {

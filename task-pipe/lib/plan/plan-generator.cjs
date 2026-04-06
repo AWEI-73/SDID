@@ -86,7 +86,8 @@ function generatePlansFromContract(contractPath, iterNum, target, options = {}) 
       storyId: story.id,
       module: story.module,
       file: path.relative(target, planFile),
-      functionCount: story.items.length,
+      // v4: 用 @CONTRACT blocks 數量（contract block = slice）；fallback 用 story.items
+      functionCount: (v4Info && v4Info.length > 0) ? v4Info.length : story.items.length,
     });
   }
 
@@ -162,24 +163,37 @@ function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = 
   const storyId = story.id;
   const isFoundation = story.type === 'INFRA' || /shared|config|infrastructure/i.test(story.module);
 
+  // v4: @CONTRACT blocks 作為主要 slices（contract block = slice = plan task）
+  // fallback: story.items（來自 @GEMS-STORY-ITEM，向後相容）
+  const slices = (v4Info && v4Info.length > 0)
+    ? v4Info.map(c => ({
+        name: c.name,
+        type: c.type || 'SVC',
+        priority: c.priority || 'P1',
+        flow: c.flow || null,
+        risk: c.risk || null,
+        testPath: c.testPath || null,
+        behaviors: c.behaviors || [],
+        deps: null,
+        ac: null,
+      }))
+    : story.items;
+
   // 工作項目表
-  const workItems = story.items.map((item, i) =>
+  const workItems = slices.map((item, i) =>
     `| ${i + 1} | ${item.name} | ${item.type} | ${item.priority} | ✅ 明確 | - |`
   ).join('\n');
 
   // Item 詳細規格
-  const itemSpecs = story.items.map((item, i) => {
+  const itemSpecs = slices.map((item, i) => {
     const stepAnchors = item.flow
       ? item.flow.split('→').map(s => `// [STEP] ${s.trim()}`).join('\n')
       : '';
 
-    const depsStr = item.deps === '無' ? '無' : item.deps;
+    const depsStr = (item.deps && item.deps !== '無') ? item.deps : '無';
     const depsRisk = depsStr === '無' ? 'LOW' : (depsStr.split(',').length >= 3 ? 'HIGH' : 'MEDIUM');
     const filePath = inferFilePath(item.name, item.type, story.module, srcRoot);
-
-    // v4: 找對應 @CONTRACT block 的 risk/behaviors（供 PRESERVE 標注）
-    const v4Slice = v4Info ? v4Info.find(c => c.name === item.name) : null;
-    const riskLine = v4Slice?.risk ? `\n**Risk**: ${v4Slice.risk}` : '';
+    const riskLine = item.risk ? `\n**Risk**: ${item.risk}` : '';
 
     return `### Item ${i + 1}: ${item.name}
 
@@ -189,7 +203,7 @@ function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = 
 // @GEMS-FUNCTION: ${item.name}
 /**
  * GEMS: ${item.name} | ${item.priority} | ○○ | (args)→Result | ${storyId} | ${item.name}
- * GEMS-FLOW: ${item.flow}
+ * GEMS-FLOW: ${item.flow || ''}
  * GEMS-DEPS: ${depsStr}
  * GEMS-DEPS-RISK: ${depsRisk}
  */
@@ -204,13 +218,13 @@ ${stepAnchors}
   }).join('\n\n---\n\n');
 
   // Integration 規範
-  const p0p1 = story.items.filter(f => f.priority === 'P0' || f.priority === 'P1');
+  const p0p1 = slices.filter(f => f.priority === 'P0' || f.priority === 'P1');
   const integrationSpec = p0p1.length > 0
     ? p0p1.map(f => `- ${f.name}: 禁止 mock 依賴，使用真實實例`).join('\n')
     : '- 本 Story 無 P0/P1 函式，無需 Integration 測試';
 
   // 範圍清單
-  const scopeNames = story.items.map(f => f.name).join(', ');
+  const scopeNames = slices.map(f => f.name).join(', ');
 
   // 契約注入
   let contractSection = '';

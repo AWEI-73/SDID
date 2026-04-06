@@ -70,7 +70,7 @@
 
 ## BUILD 完成後
 
-BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD 或 SCAN）。Blueprint 與 Task-Pipe 路線收尾相同，都進入 SCAN。
+BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD，或所有 Story 完成後進入 SCAN → VERIFY）。Blueprint 與 Task-Pipe 路線收尾相同，都走 SCAN → VERIFY。
 
 ## 禁止事項
 

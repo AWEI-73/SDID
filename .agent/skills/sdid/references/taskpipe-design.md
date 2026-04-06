@@ -26,6 +26,8 @@ draft_iter-N.md
   BUILD Phase 1-4（task-pipe/runner.cjs）
           ↓ 所有 Story @PASS
   SCAN → functions.json
+          ↓
+  VERIFY（blueprint-verify.cjs）
 ```
 
 ---
@@ -52,7 +54,7 @@ draft_iter-N.md
 draft 建立後**不等待確認**，自動進入：
 
 ```
-design-review → CONTRACT → spec-to-plan → BUILD → SCAN
+design-review → CONTRACT → spec-to-plan → BUILD → SCAN → VERIFY
 ```
 
 ---

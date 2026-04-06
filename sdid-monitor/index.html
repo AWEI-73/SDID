@@ -287,6 +287,24 @@
       flex-wrap: wrap;
     }
 
+    /* ── Auxiliary / optional review row (below main pipeline) ── */
+    .aux-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      padding-top: 5px;
+      border-top: 1px dashed var(--border);
+    }
+    .aux-row-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--text3);
+      white-space: nowrap;
+    }
+
     .flow-row {
       display: flex;
       align-items: center;
@@ -833,22 +851,27 @@
       }
       preParts.push(node('Draft',    'draft',    getLogStatus(dgLogs), dgLogs[dgLogs.length - 1] || null, dgLogs.length));
       preParts.push(A);
-      // Flow-Review: optional auxiliary review — shown as faded indicator only when logs exist
+      preParts.push(node('Contract', 'contract', getLogStatus(ctLogs), ctLogs[ctLogs.length - 1] || null, ctLogs.length));
+      preParts.push(A);
+      preParts.push(node('Plan',     'plan',     getLogStatus(plLogs), plLogs[plLogs.length - 1] || null, plLogs.length));
+
+      // Flow-Review: sidecar optional review badge — shown below pipeline only when logs exist
+      let frSidecar = '';
       if (frLogs.length) {
         const frStatus = getLogStatus(frLogs);
         const frIcon = frStatus === 'pass' ? '✓ ' : frStatus === 'error' ? '✕ ' : '~ ';
         const frClick = frLogs[frLogs.length - 1] ? `onclick="loadLog('${escAttr(pname)}','${selIter}','${escAttr(frLogs[frLogs.length - 1])}')"` : '';
-        const frTip = TIPS['flow-review'] ? ` data-tip="${TIPS['flow-review']} (optional)"` : '';
-        preParts.push(`<div class="node opt ${frStatus || 'pending'}"${frTip} ${frClick}>${frIcon}flow-review</div>`);
-        preParts.push(A);
+        const frTip = TIPS['flow-review'] ? ` data-tip="${TIPS['flow-review']}"` : '';
+        frSidecar = `<div class="aux-row">
+          <span class="aux-row-label">optional</span>
+          <div class="node opt ${frStatus || 'pending'}"${frTip} ${frClick}>${frIcon}flow-review</div>
+        </div>`;
       }
-      preParts.push(node('Contract', 'contract', getLogStatus(ctLogs), ctLogs[ctLogs.length - 1] || null, ctLogs.length));
-      preParts.push(A);
-      preParts.push(node('Plan',        'plan',        getLogStatus(plLogs), plLogs[plLogs.length - 1] || null, plLogs.length));
 
       sections.push(`<div class="flow-sec">
         <div class="sec-label">Pre-Build Pipeline</div>
         <div class="flow-track">${preParts.join('')}</div>
+        ${frSidecar}
       </div>`);
 
       // ── BUILD Phase 1-4 ──────────────────────────────────────

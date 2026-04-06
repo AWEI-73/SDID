@@ -78,7 +78,10 @@ src/
     Clear       = 做法清楚，直接實作，tsc --noEmit 即可
     Complicated = 有隱藏步驟或 FK 繼承，需 TDD 測試驗收
     Complex     = 探索性，每 iter 最多 3 個動作，先 Probe
-  needsTest: 填 Complicated / Complex 動作的 techName，Clear 動作不用填
+  needsTest 動作填寫規則（contract-gate CG-007 cross-check 用）:
+    優先填 contract 的 @CONTRACT Name（如 CategoryService）→ CG-007 精確比對
+    若 contract 尚未寫，也可填 draft action techName（如 createCategory）→ CG-007 自動在 Behavior: 行中搜尋
+    Clear 動作填「無」或留空
 -->
 
 ### 模組 API 摘要

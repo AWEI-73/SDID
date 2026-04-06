@@ -212,11 +212,22 @@ function checkContract(content, iterNum, target = null, blueprintPath = null) {
       } else {
         for (const actionName of needsTestActions) {
           // Layer 1: contract 中必有對應 @CONTRACT block 且含 @TEST
-          const contractMatch = contracts.find(c =>
+          // 兩步比對：①精確比對 @CONTRACT Name ②Behavior: 行中含 techName（draft 粒度 fallback）
+          let contractMatch = contracts.find(c =>
             c.name.toLowerCase() === actionName.toLowerCase()
           );
           if (!contractMatch) {
-            B('CG-007', `[L1-路徑] Blueprint needsTest 動作 "${actionName}" 在 contract 中無對應 @CONTRACT block`);
+            // fallback: 在各 contract block 的 Behavior: 行裡找 techName
+            contractMatch = contracts.find(c => {
+              const aIdx = (c.lineIdx || 0) + (c.raw.length || 0);
+              const r = content.slice(aIdx);
+              const nb = r.search(/\/\/\s*@CONTRACT:|^export\s/m);
+              const blk = nb >= 0 ? r.slice(0, nb) : r;
+              return blk.toLowerCase().includes(actionName.toLowerCase());
+            });
+          }
+          if (!contractMatch) {
+            B('CG-007', `[L1-路徑] Blueprint needsTest 動作 "${actionName}" 在 contract 中找不到對應 @CONTRACT block（直接填 @CONTRACT Name 如 CategoryService，或確認 Behavior: 行含此名稱）`);
             continue;
           }
           const afterIdx = (contractMatch.lineIdx || 0) + (contractMatch.raw.length || 0);

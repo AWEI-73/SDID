@@ -533,7 +533,10 @@ function buildNextCommand(st) {
       return `node sdid-tools/blueprint/v5/blueprint-gate.cjs --blueprint=${findBlueprint(projectRoot) || '<blueprint>'} --target=${projectRoot}`;
     case 'CONTRACT': {
       const cp = contractPath || `<project>/.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
-      return `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${cp} --target=${projectRoot} --iter=${iterNum}`;
+      const bp = findBlueprint(projectRoot);
+      return bp
+        ? `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${cp} --target=${projectRoot} --iter=${iterNum} --blueprint=${bp}`
+        : `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${cp} --target=${projectRoot} --iter=${iterNum}`;
     }
     case 'CYNEFIN_CHECK': return `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> ${ta} --iter=${iterNum}`;
     case 'FLOW_REVIEW':  return `# AI skill: invoke flow-review skill with contract at .gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;

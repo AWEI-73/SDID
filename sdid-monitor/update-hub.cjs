@@ -490,7 +490,9 @@ function generateRoadmap(hub) {
         } else if (phase === 'DRAFT_GATE') {
           nextCmd = `node sdid-tools/blueprint/v5/draft-gate.cjs --draft=.gems/design/draft_iter-${iterN}.md --target=${name}`;
         } else if (phase === 'CONTRACT') {
-          nextCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/${iter}/contract_iter-${iterN}.ts --target=${name} --iter=${iterN}`;
+          const bpForProject = path.join(WORKSPACE_ROOT, name, '.gems', 'design', 'blueprint.md');
+          const bpFlag2 = fs.existsSync(bpForProject) ? ` --blueprint=${name}/.gems/design/blueprint.md` : '';
+          nextCmd = `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/${iter}/contract_iter-${iterN}.ts --target=${name} --iter=${iterN}${bpFlag2}`;
         } else if (phase === 'CYNEFIN' || phase === 'CYNEFIN_CHECK') {
           nextCmd = `node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=${name} --iter=${iterN}`;
         } else if (phase === 'FLOW_REVIEW') {

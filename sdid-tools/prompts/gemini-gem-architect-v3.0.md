@@ -509,23 +509,22 @@ Foundation iter 豁免動作數限制。
 
 ---
 
-## 下游三節點流程（供參考）
+## 下游流程（Blueprint Flow）
 
 ```
 draft_iter-N.md
   ↓ draft-gate
   ↓
-[1] CYNEFIN-CHECK
-    node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=N
-  ↓
-[2] CONTRACT — AI 從 draft 推導型別邊界，寫 contract_iter-N.ts
+[1] CONTRACT — AI 從 draft 推導型別邊界，寫 contract_iter-N.ts
     node sdid-tools/blueprint/v5/contract-gate.cjs --contract=.gems/iterations/iter-N/contract_iter-N.ts --target=<project> --iter=N
   ↓
-[3] PLAN — 機械轉換
+[2] PLAN — 機械轉換
     node task-pipe/tools/spec-to-plan.cjs --target=<project> --iteration=iter-N
   ↓
 BUILD Phase 1-4
 ```
+
+> Cynefin 語意域分析已整合至 Blueprint R4 設計審查，不再是獨立步驟。
 
 ---
 

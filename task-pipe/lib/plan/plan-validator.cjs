@@ -170,10 +170,32 @@ function validatePlan(planPath) {
     }
   }
 
-  // ── Rule 11: PLAN_TRACE — @PLAN_TRACE 轉換標記（v4 plan 可追蹤性）──
+  // ── Rule 11: PLAN_TRACE — @PLAN_TRACE 轉換標記完整性（v4 plan 可追蹤性）──
+  // 需要 SOURCE_CONTRACT + TARGET_PLAN + SLICE_COUNT 三個欄位
   const hasPlanTrace = /@PLAN_TRACE\s*\|/.test(content);
+  const hasSourceContract = /SOURCE_CONTRACT:\s*\S+/.test(content);
+  const hasSliceCount = /SLICE_COUNT:\s*\d+/.test(content);
   if (!hasPlanTrace) {
     warnings.push({ rule: 'PLAN_TRACE', message: '缺少 @PLAN_TRACE 標記（spec-to-plan 轉換來源可追蹤性），建議由 spec-to-plan 產出' });
+  } else {
+    if (!hasSourceContract) {
+      warnings.push({ rule: 'PLAN_TRACE_SOURCE', message: '@PLAN_TRACE 缺少 SOURCE_CONTRACT 欄位' });
+    }
+    if (!hasSliceCount) {
+      warnings.push({ rule: 'PLAN_TRACE_COUNT', message: '@PLAN_TRACE 缺少 SLICE_COUNT 欄位' });
+    }
+    // 若 SLICE_COUNT 存在，與 §4 Item 數量交叉驗證
+    const sliceCountMatch = content.match(/SLICE_COUNT:\s*(\d+)/);
+    if (sliceCountMatch && itemHeaders.length > 0) {
+      const tracedCount = parseInt(sliceCountMatch[1], 10);
+      if (tracedCount !== itemHeaders.length) {
+        errors.push({
+          rule: 'PLAN_TRACE_MISMATCH',
+          message: `@PLAN_TRACE SLICE_COUNT=${tracedCount} ≠ §4 Item 數量 ${itemHeaders.length}（plan 與 contract 分片不一致）`,
+          severity: 'BLOCKER'
+        });
+      }
+    }
   }
 
   // ── Rule 12: ITEM_COUNT_MATCH — §3 table rows 數量 == §4 Item headers 數量 ──
@@ -185,6 +207,24 @@ function validatePlan(planPath) {
         message: `§3 工作項目 ${tableRows.length} 列 ≠ §4 Item 數量 ${itemHeaders.length}（contract slice 與 plan task 必須 1:1 對應）`,
         severity: 'BLOCKER'
       });
+    }
+  }
+
+  // ── Rule 13: SLICE_TEST_PATH — v4 plan 每個 slice 必須有 @TEST 路徑（若有 SLICE_PRESERVE 區塊）──
+  // 只針對 v4 plan（含 @PLAN_TRACE + SLICE_PRESERVE 標記）
+  if (hasPlanTrace) {
+    const sliceBlocks = content.split(/(?=###\s+Item\s+\d+)/);
+    for (const block of sliceBlocks) {
+      if (!/###\s+Item\s+\d+/.test(block)) continue;
+      const itemTitle = block.match(/###\s+Item\s+\d+:\s*(\S+)/)?.[1] || '?';
+      // 有 SLICE_PRESERVE 但沒有 @TEST 行 → WARNING（DB/UI 類型可合法省略）
+      const hasPreserve = /SLICE_PRESERVE/.test(block);
+      if (hasPreserve) {
+        const hasTestRef = /@TEST:\s*\S+/.test(block);
+        if (!hasTestRef) {
+          warnings.push({ rule: 'SLICE_TEST_PATH', message: `Item ${itemTitle} 的 SLICE_PRESERVE 缺少 @TEST 路徑（純 DB/UI slice 可忽略）` });
+        }
+      }
     }
   }
 
@@ -244,6 +284,8 @@ function validatePlan(planPath) {
     hasFileRefs: hasSection5 || hasInlineFiles || hasFileTable,
     hasArchReview: hasSection8,
     hasPlanTrace,
+    hasSourceContract,
+    hasSliceCount,
   };
 
   return {

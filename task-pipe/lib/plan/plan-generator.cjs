@@ -75,7 +75,7 @@ function generatePlansFromContract(contractPath, iterNum, target, options = {}) 
 
   for (const story of parsed.stories) {
     const v4Info = v4ContractMap[story.id] || null;
-    const planContent = generatePlanForStory(story, iterNum, parsed, srcRoot, v4Info);
+    const planContent = generatePlanForStory(story, iterNum, parsed, srcRoot, v4Info, contractPath);
     const planFile = path.join(planDir, `implementation_plan_${story.id}.md`);
 
     if (!dryRun) {
@@ -157,15 +157,17 @@ function parseV4Contracts(content) {
  * @param {object} parsed - parseContract 的完整結果
  * @param {string} srcRoot - src 根目錄
  * @param {Array|null} v4Info - parseV4Contracts 解析出的該 story contracts（v4 專用）
+ * @param {string|null} contractPath - contract 檔案路徑（供 @PLAN_TRACE 嵌入）
  */
-function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = null) {
+function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = null, contractPath = null) {
   const today = new Date().toISOString().split('T')[0];
   const storyId = story.id;
   const isFoundation = story.type === 'INFRA' || /shared|config|infrastructure/i.test(story.module);
 
   // v4: @CONTRACT blocks 作為主要 slices（contract block = slice = plan task）
   // fallback: story.items（來自 @GEMS-STORY-ITEM，向後相容）
-  const slices = (v4Info && v4Info.length > 0)
+  const isV4 = v4Info && v4Info.length > 0;
+  const slices = isV4
     ? v4Info.map(c => ({
         name: c.name,
         type: c.type || 'SVC',
@@ -178,6 +180,20 @@ function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = 
         ac: null,
       }))
     : story.items;
+
+  // @PLAN_TRACE 區塊（嵌入 plan 檔案，供 validator 機械驗證）
+  const relativeContractPath = contractPath
+    ? contractPath.replace(/\\/g, '/')
+    : `.gems/iterations/iter-${iterNum}/contract_iter-${iterNum}.ts`;
+  const planTracePath = `.gems/iterations/iter-${iterNum}/plan/implementation_plan_${storyId}.md`;
+  const planTraceBlock = `<!--
+@PLAN_TRACE | ${storyId}
+  SOURCE_CONTRACT: ${relativeContractPath}
+  TARGET_PLAN: ${planTracePath}
+  SLICE_COUNT: ${slices.length}
+-->
+
+`;
 
   // 工作項目表
   const workItems = slices.map((item, i) =>
@@ -195,8 +211,14 @@ function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = 
     const filePath = inferFilePath(item.name, item.type, story.module, srcRoot);
     const riskLine = item.risk ? `\n**Risk**: ${item.risk}` : '';
 
-    return `### Item ${i + 1}: ${item.name}
+    // v4 PRESERVE 區塊：@CONTRACT/@TEST/Behavior 原樣嵌入（機械驗證用）
+    const preserveRef = isV4 ? `
+<!-- SLICE_PRESERVE
+@CONTRACT: ${item.name} | ${item.priority} | ${item.type} | ${storyId}${item.testPath ? `\n@TEST: ${item.testPath}` : ''}${item.risk ? `\n@RISK: ${item.risk}` : ''}${item.flow ? `\n@GEMS-FLOW: ${item.flow}` : ''}${item.behaviors.length > 0 ? '\nBehavior:\n' + item.behaviors.map(b => `  - ${b}`).join('\n') : ''}
+-->` : '';
 
+    return `### Item ${i + 1}: ${item.name}
+${preserveRef}
 **Type**: ${item.type} | **Priority**: ${item.priority}${riskLine}
 
 \`\`\`typescript
@@ -297,7 +319,7 @@ npx vitest run ${c.testPath} --reporter=verbose
 `
     : '';
 
-  return `# Implementation Plan - ${storyId}
+  return `${planTraceBlock}# Implementation Plan - ${storyId}
 
 **迭代**: iter-${iterNum}
 **Story ID**: ${storyId}

@@ -3,7 +3,7 @@
 ## 概覽
 
 不管從 Blueprint 還是 Task-Pipe 進來，到了 implementation_plan 之後就是同一套 BUILD Phase 1-4（v6）。
-差異只在 BUILD 完成後的收尾：Blueprint 走 VERIFY，Task-Pipe 走 SCAN。
+兩條路線 BUILD 完成後收尾相同：都走 SCAN（sdid-loop 自動偵測）。
 
 ## 執行方式
 
@@ -70,11 +70,7 @@
 
 ## BUILD 完成後
 
-### Blueprint 路線
-BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD 或 VERIFY）。
-
-### Task-Pipe 路線
-BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動進入 SCAN。
+BUILD Phase 4 完成後，再次呼叫 MCP `sdid-loop`，它會自動偵測下一步（下一個 Story 的 BUILD 或 SCAN）。Blueprint 與 Task-Pipe 路線收尾相同，都進入 SCAN。
 
 ## 禁止事項
 

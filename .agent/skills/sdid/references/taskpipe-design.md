@@ -18,11 +18,7 @@ Task-Pipe 是需求明確時的直接入口。
 draft_iter-N.md
   └── design-review skill（Draft gate）
         ↓ @PASS
-  CYNEFIN-CHECK（強制）
-        ↓ @PASS
-  TDD Contract Subagent（Blueprint 複雜度標註 needsTest 欄有動作 → 寫 @TEST 測試檔）
-        ↓ READY
-  contract_iter-N.ts
+  contract_iter-N.ts（AI 從 draft 推導，加入 @TEST 路徑）
     └── design-review skill（Contract gate）→ contract-gate.cjs
           ↓ @PASS
   spec-to-plan → implementation_plan_Story-X.Y.md
@@ -30,8 +26,6 @@ draft_iter-N.md
   BUILD Phase 1-4（task-pipe/runner.cjs）
           ↓ 所有 Story @PASS
   SCAN → functions.json
-          ↓
-  VERIFY（blueprint-verify.cjs）→ 完成
 ```
 
 ---
@@ -58,7 +52,7 @@ draft_iter-N.md
 draft 建立後**不等待確認**，自動進入：
 
 ```
-design-review → CYNEFIN-CHECK → CONTRACT → spec-to-plan → BUILD
+design-review → CONTRACT → spec-to-plan → BUILD → SCAN
 ```
 
 ---

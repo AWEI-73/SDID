@@ -1,8 +1,8 @@
 ﻿# TDD Contract Subagent Prompt Template
 
-**用途**：Blueprint 複雜度標註確認後，針對 `needsTest 動作` 欄位列出的 actions，寫好測試檔並將 `@TEST` 路徑加入 contract.ts，讓 Phase 2 可直接執行 vitest。
+**用途**：CYNEFIN @PASS 後，針對 `needsTest:true` 的 action，寫好測試檔並將 `@TEST` 路徑加入 contract.ts，讓 Phase 2 可直接執行 vitest。
 
-**觸發時機**：Blueprint `### 複雜度標註` needsTest 欄確認 → [此 subagent] → @TEST 路徑寫入 contract → contract-gate。
+**觸發時機**：CYNEFIN @PASS → [此 subagent] → @TEST 路徑寫入 contract → contract-gate。
 
 ---
 
@@ -130,21 +130,23 @@ Agent tool (general-purpose):
     - 測試是規格，不是實作的附屬品
     - Phase 2 只改實作讓測試 GREEN，不能動測試檔
     - Behavior: 必須可否定（具體錯誤碼/輸出值），不能是描述性文字
-    - TDD Contract Subagent 必須先自行執行測試確認 RED，再回報 READY；contract-gate 只驗證 @TEST / Behavior 對齊，不負責執行測試
 
     ---
 
     ## 需要處理的 Actions
 
-    [從 Blueprint 「### 複雜度標註」表的 needsTest 動作欄位取得，格式如下]
+    [列出 draft 中標記為 Complicated/Complex 的 actions（needsTest:true）]
 
+    ```json
+    [
+      {
+        "name": "actionName",
+        "story": "Story-X.Y",
+        "domain": "Complicated|Complex",
+        "hiddenSteps": ["步驟1", "步驟2"]
+      }
+    ]
     ```
-    Iter N — Domain: Complicated/Complex
-    needsTest 動作: actionName1, actionName2
-    風險備注: （選填）
-    ```
-
-    [再從對應的 draft_iter-N.md 找出每個 action 的 Signature、FLOW、DEPS]
 
     ---
 
@@ -184,7 +186,7 @@ Agent tool (general-purpose):
 
     使用 vitest。必須覆蓋：
     - 正常路徑（有具體輸入輸出值）
-    - draft 中 FLOW/DEPS 指出的邊界條件
+    - hiddenSteps 指出的邊界條件
     - 預期錯誤（有具體 Error code）
 
     **格式範例：**
@@ -298,7 +300,7 @@ Agent tool (general-purpose):
 
     ---
 
-    #### [actionName]（domain: Complicated/Complex，來自 Blueprint 複雜度標註）
+    #### [actionName]（domain: Complicated/Complex）
 
     **狀態：** ✅ TDD-WRITTEN / ❌ BLOCKED
 
@@ -327,13 +329,12 @@ Agent tool (general-purpose):
 ### 分派前準備
 
 ```
-1. 確認 Blueprint 已有「### 複雜度標註」section 且 needsTest 欄已填
+1. 確認 draft 已通過 design-review（draft-gate @PASS）
 2. 取得：
-   - Blueprint 複雜度標註表中 needsTest 動作欄的 action 清單
-   - draft_iter-N.md 中對應 actions 的 Signature / FLOW / DEPS
-   - contract_iter-N.ts 草稿（相關 @GEMS-STORY-ITEM 段落）
+   - draft_iter-N.md（已標記哪些 action 是 Complicated/Complex）
+   - contract_iter-N.ts 草稿（相關 @CONTRACT 段落）
    - project path
-3. 填入 prompt 的佔位符
+3. 填入 prompt 的三個佔位符
 4. Dispatch subagent（model: sonnet）
 ```
 
@@ -350,15 +351,15 @@ Agent tool (general-purpose):
 ## 與 SDID 流程的銜接點
 
 ```
-Blueprint 複雜度標註審查（BP-013 @PASS）
+draft-gate @PASS
     ↓
-[此 subagent] TDD Contract Writer
-    ├─► needsTest 動作 → 寫測試檔（RED）→ 黃金樣板加入 contract.ts
-    └─► 未列入 needsTest → 不處理（DB/UI 層，Phase 2 只跑 tsc --noEmit）
+[此 subagent] TDD Contract Writer（有 Complicated/Complex action 時）
+    ├─► needsTest:true → 寫測試檔（RED）→ @TEST 路徑加入 contract.ts
+    └─► needsTest:false → 不處理（DB/UI 層，Phase 2 只跑 tsc --noEmit）
     ↓ READY
 contract-gate.cjs → 驗證 @CONTRACT P0 必有 @TEST，@TEST 路徑存在 → @PASS
     ↓ @PASS
-Plan Writer → BUILD Phase 1（plan 結構驗證）→ Phase 2（@TEST 跑 GREEN）→ Phase 3（整合）
+Plan Writer → BUILD Phase 1-4 → SCAN
 ```
 
 ---
@@ -372,10 +373,7 @@ contract-gate 在 @PASS 後驗證：
 | CG-001 | @CONTRACT P0 必有 @TEST | BLOCKER |
 | CG-002 | @TEST 路徑必須以 `.test.ts` 結尾 | BLOCKER |
 | CG-003 | @TEST 路徑必須實際存在（RED 測試已寫） | BLOCKER |
-| CG-005 | Behavior: 至少有一條錯誤路徑（含 Error/拋出） | WARNING |
-| CG-007-L1 | Blueprint needsTest 動作必有對應 @CONTRACT + @TEST（需 `--blueprint`） | BLOCKER |
-| CG-007-L2 | CG-007 @TEST 路徑檔案必須存在 | BLOCKER |
-| CG-007-L3 | it() 案例數 ≥ Behavior: 條目數；錯誤碼出現在測試檔 | WARNING |
+| CG-004 | Behavior: 至少有一條錯誤路徑（含 Error/拋出） | WARNING |
 
 ---
 

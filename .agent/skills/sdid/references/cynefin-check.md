@@ -1,28 +1,24 @@
-# Cynefin Check — 語意域分析指引
+# Cynefin — Blueprint 複雜度分析指引
 
-## 目的
+## 定位
 
-在進入 PLAN/BUILD 前，對需求文件做 Cynefin 語意域分析，展開隱含複雜度。
-避免「需求寫得很簡單，做到一半才發現很複雜」的情況。
+Cynefin 是 **Blueprint 階段的內部分析工具**，用來輔助設計決策。
+
+- 不是獨立的流程節點
+- 不是 gate / phase / @PASS 條件
+- 主流程為：Blueprint → Draft → Contract → Plan → Build 1-4 → Scan
+- Cynefin 分析在 Blueprint 輪次內進行，幫助判斷 complexity / budget / needsTest / slicing
+
+## 使用時機
+
+Blueprint 5 輪對話中，遇到以下情況時做域分析：
+- 動作的複雜度不確定
+- iter 預算可能超標
+- 需要判斷是否要寫 @TEST
 
 ## 輸入
 
-- `.gems/design/draft_iter-N.md`（主要輸入，Blueprint / Task-Pipe 皆使用）
-- 或 `requirement_spec_iter-N.md`（v5 舊路線相容）
-
----
-
-## Phase 0: 前置確認
-
-Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHECK。
-
-```
-@BLOCKER：Draft 尚未通過 design-review → 返回執行 design-review skill
-@PASS：繼續 Phase 0.5
-```
-
-> design-review 負責文件品質審查（tag 完整性、Then 語意、Entity 引用等）。
-> 進到這裡代表文件結構已合格，CYNEFIN-CHECK 專注做域分析。
+- `.gems/design/draft_iter-N.md`（已通過 design-review）
 
 ---
 
@@ -63,7 +59,7 @@ Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHE
 ---
 
 **needsTest 的影響**：
-- `needsTest: true` → CYNEFIN @PASS 後，將此 action 回填到 Blueprint `### 複雜度標註` needsTest 欄，Controller 再派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），寫測試檔並將 `@TEST` 路徑加入 contract.ts，Phase 2 執行 vitest
+- `needsTest: true` → Contract 階段為此 action 加入 `@TEST:` 路徑，Phase 2 執行 vitest
 - `needsTest: false` → Phase 2 只跑 `tsc --noEmit`（DB CRUD / UI / 外部 API 層）
 
 ---
@@ -174,20 +170,13 @@ Draft 必須已通過 **design-review skill**（@PASS）才能進入 CYNEFIN-CHE
 
 ---
 
-## 完成後
+## 分析結果的用途
 
-執行以下指令寫入 log（供人工除錯用）：
+分析完成後，結果用於 Blueprint 輪次的設計決策：
 
-```bash
-node sdid-tools/cynefin-log-writer.cjs --report-file=<report.json> --target=<project> --iter=<N>
-```
+- **domain=Complicated/Complex 或 hiddenSteps≥2** → 在 Blueprint 記錄 `needsTest:true`，供 Contract 階段參考
+- **預算超標** → 在 Blueprint 調整 iter 拆分
+- **domain=Complex** → Blueprint 建議先做 POC 驗證再進 Contract
 
-log 寫入成功後才算 `@PASS`，loop 才會放行進入 **CONTRACT** 節點。
-
-> ⚠️ CYNEFIN-CHECK @PASS 後（強制依序）：
-> 1. **將 needsTest 動作回填到 Blueprint** `### 複雜度標註` needsTest 欄（Blueprint 為唯一來源）
-> 2. **FLOW-REVIEW**（flow-review skill，可選）→ 審查 FLOW 設計，產出 @GEMS-WHY + `flow-review-pass-*.log`
-> 3. 若 Blueprint 複雜度標註 needsTest 欄有 action → 派 **TDD Contract Subagent**（寫測試檔 + 加 @TEST）
-> 4. **design-review skill** 審查 contract → **CONTRACT Gate**（contract-gate.cjs v5）
-> 5. CONTRACT @PASS → **PLAN**（spec-to-plan.cjs，機械轉換）
-> 6. PLAN → **BUILD Phase 1-4**
+> ⚠️ 分析結果不產生 @PASS/@BLOCKER。主流程由 draft-gate / contract-gate 管控。
+> flow-review 為 optional，可在 Blueprint 內部使用，不與主流程綁定。

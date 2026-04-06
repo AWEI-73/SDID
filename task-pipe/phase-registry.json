@@ -14,11 +14,10 @@
             "1": {
                 "name": "骨架映射層",
                 "file": "phase-1.cjs",
-                "description": "讀取 implementation plan + contract.ts + ac.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3）",
+                "description": "讀取 implementation plan + contract.ts，產出骨架 + GEMS 標籤全覆蓋（P0-P3）",
                 "actions": [
                     "Read implementation plan",
                     "Read contract.ts for type alignment",
-                    "Read ac.ts for AC ID mapping",
                     "Generate skeleton with GEMS tags (all functions, P0-P3)",
                     "Write checkpoint"
                 ],
@@ -31,21 +30,21 @@
                 ]
             },
             "2": {
-                "name": "AC 驗收層",
+                "name": "TDD 驗收層",
                 "file": "phase-2.cjs",
-                "description": "呼叫 ac-runner 執行 ac.ts（或 contract.ts）的 @GEMS-AC，CALC AC 全 PASS 才過",
+                "description": "執行 contract.ts 的 @TEST 路徑（vitest --run），或 tsc --noEmit（無測試路徑）",
                 "actions": [
-                    "Locate ac.ts or contract.ts",
-                    "Run ac-runner",
-                    "Relay ac-runner @TASK output on failure",
-                    "PASS only when all CALC AC pass (SKIP[CANVAS/INTEGRATION/EXTERNAL] excluded)"
+                    "Locate contract.ts",
+                    "Extract @TEST paths (v4 schema only)",
+                    "Run vitest --run on test paths, or tsc --noEmit if no @TEST",
+                    "PASS only when all tests GREEN"
                 ],
                 "requires": [
                     "source_code",
-                    "ac_spec"
+                    "contract_ts"
                 ],
                 "produces": [
-                    "ac_results"
+                    "test_results"
                 ]
             },
             "3": {
@@ -71,7 +70,7 @@
                 "file": "phase-4.cjs",
                 "description": "GEMS 標籤品質複查（全覆蓋驗收）+ 產出 Fillback 與 Suggestions",
                 "actions": [
-                    "Scan GEMS tags quality (all P0-P3, GEMS-FLOW completeness, AC ID alignment)",
+                    "Scan GEMS tags quality (all P0-P3, GEMS-FLOW completeness, @TEST path alignment)",
                     "Scan source to generate Fillback",
                     "Generate Suggestions JSON",
                     "Update functions.json"

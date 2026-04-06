@@ -18,7 +18,7 @@ const { emitPass, emitFix, emitBlock } = require('../../lib/shared/log-output.cj
 const { getNextCmd, getRetryCmd } = require('../../lib/shared/next-command-helper.cjs');
 const { getSimpleHeader } = require('../../lib/shared/output-header.cjs');
 const { writeCheckpoint } = require('../../lib/checkpoint.cjs');
-const { detectProjectType, getSrcDir } = require('../../lib/shared/project-type.cjs');
+const { detectProjectType, getSrcDir, getSrcDirs } = require('../../lib/shared/project-type.cjs');
 
 // UI Bind 驗證器（可選）
 let validateUIBind = null;
@@ -516,7 +516,7 @@ function checkGemsDepImports(target, iteration, story, srcPath) {
   }
   if (contractNames.length === 0) return { verdict: 'SKIP', violations: [], checked: 0 };
 
-  // 掃描 src（前端）+ backend-gas/src（後端）
+  // 掃描所有 src 根目錄（multi-root 支援，由 getSrcDirs 動態決定）
   const gemsForStory = []; // { file, name, deps, importLines }
 
   function walkDir(dir) {
@@ -545,8 +545,9 @@ function checkGemsDepImports(target, iteration, story, srcPath) {
     }
   }
 
-  walkDir(srcPath);
-  walkDir(path.join(target, 'backend-gas', 'src'));
+  for (const root of getSrcDirs(target)) {
+    walkDir(root);
+  }
 
   const violations = [];
 

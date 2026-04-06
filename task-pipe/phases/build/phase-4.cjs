@@ -4,7 +4,7 @@
  *
  * 職責:
  * - GEMS 標籤品質複查（假實作偵測 + P0 FLOW 驗證）
- * - TDD 覆蓋率確認（v4: @TEST / v3: @GEMS-TDD）
+ * - TDD 覆蓋率確認（@TEST 路徑存在驗證）
  * - SCAN 注入 flow+testPath 到 functions.json
  * - 判斷是否進入下一個 Story 或完成 iteration
  *
@@ -85,7 +85,7 @@ function run(options) {
   }
 
   // ============================================
-  // 2. AC 覆蓋率確認（v4: @TEST / v3: @GEMS-TDD）
+  // 2. TDD 覆蓋率確認（@TEST 路徑）
   // ============================================
   const acCoverage = checkAcCoverage(target, iteration, srcPath, story);
 
@@ -206,12 +206,10 @@ function checkTagQuality(srcPathOrPaths, story, target, iteration) {
 }
 
 /**
- * v7.1: TDD 覆蓋率確認（雙模式）
- * - v4 contract（有 @CONTRACT:）→ 讀 @TEST: 路徑
- * - v3 contract → 讀 @GEMS-TDD: 路徑
+ * TDD 覆蓋率確認（v4 schema: @TEST）
  */
 function checkAcCoverage(target, iteration, srcPath, story) {
-  const result = { total: 0, covered: 0, uncovered: [], isV4: false };
+  const result = { total: 0, covered: 0, uncovered: [], isV4: true };
 
   const iterNum = iteration.replace('iter-', '');
   const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`);
@@ -219,27 +217,15 @@ function checkAcCoverage(target, iteration, srcPath, story) {
 
   try {
     const content = fs.readFileSync(contractPath, 'utf8');
-    const isV4 = /\/\/\s*@CONTRACT:\s*\w+/.test(content);
-    result.isV4 = isV4;
 
     const tddPaths = [];
-    if (isV4) {
-      // v4: 讀 @TEST: 路徑（過濾非 .test.ts 格式的）
-      const pattern = /\/\/\s*@TEST:\s*(.+)/g;
-      let m;
-      while ((m = pattern.exec(content)) !== null) {
-        const p = m[1].trim();
-        if (p && /\.(test|spec)\.(ts|tsx)$/.test(p) && !tddPaths.includes(p)) {
-          tddPaths.push(p);
-        }
-      }
-    } else {
-      // v3: 讀 @GEMS-TDD: 路徑
-      const pattern = /\/\/\s*@GEMS-TDD:\s*(.+)/g;
-      let m;
-      while ((m = pattern.exec(content)) !== null) {
-        const p = m[1].trim();
-        if (p && !tddPaths.includes(p)) tddPaths.push(p);
+    // 讀 @TEST: 路徑（過濾非 .test.ts 格式的）
+    const pattern = /\/\/\s*@TEST:\s*(.+)/g;
+    let m;
+    while ((m = pattern.exec(content)) !== null) {
+      const p = m[1].trim();
+      if (p && /\.(test|spec)\.(ts|tsx)$/.test(p) && !tddPaths.includes(p)) {
+        tddPaths.push(p);
       }
     }
 

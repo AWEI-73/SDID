@@ -954,22 +954,18 @@ function detectExtraFiles(srcDir, manifest, extensions, iterNum = 1, target = nu
   // 如果 Plan 沒有定義任何檔案路徑，跳過檢查（避免誤判）
   if (plannedPaths.size === 0) return extraFiles;
 
-  // 掃描 src/shared/ 和 src/config/ 下的檔案
-  // iter > 1 時跳過 src/shared/（shared 是跨 iter 共用的，不應刪除前一個 iter 的產物）
+  // 掃描所有 src 根目錄下的 shared/ 和 config/（multi-root 支援）
+  // iter > 1 時跳過 shared/（跨 iter 共用，不應刪除前一個 iter 的產物）
   const checkDirNames = iterNum > 1 ? ['config'] : ['shared', 'config'];
-  const checkDirs = checkDirNames.map(d => path.join(srcDir, d));
+  const projectRoot = target || path.dirname(srcDir);
+  const { getSrcDirs } = require('../../lib/shared/project-type.cjs');
+  const allSrcDirs = target ? getSrcDirs(target) : [srcDir];
+  const allSrcRoots = allSrcDirs.map(p => path.relative(projectRoot, p).replace(/\\/g, '/'));
+  const checkDirs = allSrcDirs.flatMap(d => checkDirNames.map(n => path.join(d, n)));
 
   for (const dir of checkDirs) {
     if (!fs.existsSync(dir)) continue;
     const files = findSourceFilesFlat(dir, extensions);
-
-    // v7.1: 使用 target（專案根）為基準計算相對路徑，支援多根目錄
-    const projectRoot = target || path.dirname(srcDir);
-    // 取得所有合法的 src 根目錄（相對 target，用於 isInfraFile 判斷）
-    const { getSrcDirs } = require('../../lib/shared/project-type.cjs');
-    const allSrcRoots = target
-      ? getSrcDirs(target).map(p => path.relative(target, p).replace(/\\/g, '/'))
-      : [path.relative(projectRoot, srcDir).replace(/\\/g, '/')];
 
     for (const file of files) {
       // 取得相對於專案根目錄的路徑

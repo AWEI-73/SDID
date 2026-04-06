@@ -4,11 +4,8 @@
  *
  * 定位：跑測試（TDD）或型別檢查（tsc）
  *
- * 驗收策略（自動偵測 contract 格式版本）:
- *   v4 contract（有 @CONTRACT:）:
- *     @TEST 路徑 → vitest --run（驗 it()/test() 存在 + GREEN）
- *   v3 contract（有 @GEMS-TDD:）:
- *     @GEMS-TDD 路徑 → vitest --run
+ * 驗收策略:
+ *   @TEST 路徑 → vitest --run（驗 it()/test() 存在 + GREEN）
  *   無測試路徑 → tsc --noEmit（DB/UI/外部依賴層，只驗型別）
  *
  * TDD 原則:
@@ -34,26 +31,15 @@ function findContractFile(target, iteration) {
   return contract ? path.join(iterDir, contract) : null;
 }
 
-// ── 從 contract 提取測試路徑（v4: @TEST / v3: @GEMS-TDD）──
+// ── 從 contract 提取測試路徑（v4 schema: @TEST）──
 function extractTddPaths(contractContent) {
-  const isV4 = /\/\/\s*@CONTRACT:\s*\w+/.test(contractContent);
-  if (isV4) {
-    // v4: 讀 @TEST:，過濾 @TEST-SKIP: 開頭的行
-    const matches = [...contractContent.matchAll(/\/\/\s*@TEST:\s*(.+)/g)];
-    return {
-      paths: matches
-        .map(m => m[1].trim())
-        .filter(p => p && p.match(/\.(test|spec)\.(ts|tsx)$/)),
-      isV4: true,
-    };
-  } else {
-    // v3: 讀 @GEMS-TDD:
-    const matches = [...contractContent.matchAll(/\/\/\s*@GEMS-TDD:\s*(.+)/g)];
-    return {
-      paths: matches.map(m => m[1].trim()).filter(Boolean),
-      isV4: false,
-    };
-  }
+  const matches = [...contractContent.matchAll(/\/\/\s*@TEST:\s*(.+)/g)];
+  return {
+    paths: matches
+      .map(m => m[1].trim())
+      .filter(p => p && p.match(/\.(test|spec)\.(ts|tsx)$/)),
+    isV4: true,
+  };
 }
 
 // ── 驗 it()/test() 呼叫存在（v4 only）──
@@ -145,7 +131,7 @@ function runTsc(target, options) {
   const { story, iteration, level, relativeTarget, iterNum } = options;
 
   console.log(`\n🔍 型別檢查 | ${story}`);
-  console.log(`   （無 @GEMS-TDD — DB/UI 層，只跑 tsc --noEmit）\n`);
+  console.log(`   （無 @TEST — DB/UI 層，只跑 tsc --noEmit）\n`);
 
   // 找 tsconfig：先查 root，再查深度 1 子目錄（支援 monorepo / 雙根目錄專案）
   // v7.1: 收集所有 tsconfig 一起跑（雙根目錄如 backend-gas/ + frontend/ 都要驗）

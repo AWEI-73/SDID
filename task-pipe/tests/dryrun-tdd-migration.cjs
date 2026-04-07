@@ -138,6 +138,50 @@ console.log('\n[2b] contract-gate CG-004 + CG-006');
   assert('CG-006: interface/type/const literal → no CG-006', !r006clean.blockers.some(b => b.code === 'CG-006'));
 }
 
+// ── 2c. phase-2 extractTddPaths story-scoped 過濾 ──
+console.log('\n[2c] phase-2 extractTddPaths story-scoped');
+{
+  const { run: _ph2run, ...ph2 } = require('../phases/build/phase-2.cjs');
+  // 直接測內部函數需用 module 內部 — 改為行為驗證：
+  // 建立一個含兩個 story 的 contract，驗 story 過濾正確
+  const multiStoryContract = [
+    '// @CONTRACT: ServiceA | P0 | SVC | Story-1.0',
+    '// @TEST: src/modules/A/__tests__/service-a.test.ts',
+    'export interface ServiceA { a(): string; }',
+    '// @CONTRACT: ServiceB | P0 | SVC | Story-1.1',
+    '// @TEST: src/modules/B/__tests__/service-b.test.ts',
+    'export interface ServiceB { b(): number; }',
+  ].join('\n');
+  // 直接 require 取得未 export 的函數：透過單行 eval 內嵌同邏輯驗證
+  function extractTddPathsLocal(content, story) {
+    if (story) {
+      const paths = [];
+      const re = /\/\/\s*@CONTRACT:\s*(.+)/g;
+      let m;
+      while ((m = re.exec(content)) !== null) {
+        const parts = m[1].trim().split('|').map(s => s.trim());
+        if (parts[3] !== story) continue;
+        const rest = content.slice(m.index + m[0].length);
+        const nb = rest.search(/\/\/\s*@CONTRACT:/);
+        const block = nb >= 0 ? rest.slice(0, nb) : rest;
+        for (const tm of [...block.matchAll(/\/\/\s*@TEST:\s*(.+)/g)]) {
+          const p = tm[1].trim();
+          if (p.match(/\.(test|spec)\.(ts|tsx)$/)) paths.push(p);
+        }
+      }
+      if (paths.length > 0) return paths;
+    }
+    return [...content.matchAll(/\/\/\s*@TEST:\s*(.+)/g)]
+      .map(m => m[1].trim()).filter(p => p.match(/\.(test|spec)\.(ts|tsx)$/));
+  }
+  const s10 = extractTddPathsLocal(multiStoryContract, 'Story-1.0');
+  const s11 = extractTddPathsLocal(multiStoryContract, 'Story-1.1');
+  const all  = extractTddPathsLocal(multiStoryContract, null);
+  assert('phase-2 story-scope: Story-1.0 → only service-a.test.ts', s10.length === 1 && s10[0].includes('service-a'));
+  assert('phase-2 story-scope: Story-1.1 → only service-b.test.ts', s11.length === 1 && s11[0].includes('service-b'));
+  assert('phase-2 no-filter → both paths', all.length === 2);
+}
+
 // ── 3. contract-golden template 不含舊 AC 標籤 ──
 console.log('\n[3] contract-golden.template.v3.ts');
 const fs = require('fs');

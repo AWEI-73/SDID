@@ -32,7 +32,29 @@ function findContractFile(target, iteration) {
 }
 
 // ── 從 contract 提取測試路徑（v4 schema: @TEST）──
-function extractTddPaths(contractContent) {
+// story 參數：若提供，只取屬於該 story 的 @CONTRACT block 下的 @TEST 路徑
+function extractTddPaths(contractContent, story = null) {
+  if (story) {
+    // v4 story-scoped: 只收屬於 story 的 @CONTRACT block 的 @TEST
+    const paths = [];
+    const contractRe = /\/\/\s*@CONTRACT:\s*(.+)/g;
+    let m;
+    while ((m = contractRe.exec(contractContent)) !== null) {
+      const parts = m[1].trim().split('|').map(s => s.trim());
+      if (parts[3] !== story) continue;
+      const after = m.index + m[0].length;
+      const rest = contractContent.slice(after);
+      const nextBound = rest.search(/\/\/\s*@CONTRACT:/);
+      const block = nextBound >= 0 ? rest.slice(0, nextBound) : rest;
+      for (const tm of [...block.matchAll(/\/\/\s*@TEST:\s*(.+)/g)]) {
+        const p = tm[1].trim();
+        if (p.match(/\.(test|spec)\.(ts|tsx)$/)) paths.push(p);
+      }
+    }
+    if (paths.length > 0) return { paths, isV4: true };
+    // story 無對應 @CONTRACT block → fallback 全取（相容舊格式或 Foundation 合約）
+  }
+  // 無 story filter 或 fallback: 取全部 @TEST 路徑
   const matches = [...contractContent.matchAll(/\/\/\s*@TEST:\s*(.+)/g)];
   return {
     paths: matches
@@ -228,7 +250,7 @@ function run(options) {
   }
 
   const contractContent = fs.readFileSync(contractFile, 'utf8');
-  const { paths: tddPaths, isV4 } = extractTddPaths(contractContent);
+  const { paths: tddPaths, isV4 } = extractTddPaths(contractContent, story);
 
   const sharedOptions = { story, iteration, level, relativeTarget, iterNum };
 

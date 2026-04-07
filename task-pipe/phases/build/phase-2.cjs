@@ -37,11 +37,13 @@ function extractTddPaths(contractContent, story = null) {
   if (story) {
     // v4 story-scoped: 只收屬於 story 的 @CONTRACT block 的 @TEST
     const paths = [];
+    let matchedBlock = false; // 是否找到該 story 的 @CONTRACT block
     const contractRe = /\/\/\s*@CONTRACT:\s*(.+)/g;
     let m;
     while ((m = contractRe.exec(contractContent)) !== null) {
       const parts = m[1].trim().split('|').map(s => s.trim());
       if (parts[3] !== story) continue;
+      matchedBlock = true;
       const after = m.index + m[0].length;
       const rest = contractContent.slice(after);
       const nextBound = rest.search(/\/\/\s*@CONTRACT:/);
@@ -51,8 +53,9 @@ function extractTddPaths(contractContent, story = null) {
         if (p.match(/\.(test|spec)\.(ts|tsx)$/)) paths.push(p);
       }
     }
-    if (paths.length > 0) return { paths, isV4: true };
-    // story 無對應 @CONTRACT block → fallback 全取（相容舊格式或 Foundation 合約）
+    // matchedBlock=true 且 paths 空 → story 有 @CONTRACT 但無 @TEST，直接回傳空（不 fallback）
+    // matchedBlock=false → contract 無該 story tag（legacy/unscoped），才 fallback 全取
+    if (matchedBlock) return { paths, isV4: true };
   }
   // 無 story filter 或 fallback: 取全部 @TEST 路徑
   const matches = [...contractContent.matchAll(/\/\/\s*@TEST:\s*(.+)/g)];

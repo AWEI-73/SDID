@@ -156,11 +156,13 @@ console.log('\n[2c] phase-2 extractTddPaths story-scoped');
   function extractTddPathsLocal(content, story) {
     if (story) {
       const paths = [];
+      let matchedBlock = false;
       const re = /\/\/\s*@CONTRACT:\s*(.+)/g;
       let m;
       while ((m = re.exec(content)) !== null) {
         const parts = m[1].trim().split('|').map(s => s.trim());
         if (parts[3] !== story) continue;
+        matchedBlock = true;
         const rest = content.slice(m.index + m[0].length);
         const nb = rest.search(/\/\/\s*@CONTRACT:/);
         const block = nb >= 0 ? rest.slice(0, nb) : rest;
@@ -169,7 +171,7 @@ console.log('\n[2c] phase-2 extractTddPaths story-scoped');
           if (p.match(/\.(test|spec)\.(ts|tsx)$/)) paths.push(p);
         }
       }
-      if (paths.length > 0) return paths;
+      if (matchedBlock) return paths; // 有 block 就回傳（空也回傳，不 fallback）
     }
     return [...content.matchAll(/\/\/\s*@TEST:\s*(.+)/g)]
       .map(m => m[1].trim()).filter(p => p.match(/\.(test|spec)\.(ts|tsx)$/));
@@ -180,6 +182,18 @@ console.log('\n[2c] phase-2 extractTddPaths story-scoped');
   assert('phase-2 story-scope: Story-1.0 → only service-a.test.ts', s10.length === 1 && s10[0].includes('service-a'));
   assert('phase-2 story-scope: Story-1.1 → only service-b.test.ts', s11.length === 1 && s11[0].includes('service-b'));
   assert('phase-2 no-filter → both paths', all.length === 2);
+
+  // 反向 case：Story-1.0 有 @CONTRACT block 但無 @TEST，Story-1.1 有 @TEST
+  // → Story-1.0 filter 應回傳空（不 fallback 去跑 Story-1.1 的 test）
+  const noTestForS10 = [
+    '// @CONTRACT: ServiceA | P0 | SVC | Story-1.0',
+    'export interface ServiceA { a(): string; }',
+    '// @CONTRACT: ServiceB | P0 | SVC | Story-1.1',
+    '// @TEST: src/modules/B/__tests__/service-b.test.ts',
+    'export interface ServiceB { b(): number; }',
+  ].join('\n');
+  const s10notest = extractTddPathsLocal(noTestForS10, 'Story-1.0');
+  assert('phase-2 story-scope: Story-1.0 no @TEST → empty (no fallback to Story-1.1)', s10notest.length === 0);
 }
 
 // ── 3. contract-golden template 不含舊 AC 標籤 ──

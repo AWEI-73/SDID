@@ -31,19 +31,26 @@ function findContractFile(target, iteration) {
   return contract ? path.join(iterDir, contract) : null;
 }
 
+// 需要 TDD（vitest）的 contract 類型
+const TDD_TYPES = new Set(['SVC', 'ACTION', 'HTTP', 'HOOK', 'LIB']);
+
 // ── 從 contract 提取測試路徑（v4 schema: @TEST）──
 // story 參數：若提供，只取屬於該 story 的 @CONTRACT block 下的 @TEST 路徑
+// 回傳: { paths, isV4, matchedBlock, requiresTest }
+//   matchedBlock:  該 story 在 contract 中有對應 @CONTRACT block
+//   requiresTest:  matched block 中有 P0 或 TDD 型 contract → 必須有 @TEST
 function extractTddPaths(contractContent, story = null) {
   if (story) {
-    // v4 story-scoped: 只收屬於 story 的 @CONTRACT block 的 @TEST
     const paths = [];
-    let matchedBlock = false; // 是否找到該 story 的 @CONTRACT block
+    const matchedContracts = [];
+    let matchedBlock = false;
     const contractRe = /\/\/\s*@CONTRACT:\s*(.+)/g;
     let m;
     while ((m = contractRe.exec(contractContent)) !== null) {
       const parts = m[1].trim().split('|').map(s => s.trim());
       if (parts[3] !== story) continue;
       matchedBlock = true;
+      matchedContracts.push({ name: parts[0], priority: parts[1], type: (parts[2] || '').toUpperCase() });
       const after = m.index + m[0].length;
       const rest = contractContent.slice(after);
       const nextBound = rest.search(/\/\/\s*@CONTRACT:/);
@@ -53,17 +60,19 @@ function extractTddPaths(contractContent, story = null) {
         if (p.match(/\.(test|spec)\.(ts|tsx)$/)) paths.push(p);
       }
     }
-    // matchedBlock=true 且 paths 空 → story 有 @CONTRACT 但無 @TEST，直接回傳空（不 fallback）
-    // matchedBlock=false → contract 無該 story tag（legacy/unscoped），才 fallback 全取
-    if (matchedBlock) return { paths, isV4: true };
+    if (matchedBlock) {
+      // P0 或 TDD 型 contract → 應有 @TEST；DB/UI 等不要求 TDD
+      const requiresTest = matchedContracts.some(c =>
+        c.priority === 'P0' || TDD_TYPES.has(c.type)
+      );
+      return { paths, isV4: true, matchedBlock: true, requiresTest };
+    }
   }
-  // 無 story filter 或 fallback: 取全部 @TEST 路徑
+  // 無 story filter 或 story 無對應 block（legacy/unscoped）→ fallback 全取
   const matches = [...contractContent.matchAll(/\/\/\s*@TEST:\s*(.+)/g)];
   return {
-    paths: matches
-      .map(m => m[1].trim())
-      .filter(p => p && p.match(/\.(test|spec)\.(ts|tsx)$/)),
-    isV4: true,
+    paths: matches.map(m => m[1].trim()).filter(p => p && p.match(/\.(test|spec)\.(ts|tsx)$/)),
+    isV4: true, matchedBlock: false, requiresTest: false,
   };
 }
 
@@ -253,9 +262,10 @@ function run(options) {
   }
 
   const contractContent = fs.readFileSync(contractFile, 'utf8');
-  const { paths: tddPaths, isV4 } = extractTddPaths(contractContent, story);
+  const { paths: tddPaths, isV4, matchedBlock, requiresTest } = extractTddPaths(contractContent, story);
 
   const sharedOptions = { story, iteration, level, relativeTarget, iterNum };
+  const iterPath = `iter-${iterNum}`;
 
   if (tddPaths.length > 0) {
     // v4: 額外驗 it()/test() 呼叫存在
@@ -272,7 +282,22 @@ function run(options) {
       }
     }
     return runVitest(target, tddPaths, sharedOptions);
+  } else if (matchedBlock && requiresTest) {
+    // Story 有 P0/TDD 型 @CONTRACT block 但完全沒有 @TEST → 不可 fallback 到 tsc
+    const contractRel = path.relative(process.cwd(), contractFile);
+    emitBlock({
+      scope: `BUILD Phase 2 | ${story}`,
+      summary: `${story} 有 P0/TDD 型 @CONTRACT 但缺少 @TEST 路徑`,
+      details: [
+        `Contract: ${contractRel}`,
+        `P0 或 SVC/ACTION/HTTP/HOOK/LIB 型 contract 必須在 contract 中填 @TEST 路徑`,
+        `請先修 contract 補 @TEST，重跑 contract-gate，再重跑 BUILD`,
+      ].join('\n'),
+      nextCmd: `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractRel} --target=${relativeTarget} --iter=${iterNum}`
+    }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
+    return { verdict: 'BLOCKER' };
   } else {
+    // matchedBlock=false（legacy/unscoped）或 requiresTest=false（DB/UI 型）→ tsc
     return runTsc(target, sharedOptions);
   }
 }

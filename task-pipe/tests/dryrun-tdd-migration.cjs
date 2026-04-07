@@ -153,9 +153,11 @@ console.log('\n[2c] phase-2 extractTddPaths story-scoped');
     'export interface ServiceB { b(): number; }',
   ].join('\n');
   // 直接 require 取得未 export 的函數：透過單行 eval 內嵌同邏輯驗證
+  const TDD_TYPES_LOCAL = new Set(['SVC', 'ACTION', 'HTTP', 'HOOK', 'LIB']);
   function extractTddPathsLocal(content, story) {
     if (story) {
       const paths = [];
+      const matchedContracts = [];
       let matchedBlock = false;
       const re = /\/\/\s*@CONTRACT:\s*(.+)/g;
       let m;
@@ -163,6 +165,7 @@ console.log('\n[2c] phase-2 extractTddPaths story-scoped');
         const parts = m[1].trim().split('|').map(s => s.trim());
         if (parts[3] !== story) continue;
         matchedBlock = true;
+        matchedContracts.push({ priority: parts[1], type: (parts[2] || '').toUpperCase() });
         const rest = content.slice(m.index + m[0].length);
         const nb = rest.search(/\/\/\s*@CONTRACT:/);
         const block = nb >= 0 ? rest.slice(0, nb) : rest;
@@ -171,20 +174,23 @@ console.log('\n[2c] phase-2 extractTddPaths story-scoped');
           if (p.match(/\.(test|spec)\.(ts|tsx)$/)) paths.push(p);
         }
       }
-      if (matchedBlock) return paths; // 有 block 就回傳（空也回傳，不 fallback）
+      if (matchedBlock) {
+        const requiresTest = matchedContracts.some(c => c.priority === 'P0' || TDD_TYPES_LOCAL.has(c.type));
+        return { paths, matchedBlock: true, requiresTest };
+      }
     }
-    return [...content.matchAll(/\/\/\s*@TEST:\s*(.+)/g)]
+    const all = [...content.matchAll(/\/\/\s*@TEST:\s*(.+)/g)]
       .map(m => m[1].trim()).filter(p => p.match(/\.(test|spec)\.(ts|tsx)$/));
+    return { paths: all, matchedBlock: false, requiresTest: false };
   }
   const s10 = extractTddPathsLocal(multiStoryContract, 'Story-1.0');
   const s11 = extractTddPathsLocal(multiStoryContract, 'Story-1.1');
   const all  = extractTddPathsLocal(multiStoryContract, null);
-  assert('phase-2 story-scope: Story-1.0 → only service-a.test.ts', s10.length === 1 && s10[0].includes('service-a'));
-  assert('phase-2 story-scope: Story-1.1 → only service-b.test.ts', s11.length === 1 && s11[0].includes('service-b'));
-  assert('phase-2 no-filter → both paths', all.length === 2);
+  assert('phase-2 story-scope: Story-1.0 → only service-a.test.ts', s10.paths.length === 1 && s10.paths[0].includes('service-a'));
+  assert('phase-2 story-scope: Story-1.1 → only service-b.test.ts', s11.paths.length === 1 && s11.paths[0].includes('service-b'));
+  assert('phase-2 no-filter → both paths', all.paths.length === 2);
 
-  // 反向 case：Story-1.0 有 @CONTRACT block 但無 @TEST，Story-1.1 有 @TEST
-  // → Story-1.0 filter 應回傳空（不 fallback 去跑 Story-1.1 的 test）
+  // 反向 case：Story-1.0 有 @CONTRACT P0/SVC block 但無 @TEST → empty + requiresTest=true
   const noTestForS10 = [
     '// @CONTRACT: ServiceA | P0 | SVC | Story-1.0',
     'export interface ServiceA { a(): string; }',
@@ -193,7 +199,18 @@ console.log('\n[2c] phase-2 extractTddPaths story-scoped');
     'export interface ServiceB { b(): number; }',
   ].join('\n');
   const s10notest = extractTddPathsLocal(noTestForS10, 'Story-1.0');
-  assert('phase-2 story-scope: Story-1.0 no @TEST → empty (no fallback to Story-1.1)', s10notest.length === 0);
+  assert('phase-2: Story-1.0 no @TEST → paths empty (no fallback)', s10notest.paths.length === 0);
+  assert('phase-2: Story-1.0 P0/SVC no @TEST → requiresTest=true', s10notest.requiresTest === true);
+  assert('phase-2: Story-1.0 P0/SVC no @TEST → matchedBlock=true', s10notest.matchedBlock === true);
+
+  // DB 型 contract → requiresTest=false（允許 tsc fallback）
+  const dbContract = [
+    '// @CONTRACT: UserRepo | P1 | DB | Story-1.0',
+    'export interface UserRepo { findById(id: string): Promise<User>; }',
+  ].join('\n');
+  const s10db = extractTddPathsLocal(dbContract, 'Story-1.0');
+  assert('phase-2: DB type contract → requiresTest=false', s10db.requiresTest === false);
+  assert('phase-2: DB type contract → matchedBlock=true', s10db.matchedBlock === true);
 }
 
 // ── 3. contract-golden template 不含舊 AC 標籤 ──

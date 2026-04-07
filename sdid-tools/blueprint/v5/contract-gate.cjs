@@ -10,7 +10,9 @@
  *   CG-001 BLOCKER: @CONTRACT P0 必有 @TEST
  *   CG-002 BLOCKER: @TEST 路徑必須以 .test.ts/.spec.ts 結尾
  *   CG-003 BLOCKER: @TEST 路徑必須實際存在（RED 測試已寫）
+ *   CG-004 BLOCKER: @TEST 檔案存在但無 it()/test()（空殼不算 RED test skeleton）
  *   CG-005 WARNING: P0 Behavior: 缺少錯誤路徑
+ *   CG-006 BLOCKER: contract 檔含實作語法（export function / class / arrow fn body）
  *   CG-007 三層驗收（需 --blueprint）:
  *     Layer 1 BLOCKER: Blueprint needsTest 動作必有對應 @CONTRACT + @TEST 路徑
  *     Layer 2 BLOCKER: @TEST 路徑檔案必須存在
@@ -195,6 +197,7 @@ function checkContract(content, iterNum, target = null, blueprintPath = null) {
       B('CG-002', `@TEST 路徑格式錯誤，必須以 .test.ts / .spec.ts / .test.tsx / .spec.tsx 結尾: ${badTestPaths.join(', ')}`);
 
     // CG-003: @TEST 路徑必須實際存在（RED 測試已寫）
+    // CG-004: @TEST 檔案存在但無 it()/test()（空殼不算 RED test skeleton）
     if (target) {
       const missingTests = testPaths.filter(p => {
         const abs = path.isAbsolute(p) ? p : path.join(target, p);
@@ -202,6 +205,34 @@ function checkContract(content, iterNum, target = null, blueprintPath = null) {
       });
       if (missingTests.length > 0)
         B('CG-003', `@TEST 路徑不存在（RED 測試尚未寫入）: ${missingTests.join(', ')}`);
+
+      const emptyTests = testPaths.filter(p => {
+        const abs = path.isAbsolute(p) ? p : path.join(target, p);
+        if (!fs.existsSync(abs)) return false; // CG-003 已擋
+        const tc = fs.readFileSync(abs, 'utf8');
+        return !/(it|test)\s*\(/.test(tc);
+      });
+      if (emptyTests.length > 0)
+        B('CG-004', `@TEST 檔案無測試案例（空殼不算 RED test）: ${emptyTests.join(', ')}。測試檔必須有 it() 或 test() skeleton`);
+    }
+
+    // CG-006: contract 不得含實作語法（保守 regex，只擋最明顯形式）
+    {
+      const codeLines = content.split('\n').filter(l => !l.trim().startsWith('//'));
+      const implMatches = [];
+      if (codeLines.some(l => /^\s*export\s+function\s+\w+/.test(l)))
+        implMatches.push('export function');
+      if (codeLines.some(l => /^\s*function\s+\w+\s*\(/.test(l)))
+        implMatches.push('function declaration');
+      if (codeLines.some(l => /^\s*export\s+(?:default\s+)?class\s+\w+/.test(l)))
+        implMatches.push('export class');
+      if (codeLines.some(l => /^\s*class\s+\w+\s*(?:\{|extends\b|implements\b)/.test(l)))
+        implMatches.push('class declaration');
+      const codeContent = codeLines.join('\n');
+      if (/=\s*(?:async\s+)?\([^)]*\)\s*(?::\s*[\w<>[\], |&]+)?\s*=>\s*\{/.test(codeContent))
+        implMatches.push('arrow function body');
+      if (implMatches.length > 0)
+        B('CG-006', `Contract 偵測到實作語法，只允許型別宣告（interface / type / enum / const 字面值）: ${implMatches.join(', ')}`);
     }
 
     // CG-007: Blueprint needsTest 動作三層驗收（需 --blueprint）

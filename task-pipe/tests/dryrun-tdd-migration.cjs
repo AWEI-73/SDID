@@ -68,6 +68,76 @@ const noStoryContent = [
 const r4 = checkContract(noStoryContent, 1);
 assert('no @GEMS-STORY → CG-001 blocker', r4.blockers.some(b => b.code === 'CG-001'));
 
+// ── 2b. CG-004（空殼 @TEST）+ CG-006（contract 含實作）──
+console.log('\n[2b] contract-gate CG-004 + CG-006');
+{
+  const _fs = require('fs');
+  const _path = require('path');
+  const _os = require('os');
+
+  // CG-004: @TEST 檔案存在但無 it()/test() → blocker
+  const tmpDir = _fs.mkdtempSync(_path.join(_os.tmpdir(), 'sdid-cg-test-'));
+  try {
+    const emptyTestRel = 'src/modules/Calc/__tests__/empty.test.ts';
+    const emptyTestAbs = _path.join(tmpDir, emptyTestRel);
+    _fs.mkdirSync(_path.dirname(emptyTestAbs), { recursive: true });
+    _fs.writeFileSync(emptyTestAbs, '// placeholder — no test cases yet\n', 'utf8');
+
+    const cg004Content = [
+      '// @CONTRACT: CalcService | P0 | SVC | Story-1.0',
+      `// @TEST: ${emptyTestRel}`,
+      'export interface CalcService { calc(x: number): number; }',
+    ].join('\n');
+    const r004 = checkContract(cg004Content, 1, tmpDir);
+    assert('CG-004: empty @TEST → blocker', r004.blockers.some(b => b.code === 'CG-004'));
+
+    // @TEST 有 it() → 不觸發 CG-004
+    _fs.writeFileSync(emptyTestAbs, "describe('CalcService', () => { it('calc returns value', () => {}); });\n", 'utf8');
+    const r004pass = checkContract(cg004Content, 1, tmpDir);
+    assert('CG-004: @TEST with it() → no CG-004', !r004pass.blockers.some(b => b.code === 'CG-004'));
+  } finally {
+    _fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  // CG-006: export function → blocker
+  const cg006Fn = [
+    '// @CONTRACT: Foo | P0 | SVC | Story-1.0',
+    '// @TEST: src/modules/Foo/__tests__/foo.test.ts',
+    'export function createFoo(name: string): Foo { return { name }; }',
+  ].join('\n');
+  const r006fn = checkContract(cg006Fn, 1);
+  assert('CG-006: export function → blocker', r006fn.blockers.some(b => b.code === 'CG-006'));
+
+  // CG-006: arrow function body → blocker
+  const cg006Arrow = [
+    '// @CONTRACT: Foo | P0 | SVC | Story-1.0',
+    '// @TEST: src/modules/Foo/__tests__/foo.test.ts',
+    'export const createFoo = (name: string): Foo => { return { name }; };',
+  ].join('\n');
+  const r006arrow = checkContract(cg006Arrow, 1);
+  assert('CG-006: arrow function body → blocker', r006arrow.blockers.some(b => b.code === 'CG-006'));
+
+  // CG-006: export class → blocker
+  const cg006Class = [
+    '// @CONTRACT: Foo | P0 | SVC | Story-1.0',
+    '// @TEST: src/modules/Foo/__tests__/foo.test.ts',
+    'export class FooService { create(name: string) { return { name }; } }',
+  ].join('\n');
+  const r006cls = checkContract(cg006Class, 1);
+  assert('CG-006: export class → blocker', r006cls.blockers.some(b => b.code === 'CG-006'));
+
+  // CG-006: interface + type only → passes (no CG-006)
+  const cleanContract = [
+    '// @CONTRACT: Foo | P0 | SVC | Story-1.0',
+    '// @TEST: src/modules/Foo/__tests__/foo.test.ts',
+    'export interface Foo { name: string; id: string; }',
+    'export type FooId = string;',
+    'export const FOO_DEFAULTS: Partial<Foo> = { name: "default" };',
+  ].join('\n');
+  const r006clean = checkContract(cleanContract, 1);
+  assert('CG-006: interface/type/const literal → no CG-006', !r006clean.blockers.some(b => b.code === 'CG-006'));
+}
+
 // ── 3. contract-golden template 不含舊 AC 標籤 ──
 console.log('\n[3] contract-golden.template.v3.ts');
 const fs = require('fs');

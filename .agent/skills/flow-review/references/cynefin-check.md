@@ -47,11 +47,33 @@
 | story | 所屬 Story |
 | domain | Clear/Complicated/Complex |
 | hiddenSteps | 這個 action 的隱含步驟（陣列） |
-| needsTest | **腳本自動計算**：domain=Complicated/Complex 或 hiddenSteps.length>=2 → true |
+| concernLayers | 此 action 涉及的架構層（見 Enum，可多個） |
+| needsTest | **腳本自動計算**（見下方規則） |
+| splitRequired | **腳本自動計算**（見下方規則）—優先於 needsTest |
 
-**needsTest 判斷規則**（cynefin-log-writer.cjs 自動計算，AI 也可手動填入覆蓋）：
+### 架構層 Enum
+
+```
+visual | state | api | db | compat | routing | validation | calculation | external
+```
+
+每個 action 分析時，標記其 hiddenSteps 及 FLOW 中涉及的層，填入 `concernLayers[]`。
+
+### splitRequired 判斷規則（優先檢查，比 needsTest 更強）
+
+```
+P0/P1 UI action，且：
+  concernLayers 涉及 (visual 或 state) + (api 或 db 或 compat)
+  → splitRequired: true，verdict: NEEDS_FIX（退回 Draft 拆分）
+```
+
+**`splitRequired: true` 的含義**：這個 action 不是「複雜的單一事情」，而是「多件事被包在一起」，必須在 Draft 拆開，不能靠 TDD 解決。
+
+### needsTest 判斷規則（splitRequired=false 才評估）
+
 - `domain === 'Complicated'` 或 `domain === 'Complex'` → `needsTest: true`
-- `hiddenSteps.length >= 2` → `needsTest: true`
+- `hiddenSteps.length >= 2` 且同一架構層 → `needsTest: true`
+- Complicated UI action 且 concernLayers 單層但 observable behaviors >= 3 → `needsTest: true`
 - 其他 → `needsTest: false`
 
 ---
@@ -73,7 +95,8 @@
 
 ---
 
-**needsTest 的影響**：
+**分析結果的影響**：
+- `splitRequired: true` → 回傳 NEEDS_FIX，退回 Draft 階段拆分，**不進入 Contract**
 - `needsTest: true` → CYNEFIN @PASS 後，Controller 派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），為此 action 寫測試檔並將 `@GEMS-TDD` 路徑加入 contract.ts，再由 Design Reviewer 審查，之後 Phase 2 執行 vitest
 - `needsTest: false` → Phase 2 只跑 `tsc --noEmit`（DB CRUD / UI / 外部 API 層）
 

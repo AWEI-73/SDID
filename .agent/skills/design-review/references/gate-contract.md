@@ -123,9 +123,109 @@ export declare function createCourse(input: CreateCourseInput): Promise<Course>
 
 ---
 
+### B-CONTRACT-06：P1/P0 Action 跨越 2+ 架構層 = 必須拆分
+**條件**：單一 STORY-ITEM 的 FLOW、hiddenSteps 或行為描述同時涉及不同架構層組合
+
+**架構層 Enum**：
+```
+visual | state | api | db | compat | routing | validation | calculation | external
+```
+
+**BLOCKER 層組合**（以下任一）：
+```
+(visual 或 state) + (api 或 db 或 compat)  → 前後端混合
+api + db + compat                           → 多後端層混合
+visual + state + api                        → 全層混合
+```
+
+**判斷步驟**：
+1. 掃描 FLOW 動作詞、hiddenSteps 內容、行為描述
+2. 對每個句子標記所屬架構層
+3. 涉及層數 >= 2 且包含上述 BLOCKER 組合 → BLOCKER（退回 Draft 拆分）
+
+**範例違規**：
+```typescript
+// FLOW: RENDER_DUAL_LAYOUT -> BIND_MILESTONE_PANEL -> SAVE_STATUS_COMPATIBLY
+// hiddenSteps: ["里程碑視覺位置計算", "狀態儲存舊格式相容", "API 錯誤邊界"]
+// ↑ visual + compat + api → BLOCKER，需拆成 3 個 STORY-ITEM
+```
+
+**豁免**（不觸發）：
+- Foundation CONST / 型別定義
+- P2/P3 action
+- ROUTE action（天生跨 api + routing）
+
+---
+
+### B-CONTRACT-07：P0/P1 UI FLOW 描述過泛
+**條件**：P0 或 P1 的 UI STORY-ITEM 的 FLOW 使用過泛的系統動詞，無法對應到具體可觀察行為
+
+**過泛 FLOW 特徵**：
+- 動詞是 RENDER / BIND / UPDATE / HANDLE 加寬泛名詞（LAYOUT / DATA / STATE / PANEL）
+- 單步驟 FLOW 描述多個不同行為（以 `->` 串聯但每步含多個 concern）
+- 任何步驟無法對應到「使用者可以目睹的一件事」
+
+**BLOCKER 示範**：
+```
+❌ FLOW: RENDER_DUAL_LAYOUT -> BIND_MILESTONE_PANEL
+   原因：RENDER_DUAL_LAYOUT 是什麼？使用者看到什麼？BIND 了哪個 Panel？
+```
+
+**合格示範**：
+```
+✅ FLOW: SHOW_MILESTONE_MARKER -> TOGGLE_SINGLE_LABEL -> SAVE_STATUS_COMPATIBLY
+   每步描述一個可觀察行為
+```
+
+**豁免**（不觸發）：
+- SVC / ROUTE action（系統動詞可接受）
+- P2/P3 action
+- Foundation 層
+
+---
+
+### B-CONTRACT-08：P0/P1 UI STORY-ITEM 缺 @GEMS-SOURCE-TARGETS
+**條件**：P0 或 P1 的 UI STORY-ITEM 完全缺少 `@GEMS-SOURCE-TARGETS` tag，或 source target 數量超標且跨多個 concern layer
+
+**設計原則**：
+- `@GEMS-FLOW` 維持行為語意（動詞驅動，不放 PascalCase）
+- `@GEMS-SOURCE-TARGETS` 放命名錨點，讓 PLAN/BUILD 知道要建哪些 component/function
+
+**Tag 格式**：
+```typescript
+// @GEMS-SOURCE-TARGETS: MilestoneMarker, MilestoneLabelVisibility, MilestoneStatusSaveAdapter
+```
+
+**合格示範**：
+```typescript
+// @CONTRACT: renderMilestoneMarker | P0 | COMPONENT | Story-11.1
+// @GEMS-FLOW: SHOW_MILESTONE_MARKER(Clear) -> TOGGLE_SINGLE_LABEL(Complicated) -> SAVE_STATUS_COMPATIBLY(Complicated)
+// @GEMS-SOURCE-TARGETS: MilestoneMarker, MilestoneLabelVisibility, MilestoneStatusSaveAdapter
+// @RISK: P0 — 里程碑標籤開關狀態未持久化，重整後遺失
+//
+// Behavior:
+// - ...
+```
+
+**BLOCKER 條件**：
+
+| 情況 | 判斷 |
+|------|------|
+| `@GEMS-SOURCE-TARGETS` 完全缺失 | BLOCKER |
+| source targets 數量 > 3 且 concernLayers >= 2 | BLOCKER（應拆分，回 Draft） |
+
+**豁免**（不觸發）：
+- SVC / ROUTE / CALC action（命名錨點由 interface/function 名稱覆蓋）
+- P2/P3 action
+- Foundation 層
+
+---
+
 ## 通過條件
 
-以上五條全部未觸發 → @PASS，進入 `contract-gate.cjs` 機械驗證
+B-CONTRACT-01 ~ B-CONTRACT-08 全部未觸發 → @PASS，進入 `contract-gate.cjs` 機械驗證
+
+> 注意：B-CONTRACT-06 觸發時退回 Draft（不是只改 Contract），因為問題在拆分粒度。
 
 ---
 

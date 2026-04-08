@@ -52,6 +52,36 @@
 
 ---
 
+### B-DRAFT-05：P0/P1 UI Action 缺 UI 位階聲明
+**條件**：UI 類型的 action（action 類型標記為 UI 或行為描述含「顯示」「畫面」「介面」「元件」）未聲明 UI 位階
+
+**判斷規則**：
+
+| 優先級 | 要求 | 不符合 |
+|--------|------|--------|
+| P0 UI action | 完整 UI 位階（至少兩層，含 PascalCase 組件名） | BLOCKER |
+| P1 UI action | 至少一個 PascalCase 組件名或功能區域名 | WARNING（不 BLOCKER） |
+
+**BLOCKER 合格示範（P0）**：
+```
+Board > Grid > MilestoneMarker > Label > MaintenancePanel
+GanttRow > MilestoneStatusBadge > TooltipPanel
+```
+
+**WARNING 合格示範（P1）**：
+```
+MilestoneMarker 顯示狀態標籤（最低要求：有組件名）
+```
+
+**範例違規（P0 BLOCKER）**：
+```
+Action: 改 Gantt UI 顯示里程碑（P0）— 無任何位階聲明
+Action: 更新甘特圖標記樣式（P0）— 無 PascalCase 組件名
+```
+
+---
+
 ## 通過條件
 
-以上四條全部未觸發 → @PASS，進入 CYNEFIN-CHECK
+B-DRAFT-01 ~ B-DRAFT-04 全部未觸發 → @PASS，進入 CYNEFIN-CHECK
+B-DRAFT-05 WARNING 不阻擋 @PASS，但輸出 review 時標記 ⚠️

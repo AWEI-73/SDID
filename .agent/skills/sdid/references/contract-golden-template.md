@@ -60,7 +60,28 @@ export declare function exportDataToCSV(): void;
 
 ---
 
-## 四、真實範例（HTTP — GAS endpoint）
+## 四、真實範例（COMPONENT — P0/P1 UI）
+
+```typescript
+// @CONTRACT: renderMilestoneMarker | P0 | COMPONENT | Story-11.1
+// @TEST: ExamForge/src/modules/gantt/__tests__/milestone-marker.test.ts
+// @RISK: P0 — 里程碑標籤開關狀態未持久化，重整後遺失顯示偏好
+// @GEMS-FLOW: SHOW_MILESTONE_MARKER(Clear)→TOGGLE_SINGLE_LABEL(Complicated)→SAVE_STATUS_COMPATIBLY(Complicated)
+// @GEMS-SOURCE-TARGETS: MilestoneMarker, MilestoneLabelVisibility, MilestoneStatusSaveAdapter
+//
+// Behavior:
+// - showMilestoneMarker() → 在 Gantt 行內對應時間點顯示里程碑圓點
+// - toggleSingleLabel() → 點擊圓點切換單一標籤顯示/隱藏，其他里程碑不受影響
+// - saveStatusCompatibly() → 以 hidden pct 格式儲存，與舊版 s 格式互轉不遺失
+export declare function renderMilestoneMarker(props: MilestoneMarkerProps): JSX.Element;
+```
+
+> **注意**：`@GEMS-SOURCE-TARGETS` 列出此 contract item 對應的 component/function 名稱錨點。
+> FLOW 維持行為語意（動詞驅動），PascalCase 命名只放在 SOURCE-TARGETS。
+
+---
+
+## 五、真實範例（HTTP — GAS endpoint）
 
 ```typescript
 // @CONTRACT: bulkImportTasks | P0 | HTTP | Story-5.1
@@ -103,6 +124,25 @@ export declare function bulkImportTasks(payload: ImportExportPayload): Record<st
 
 - 格式：`{P0|P1} — {操作描述}，{失敗後果}`
 - 必須說明「什麼出錯」和「什麼後果」，不能只寫功能名稱
+
+### @GEMS-SOURCE-TARGETS（P0/P1 COMPONENT 必填）
+
+```
+@GEMS-SOURCE-TARGETS: {PascalCaseName1}, {PascalCaseName2}, ...
+```
+
+| 規則 | 說明 |
+|------|------|
+| 必填對象 | P0/P1 的 COMPONENT type action |
+| 格式 | 逗號分隔 PascalCase 名稱 |
+| 數量上限 | 最多 3 個；超過 3 個且跨 2+ concern layer → 應拆分 |
+| 豁免 | SVC / ACTION / HTTP / Foundation / P2/P3 |
+
+**SOURCE-TARGETS vs FLOW 的分工**：
+- `@GEMS-FLOW`：描述行為語意（動詞驅動，不放 PascalCase）
+- `@GEMS-SOURCE-TARGETS`：列出未來要建的 component/function 名稱錨點
+
+---
 
 ### @GEMS-FLOW
 
@@ -171,6 +211,7 @@ Behavior:   getAll() →         create() →            update() →
 // @TEST: {path}.test.ts
 // @RISK: P0 — {說明}
 // @GEMS-FLOW: METHOD1(Clear)→METHOD2(Complicated)
+// @GEMS-SOURCE-TARGETS: {PascalCase1}, {PascalCase2}   ← COMPONENT type 必填
 //
 // Behavior:
 // - method1() → {具體結果}
@@ -181,6 +222,7 @@ export interface I{Name} { ... }
 // @TEST: {path}.test.ts    ← P1 建議填
 // @RISK: P1 — {說明}
 // @GEMS-FLOW: ACTION1(Clear)→ACTION2(Clear)
+// @GEMS-SOURCE-TARGETS: {PascalCase1}                  ← COMPONENT P1 必填
 //
 // Behavior:
 // - action1() → {具體結果}
@@ -225,5 +267,6 @@ Scanner 讀此行注入 functions.json：
 | CG-007-L1 | Blueprint needsTest 動作必有對應 @CONTRACT + @TEST 路徑（需 `--blueprint`） | BLOCKER |
 | CG-007-L2 | CG-007 @TEST 路徑檔案必須實際存在 | BLOCKER |
 | CG-007-L3 | it() 案例數 ≥ Behavior: 條目數；Behavior 錯誤碼必出現在測試檔 | WARNING |
+| CG-008 | P0/P1 COMPONENT 必有 @GEMS-SOURCE-TARGETS；targets > 3 且 concernLayers >= 2 → BLOCKER | BLOCKER |
 
 > 註：CG-007 僅做 Blueprint / Contract / @TEST / Behavior 的靜態對齊驗證，不執行測試本身；真正的 RED 驗證由 TDD Contract Subagent 先行完成。

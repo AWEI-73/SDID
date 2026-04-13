@@ -40,10 +40,13 @@ function testSummarizeRepairState() {
 
     const summary = home.summarizeProject({ projectRoot });
 
-    assert.equal(summary.status, 'REPAIR');
+    assert.equal(summary.mode, 'repair');
     assert.equal(summary.cursor, 'GATE');
-    assert.ok(summary.command.includes('review-proof.cjs'));
+    assert.ok(summary.next.includes('review-proof.cjs'));
     assert.ok(summary.resume.includes('draft-gate.cjs'));
+    assert.equal(summary.story, null);
+    assert.ok(summary.reason);
+    assert.ok(Array.isArray(summary.read));
   } finally {
     cleanup(projectRoot);
   }
@@ -82,10 +85,13 @@ function testSummarizeRunState() {
 
     const summary = home.summarizeProject({ projectRoot });
 
-    assert.equal(summary.status, 'RUN');
+    assert.equal(summary.mode, 'run');
     assert.equal(summary.cursor, 'BUILD-1');
-    assert.ok(summary.command.includes('task-pipe/runner.cjs --phase=BUILD --step=1'));
+    assert.ok(summary.next.includes('task-pipe/runner.cjs --phase=BUILD --step=1'));
     assert.equal(summary.resume, null);
+    assert.equal(summary.story, 'Story-1.0');
+    assert.equal(summary.reason, null);
+    assert.deepEqual(summary.read, []);
   } finally {
     cleanup(projectRoot);
   }
@@ -102,10 +108,13 @@ function testSummarizeDoneState() {
 
     const summary = home.summarizeProject({ projectRoot });
 
-    assert.equal(summary.status, 'DONE');
+    assert.equal(summary.mode, 'done');
     assert.equal(summary.cursor, 'COMPLETE');
-    assert.equal(summary.command, null);
+    assert.equal(summary.next, null);
     assert.equal(summary.resume, null);
+    assert.equal(summary.story, null);
+    assert.equal(summary.reason, null);
+    assert.deepEqual(summary.read, []);
   } finally {
     cleanup(projectRoot);
   }

@@ -34,14 +34,50 @@ function mapStatus(inspected) {
   return 'UNKNOWN';
 }
 
+function mapMode(inspected) {
+  const status = mapStatus(inspected);
+  if (status === 'RUN') return 'run';
+  if (status === 'REPAIR') return 'repair';
+  if (status === 'DONE') return 'done';
+  return 'unknown';
+}
+
+function getSummaryStory(inspected) {
+  return inspected.actionableStage?.story
+    || inspected.state?.story
+    || inspected.blockedBy?.story
+    || null;
+}
+
+function getReadPointers(inspected) {
+  const reads = [];
+  if (inspected.blockedBy?.reportPath) reads.push(inspected.blockedBy.reportPath);
+  return reads;
+}
+
 function summarizeProject(options = {}) {
   const inspected = wrapper.inspectProject(options);
+  const mode = mapMode(inspected);
+  const cursor = formatCursor(inspected.state);
+  const next = inspected.actionableStage.command || null;
+  const resume = inspected.resumeStage && inspected.resumeStage.command
+    ? inspected.resumeStage.command
+    : null;
+  const story = getSummaryStory(inspected);
+  const reason = inspected.blockedBy?.message || null;
+  const read = getReadPointers(inspected);
+
   return {
-    status: mapStatus(inspected),
-    cursor: formatCursor(inspected.state),
-    command: inspected.actionableStage.command || null,
-    resume: inspected.resumeStage ? inspected.resumeStage.command : null,
+    mode,
+    cursor,
+    next,
+    resume,
+    reason,
+    read,
     iteration: inspected.iteration,
+    story,
+    status: mapStatus(inspected),
+    command: next,
   };
 }
 
@@ -54,10 +90,11 @@ function main() {
     return;
   }
 
-  console.log(summary.status);
+  console.log(summary.mode);
   console.log(`cursor=${summary.cursor}`);
-  console.log(`command=${summary.command || ''}`);
+  console.log(`next=${summary.next || ''}`);
   if (summary.resume) console.log(`resume=${summary.resume}`);
+  if (summary.reason) console.log(`reason=${summary.reason}`);
 }
 
 if (require.main === module) {
@@ -68,5 +105,6 @@ module.exports = {
   parseArgs,
   formatCursor,
   mapStatus,
+  mapMode,
   summarizeProject,
 };

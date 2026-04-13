@@ -21,12 +21,15 @@ github_project/
 mindhive/
 my_workflow/
 smart-assistant/
+EXAMFORGE/
+工作流程管理/
 選股用/
 
 # ── sdid-monitor 自動生成 ─────────────────────────
 sdid-monitor/hub.json
 sdid-monitor/dist/
 sdid-monitor/dist_packager/
+sdid-monitor/tray-icon.png
 
 # ── 根目錄臨時檔案 ────────────────────────────────
 memory.json
@@ -51,3 +54,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Kiro local sync copies
+.kiro/skills/superpowers/

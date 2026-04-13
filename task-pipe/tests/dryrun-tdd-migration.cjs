@@ -5,6 +5,33 @@
 let passed = 0;
 let failed = 0;
 
+function normalizePlanFixture(content) {
+  let normalized = content
+    .replace(/## 3\.[^\n]*/m, '## 3. 工作項目')
+    .replace(/\| Item \|[^\n]*/m, '| Item | 名稱 | Type | Priority | 明確度 | 預估 |')
+    .replace(/## 4\.[^\n]*/m, '## 4. Item 詳細規格')
+    .replace(/<!--\s*SLICE_PRESERVE\s*\n([\s\S]*?)-->/m, (_, inner) => `SLICE_PRESERVE:\n${inner.trim()}`);
+
+  const fileMatch = normalized.match(/\|\s*`([^`]+)`\s*\|\s*New\s*\|/);
+  if (fileMatch && !/Target File:/m.test(normalized)) {
+    normalized = normalized.replace(/(SLICE_PRESERVE:\n(?:.*\n)*?)(\n(?:```typescript|\*\*Type\*\*:))/m, `$1\nTarget File: ${fileMatch[1]}\n$2`);
+  }
+
+  normalized = normalized.replace(/```typescript\n([\s\S]*?)```/m, (match, body) => {
+    const contractLine = normalized.match(/^@CONTRACT:.*$/m)?.[0];
+    const testLine = normalized.match(/^@TEST:.*$/m)?.[0];
+    const flowLine = normalized.match(/^@GEMS-FLOW:.*$/m)?.[0] || '@GEMS-FLOW: TODO(Clear)->RETURN(Clear)';
+    const injected = [];
+    if (contractLine && !/@CONTRACT:/.test(body)) injected.push(`// ${contractLine}`);
+    if (testLine && !/@TEST:/.test(body)) injected.push(`// ${testLine}`);
+    if (flowLine && !/@GEMS-FLOW:/.test(body)) injected.push(`// ${flowLine}`);
+    if (injected.length === 0) return match;
+    return `\`\`\`typescript\n${injected.join('\n')}\n${body}\`\`\``;
+  });
+
+  return normalized;
+}
+
 function assert(label, condition, detail) {
   if (condition) {
     console.log(`  ✅ ${label}`);
@@ -238,6 +265,182 @@ assert('ac-golden no @GEMS-AC-FN', !acGoldenContent.includes('@GEMS-AC-FN'));
 console.log('\n[5] ac-runner.cjs deleted');
 const acRunnerPath = path.join(__dirname, '../../sdid-tools/ac-runner.cjs');
 assert('ac-runner file does not exist', !fs.existsSync(acRunnerPath));
+
+// ── 6. plan-validator IMPL_SKELETON rule ──
+console.log('\n[6] plan-validator IMPL_SKELETON');
+{
+  const _os = require('os');
+  const _fs = require('fs');
+  const _path = require('path');
+  const { validatePlan } = require('../lib/plan/plan-validator.cjs');
+
+  const tmpDir = _fs.mkdtempSync(_path.join(_os.tmpdir(), 'sdid-plan-test-'));
+  try {
+    // 共用 @PLAN_TRACE 頭部
+    const traceHeader = `<!--
+@PLAN_TRACE | Story-2.0
+  SOURCE_CONTRACT: .gems/iterations/iter-1/contract_iter-1.ts
+  TARGET_PLAN: .gems/iterations/iter-1/plan/implementation_plan_Story-2.0.md
+  SLICE_COUNT: 1
+-->
+
+`;
+
+    // metadata-only plan（P0/SVC，只有 GEMS 注釋，無 function 宣告）→ IMPL_SKELETON blocker
+    const metaOnlyPlan = traceHeader + `# Implementation Plan - Story-2.0
+
+**Story ID**: Story-2.0
+
+## 3. 工作項目
+
+| Item | 名稱 | Type | Priority | 明確度 | 預估 |
+|------|------|------|----------|--------|------|
+| 1 | calcDate | SVC | P0 | ✅ 明確 | - |
+
+## 4. Item 詳細規格
+
+### Item 1: calcDate
+
+<!-- SLICE_PRESERVE
+@CONTRACT: calcDate | P0 | SVC | Story-2.0
+@TEST: src/modules/Calc/__tests__/calc.test.ts
+-->
+
+\`\`\`typescript
+// @GEMS-FUNCTION: calcDate
+/**
+ * GEMS: calcDate | P0 | ○○ | (args)→Result | Story-2.0 | calcDate
+ * GEMS-FLOW: PARSE→CALC→RETURN
+ */
+// [STEP] PARSE
+// [STEP] CALC
+// [STEP] RETURN
+\`\`\`
+
+**檔案**:
+| 檔案 | 動作 | 說明 |
+|------|------|------|
+| \`src/modules/Calc/services/calc-date.ts\` | New | calcDate |
+`;
+    const metaPlanPath = _path.join(tmpDir, 'implementation_plan_Story-2.0.md');
+    _fs.writeFileSync(metaPlanPath, normalizePlanFixture(metaOnlyPlan), 'utf8');
+    const r6meta = validatePlan(metaPlanPath);
+    assert('IMPL_SKELETON: metadata-only P0/SVC → BLOCKER', r6meta.errors.some(e => e.rule === 'IMPL_SKELETON'));
+
+    // impl skeleton plan（有 export async function 宣告）→ 無 IMPL_SKELETON blocker
+    const implPlan = traceHeader + `# Implementation Plan - Story-2.0
+
+**Story ID**: Story-2.0
+
+## 3. 工作項目
+
+| Item | 名稱 | Type | Priority | 明確度 | 預估 |
+|------|------|------|----------|--------|------|
+| 1 | calcDate | SVC | P0 | ✅ 明確 | - |
+
+## 4. Item 詳細規格
+
+### Item 1: calcDate
+
+<!-- SLICE_PRESERVE
+@CONTRACT: calcDate | P0 | SVC | Story-2.0
+@TEST: src/modules/Calc/__tests__/calc.test.ts
+-->
+
+\`\`\`typescript
+// @GEMS-FUNCTION: calcDate
+/**
+ * GEMS: calcDate | P0 | ○○ | (args)→Result | Story-2.0 | calcDate
+ * GEMS-FLOW: PARSE→CALC→RETURN
+ */
+// [STEP] PARSE
+// [STEP] CALC
+// [STEP] RETURN
+export async function calcDate(/* TODO: fill in params */): Promise<unknown> {
+  throw new Error('not implemented');
+}
+\`\`\`
+
+**檔案**:
+| 檔案 | 動作 | 說明 |
+|------|------|------|
+| \`src/modules/Calc/services/calc-date.ts\` | New | calcDate |
+`;
+    _fs.writeFileSync(metaPlanPath, normalizePlanFixture(implPlan), 'utf8');
+    const r6impl = validatePlan(metaPlanPath);
+    assert('IMPL_SKELETON: with export async function → no IMPL_SKELETON', !r6impl.errors.some(e => e.rule === 'IMPL_SKELETON'));
+
+    // DB type item → 豁免（不觸發 IMPL_SKELETON）
+    const dbPlan = traceHeader + `# Implementation Plan - Story-2.0
+
+**Story ID**: Story-2.0
+
+## 3. 工作項目
+
+| Item | 名稱 | Type | Priority | 明確度 | 預估 |
+|------|------|------|----------|--------|------|
+| 1 | UserRepo | DB | P0 | ✅ 明確 | - |
+
+## 4. Item 詳細規格
+
+### Item 1: UserRepo
+
+<!-- SLICE_PRESERVE
+@CONTRACT: UserRepo | P0 | DB | Story-2.0
+-->
+
+\`\`\`typescript
+// @GEMS-FUNCTION: UserRepo
+/**
+ * GEMS: UserRepo | P0 | ○○ | (args)→Result | Story-2.0 | UserRepo
+ */
+// DB layer — schema/migration only, no function skeleton
+\`\`\`
+
+**檔案**:
+| 檔案 | 動作 | 說明 |
+|------|------|------|
+| \`src/modules/User/db/user-repo.ts\` | New | UserRepo |
+`;
+    _fs.writeFileSync(metaPlanPath, normalizePlanFixture(dbPlan), 'utf8');
+    const r6db = validatePlan(metaPlanPath);
+    assert('IMPL_SKELETON: DB type → no IMPL_SKELETON blocker', !r6db.errors.some(e => e.rule === 'IMPL_SKELETON'));
+
+    // 完全沒有 typescript code block 的 P0/SVC item → BLOCKER
+    const noCodeBlockPlan = traceHeader + `# Implementation Plan - Story-2.0
+
+**Story ID**: Story-2.0
+
+## 3. 工作項目
+
+| Item | 名稱 | Type | Priority | 明確度 | 預估 |
+|------|------|------|----------|--------|------|
+| 1 | calcDate | SVC | P0 | ✅ 明確 | - |
+
+## 4. Item 詳細規格
+
+### Item 1: calcDate
+
+<!-- SLICE_PRESERVE
+@CONTRACT: calcDate | P0 | SVC | Story-2.0
+@TEST: src/modules/Calc/__tests__/calc.test.ts
+-->
+
+**Type**: SVC | **Priority**: P0
+
+**檔案**:
+| 檔案 | 動作 | 說明 |
+|------|------|------|
+| \`src/modules/Calc/services/calc-date.ts\` | New | calcDate |
+`;
+    _fs.writeFileSync(metaPlanPath, normalizePlanFixture(noCodeBlockPlan), 'utf8');
+    const r6noblock = validatePlan(metaPlanPath);
+    assert('IMPL_SKELETON: no code block at all → BLOCKER', r6noblock.errors.some(e => e.rule === 'IMPL_SKELETON'));
+
+  } finally {
+    _fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
 
 // ── 結果 ──
 console.log(`\n${'─'.repeat(50)}`);

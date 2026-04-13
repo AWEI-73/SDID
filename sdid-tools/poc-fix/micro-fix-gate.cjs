@@ -1,38 +1,18 @@
 #!/usr/bin/env node
-/**
- * Micro-Fix Gate v1.0
- * 輕量驗證器 — 只驗改動的檔案，不需要 story/plan
- *
- * 用途: MICRO-FIX 模式 (改小地方，不走完整 BUILD 流程)
- * 驗證: 1. GEMS 標籤存在 (寬鬆版)  2. import/export 整合不斷鏈
- * 不驗: 測試、路由、UI bind、plan 一致性
- *
- * 用法:
- *   node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=src/foo.ts,src/bar.ts --target=<project>
- *   node sdid-tools/poc-fix/micro-fix-gate.cjs --target=<project>   (自動掃 src/)
- *
- * 輸出:
- *   @PASS   — 標籤 OK + 整合 OK
- *   @BLOCKER — 有問題，附修復指引
- */
-
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 
-// ============================================
-// 參數解析
-// ============================================
 function parseArgs() {
   const args = { changed: [], target: null, iter: null, help: false };
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--changed=')) {
-      args.changed = arg.split('=').slice(1).join('=').split(',').map(f => f.trim()).filter(Boolean);
+      args.changed = arg.split('=').slice(1).join('=').split(',').map((file) => file.trim()).filter(Boolean);
     } else if (arg.startsWith('--target=')) {
       args.target = path.resolve(arg.split('=').slice(1).join('='));
     } else if (arg.startsWith('--iter=')) {
-      args.iter = arg.split('=')[1];
+      args.iter = arg.split('=').slice(1).join('=');
     } else if (arg === '--help' || arg === '-h') {
       args.help = true;
     }
@@ -40,341 +20,233 @@ function parseArgs() {
   return args;
 }
 
-// ============================================
-// Log 寫入（micro-fix 不屬於任何 iter，寫到 .gems/logs/）
-// ============================================
-
-/**
- * 寫入 gate log，回傳相對路徑（供 @READ 指標使用）
- * micro-fix log 存在 .gems/logs/（全局，不屬於任何 iter）
- * 若 .gems/ 不存在則靜默跳過（非 SDID 專案）
- * @returns {string|null} 相對路徑，失敗時回傳 null
- */
-function writeGateLog(projectRoot, _iterNum, status, content, changedFiles) {
+function writeGateLog(projectRoot, status, content, changedFiles) {
   if (!projectRoot) return null;
   const gemsDir = path.join(projectRoot, '.gems');
-  if (!fs.existsSync(gemsDir)) return null; // 非 SDID 專案，靜默跳過
+  if (!fs.existsSync(gemsDir)) return null;
+
   const logsDir = path.join(gemsDir, 'logs');
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const filename = `microfix-${status}-${ts}.log`;
   const filePath = path.join(logsDir, filename);
   const header = [
-    `mode: MICRO-FIX`,
+    'mode: MICRO-FIX',
     `changed: ${(changedFiles || []).join(', ') || '(auto-scan)'}`,
     `result: ${status.toUpperCase()}`,
     `ts: ${new Date().toISOString()}`,
-    `---`,
+    '---',
     '',
   ].join('\n');
-  try {
-    fs.mkdirSync(logsDir, { recursive: true });
-    fs.writeFileSync(filePath, header + content, 'utf8');
-    return path.relative(projectRoot, filePath);
-  } catch { return null; }
+
+  fs.mkdirSync(logsDir, { recursive: true });
+  fs.writeFileSync(filePath, header + content, 'utf8');
+  return path.relative(projectRoot, filePath);
 }
 
-// ============================================
-// 1. GEMS 標籤檢查 (寬鬆版)
-// ============================================
-
-/**
- * 從檔案內容提取 GEMS 標籤
- * 只要有 GEMS: 或 @GEMS 就算有標籤，不強制格式
- */
 function hasGemsTag(content) {
   return /GEMS[:\s]/i.test(content);
 }
 
-/**
- * 掃描單一檔案的 GEMS 標籤覆蓋率
- * 找出所有 export function/const/class，檢查前面有沒有 GEMS 標籤
- * 排除: 小型 helper export（無參數或只有 getter，且整個檔案已有 GEMS 標籤）
- */
 function checkFileTags(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split('\n');
-
-  // 如果整個檔案有 GEMS 標籤，小型 helper export 不強制要求
   const fileHasGems = hasGemsTag(content);
-
-  // 找所有 export 宣告
   const exportPattern = /^export\s+(?:async\s+)?(?:function|const|class|interface|enum|type)\s+(\w+)/;
   const exports = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(exportPattern);
-    if (m) {
-      exports.push({ name: m[1], line: i + 1 });
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = lines[i].match(exportPattern);
+    if (match) {
+      exports.push({ name: match[1], line: i + 1 });
     }
   }
 
-  if (exports.length === 0) return { file: filePath, ok: true, missing: [], total: 0 };
+  if (exports.length === 0) {
+    return { ok: true, missing: [] };
+  }
 
-  // 對每個 export，往上找 GEMS 標籤（最多找 20 行）
   const missing = [];
   for (const exp of exports) {
     const searchStart = Math.max(0, exp.line - 20);
     const before = lines.slice(searchStart, exp.line - 1).join('\n');
-    if (!hasGemsTag(before)) {
-      // 如果整個檔案已有 GEMS 標籤，且這個 export 看起來是小型 helper
-      // (函式名以 get/set/is/has 開頭，或是 type/interface/enum)，寬鬆放行
-      const isHelper = fileHasGems && /^(?:get|set|is|has|to|from)[A-Z]/.test(exp.name);
-      const isTypeDecl = lines[exp.line - 1]?.match(/^export\s+(?:type|interface|enum)\s+/);
-      if (!isHelper && !isTypeDecl) {
-        missing.push(exp.name);
-      }
+    if (hasGemsTag(before)) continue;
+
+    const line = lines[exp.line - 1] || '';
+    const isHelper = fileHasGems && /^(?:get|set|is|has|to|from)[A-Z]/.test(exp.name);
+    const isTypeDecl = /^export\s+(?:type|interface|enum)\s+/.test(line);
+    if (!isHelper && !isTypeDecl) {
+      missing.push(exp.name);
     }
   }
 
-  return {
-    file: filePath,
-    ok: missing.length === 0,
-    missing,
-    total: exports.length
-  };
+  return { ok: missing.length === 0, missing };
 }
 
-// ============================================
-// 2. Import/Export 整合檢查
-// ============================================
+function resolveImport(dir, importPath) {
+  const cleanPath = importPath.replace(/\.js$/, '');
+  const base = path.resolve(dir, cleanPath);
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    `${base}.js`,
+    `${base}.jsx`,
+    path.join(base, 'index.ts'),
+    path.join(base, 'index.tsx'),
+    path.join(base, 'index.js'),
+    path.join(base, 'index.jsx'),
+  ];
 
-/**
- * 找出檔案中所有 import 的路徑，驗證目標檔案存在
- */
+  return candidates.find((candidate) => fs.existsSync(candidate)) || `${base}.ts`;
+}
+
 function checkImports(filePath, projectRoot) {
   const content = fs.readFileSync(filePath, 'utf8');
   const dir = path.dirname(filePath);
   const issues = [];
-
-  // 只檢查相對路徑 import（不檢查 node_modules）
   const importPattern = /(?:import|require)\s*(?:\{[^}]*\}|[\w*]+)?\s*(?:from\s*)?['"](\.[^'"]+)['"]/g;
-  let m;
+  let match;
 
-  while ((m = importPattern.exec(content)) !== null) {
-    const importPath = m[1];
-    const resolved = resolveImport(dir, importPath);
+  while ((match = importPattern.exec(content)) !== null) {
+    const resolved = resolveImport(dir, match[1]);
     if (resolved && !fs.existsSync(resolved)) {
-      issues.push({
-        import: importPath,
-        expected: path.relative(projectRoot, resolved)
-      });
+      issues.push({ import: match[1], expected: path.relative(projectRoot, resolved) });
     }
   }
 
   return issues;
 }
 
-/**
- * 解析 import 路徑到實際檔案
- * TypeScript 專案常用 .js 副檔名指向 .ts 檔案
- */
-function resolveImport(dir, importPath) {
-  // 移除 .js 副檔名（TypeScript ESM 慣例）
-  const cleanPath = importPath.replace(/\.js$/, '');
-  const base = path.resolve(dir, cleanPath);
-  // 嘗試各種副檔名
-  const candidates = [
-    base,
-    base + '.ts', base + '.tsx', base + '.js', base + '.jsx',
-    path.join(base, 'index.ts'), path.join(base, 'index.tsx'),
-    path.join(base, 'index.js'), path.join(base, 'index.jsx'),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  // 回傳第一個候選（用於報告）
-  return base + '.ts';
-}
-
-/**
- * 找出 src 目錄下所有 .ts/.tsx/.js/.jsx 檔案
- */
 function findSourceFiles(dir, files = []) {
   if (!fs.existsSync(dir)) return files;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
+    const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory() && !['node_modules', 'dist', '__tests__', '.gems'].includes(entry.name)) {
-      findSourceFiles(full, files);
+      findSourceFiles(fullPath, files);
     } else if (entry.isFile() && /\.(ts|tsx|js|jsx)$/.test(entry.name) && !entry.name.includes('.test.')) {
-      files.push(full);
+      files.push(fullPath);
     }
   }
   return files;
 }
 
-// ============================================
-// 主程式
-// ============================================
-/** GEMS: microFixGate | P1 | scanFiles(Clear)→checkFileTags(Clear)→checkImports(Complicated)→writeGateLog(Clear)→RETURN:GateResult | Story-2.0 */
+function getFilesToCheck(projectRoot, changed) {
+  if (changed.length === 0) {
+    return findSourceFiles(path.join(projectRoot, 'src'));
+  }
+
+  return changed
+    .map((file) => {
+      if (path.isAbsolute(file)) return file;
+      const fromCwd = path.resolve(process.cwd(), file);
+      if (fs.existsSync(fromCwd)) return fromCwd;
+      return path.resolve(projectRoot, file);
+    })
+    .filter((file) => fs.existsSync(file) && /\.(ts|tsx|js|jsx)$/.test(file) && !file.includes('.test.'));
+}
+
+function printHelp() {
+  console.log(`
+Micro-Fix Gate
+
+Usage:
+  node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=src/foo.ts,src/bar.ts --target=<project>
+  node sdid-tools/poc-fix/micro-fix-gate.cjs --target=<project>
+
+Checks:
+  1. Exported code has nearby GEMS tags
+  2. Relative imports resolve correctly
+
+Note:
+  This gate does not require decision-log entries.
+`);
+}
+
 function main() {
   const args = parseArgs();
-
   if (args.help) {
-    console.log(`
-Micro-Fix Gate v1.0 — 輕量驗證器
-
-用法:
-  node sdid-tools/poc-fix/micro-fix-gate.cjs --changed=src/foo.ts,src/bar.ts [--target=<project>]
-  node sdid-tools/poc-fix/micro-fix-gate.cjs --target=<project>   (自動掃 src/)
-
-選項:
-  --changed=<files>  逗號分隔的改動檔案清單 (相對或絕對路徑)
-  --target=<path>    專案根目錄 (預設: 當前目錄)
-  --help             顯示此訊息
-
-驗證項目:
-  ✓ GEMS 標籤存在 (export 函式前有 GEMS 標籤)
-  ✓ import 路徑不斷鏈 (相對路徑 import 目標存在)
-
-不驗項目:
-  ✗ 測試 (MICRO-FIX 不需要)
-  ✗ 路由整合 (MICRO-FIX 不需要)
-  ✗ Plan 一致性 (MICRO-FIX 不需要)
-`);
+    printHelp();
     process.exit(0);
   }
 
   const projectRoot = args.target || process.cwd();
-
-  // 決定要掃描的檔案
-  let filesToCheck = [];
-
-  if (args.changed.length > 0) {
-    // 使用者指定了改動的檔案
-    // 嘗試: 1) 絕對路徑  2) 相對於 cwd  3) 相對於 projectRoot
-    filesToCheck = args.changed.map(f => {
-      if (path.isAbsolute(f)) return f;
-      const fromCwd = path.resolve(process.cwd(), f);
-      if (fs.existsSync(fromCwd)) return fromCwd;
-      return path.resolve(projectRoot, f);
-    });
-    // 過濾掉不存在或非源碼的檔案
-    filesToCheck = filesToCheck.filter(f => fs.existsSync(f) && /\.(ts|tsx|js|jsx)$/.test(f) && !f.includes('.test.'));
-  } else {
-    // 自動掃 src/
-    const srcDir = path.join(projectRoot, 'src');
-    filesToCheck = findSourceFiles(srcDir);
-  }
+  const filesToCheck = getFilesToCheck(projectRoot, args.changed);
 
   if (filesToCheck.length === 0) {
-    console.log('@PASS | micro-fix-gate | 無源碼檔案需要驗證');
+    console.log('@PASS | micro-fix-gate | no source files to validate');
     process.exit(0);
   }
 
-  console.log(`\n[Micro-Fix Gate] 掃描 ${filesToCheck.length} 個檔案...\n`);
+  console.log(`\n[Micro-Fix Gate] scanning ${filesToCheck.length} files...\n`);
 
-  // ── 1. GEMS 標籤檢查 ──
   const tagIssues = [];
-  for (const f of filesToCheck) {
-    const result = checkFileTags(f);
+  for (const file of filesToCheck) {
+    const result = checkFileTags(file);
     if (!result.ok) {
-      tagIssues.push({
-        file: path.relative(projectRoot, f),
-        missing: result.missing,
-        total: result.total
-      });
+      tagIssues.push({ file: path.relative(projectRoot, file), missing: result.missing });
     }
   }
 
-  // ── 2. Import 整合檢查 ──
   const importIssues = [];
-  for (const f of filesToCheck) {
-    const broken = checkImports(f, projectRoot);
-    if (broken.length > 0) {
-      importIssues.push({
-        file: path.relative(projectRoot, f),
-        broken
-      });
+  for (const file of filesToCheck) {
+    const issues = checkImports(file, projectRoot);
+    if (issues.length > 0) {
+      importIssues.push({ file: path.relative(projectRoot, file), broken: issues });
     }
   }
 
-  // ── 結果輸出 ──
   const hasIssues = tagIssues.length > 0 || importIssues.length > 0;
-
   if (!hasIssues) {
-    console.log(`@PASS | micro-fix-gate | ${filesToCheck.length} 個檔案全部通過`);
-    console.log(`  ✓ GEMS 標籤: OK`);
-    console.log(`  ✓ Import 整合: OK`);
-    writeGateLog(projectRoot, args.iter, 'pass', `${filesToCheck.length} 個檔案全部通過`, args.changed);
-    // --- Decision Log ---
-    const { writeDecisionLog } = require('../lib/decision-log.cjs');
-    writeDecisionLog(projectRoot, { gate: 'micro-fix-gate', status: 'PASS', iter: args.iter });
-    console.log(`[LOG-REQUIRED] gate=micro-fix-gate status=PASS`);
-    console.log(`  → 補上 why 到 .gems/decision-log.jsonl 再繼續`);
+    console.log(`@PASS | micro-fix-gate | ${filesToCheck.length} files passed`);
+    console.log('  ✓ GEMS tags: OK');
+    console.log('  ✓ Import integration: OK');
+    writeGateLog(projectRoot, 'pass', `${filesToCheck.length} files passed`, args.changed);
     console.log('');
     process.exit(0);
   }
 
-  // 有問題 → 收集詳細錯誤 + 存 log + 印 @READ 指標（M15: Gate Output Pointer）
   const changedArg = args.changed.length > 0 ? ` --changed=${args.changed.join(',')}` : '';
   const targetArg = args.target ? ` --target=${path.relative(process.cwd(), args.target) || '.'}` : '';
   const iterArg = args.iter ? ` --iter=${args.iter}` : '';
   const nextCmd = `node sdid-tools/poc-fix/micro-fix-gate.cjs${changedArg}${targetArg}${iterArg}`;
 
-  const blockerSummary = [
-    tagIssues.length > 0 ? `GEMS標籤缺失 ${tagIssues.length} 檔` : '',
-    importIssues.length > 0 ? `Import斷鏈 ${importIssues.length} 檔` : '',
+  const summary = [
+    tagIssues.length > 0 ? `missing GEMS tags in ${tagIssues.length} files` : '',
+    importIssues.length > 0 ? `broken imports in ${importIssues.length} files` : '',
   ].filter(Boolean).join(', ');
 
-  // 組合詳細內容（存 log）
-  const detailLines = [`@BLOCKER | micro-fix-gate | ${blockerSummary}`, ''];
+  const detailLines = [`@BLOCKER | micro-fix-gate | ${summary}`, ''];
   if (tagIssues.length > 0) {
-    detailLines.push(`❌ GEMS 標籤缺失 (${tagIssues.length} 個檔案):`);
+    detailLines.push(`GEMS tag issues (${tagIssues.length} files):`);
     for (const issue of tagIssues) {
-      detailLines.push(`   ${issue.file}`);
-      for (const fn of issue.missing) {
-        detailLines.push(`     └─ ${fn}() 缺少 GEMS 標籤`);
+      detailLines.push(`  ${issue.file}`);
+      for (const name of issue.missing) {
+        detailLines.push(`    - ${name}`);
       }
     }
     detailLines.push('');
-    detailLines.push('  修復範例:');
-    detailLines.push('  /**');
-    detailLines.push('   * GEMS: functionName | P2 | ○ | (args)→Result | 描述');
-    detailLines.push('   * GEMS-FLOW: Step1→Step2→Step3');
-    detailLines.push('   */');
   }
   if (importIssues.length > 0) {
-    detailLines.push('');
-    detailLines.push(`❌ Import 斷鏈 (${importIssues.length} 個檔案):`);
+    detailLines.push(`Import issues (${importIssues.length} files):`);
     for (const issue of importIssues) {
-      detailLines.push(`   ${issue.file}`);
-      for (const b of issue.broken) {
-        detailLines.push(`     └─ import '${b.import}' → 找不到 ${b.expected}`);
+      detailLines.push(`  ${issue.file}`);
+      for (const broken of issue.broken) {
+        detailLines.push(`    - ${broken.import} -> ${broken.expected}`);
       }
     }
+    detailLines.push('');
   }
-  detailLines.push('');
   detailLines.push(`NEXT: ${nextCmd}`);
 
-  // 存 log（詳情），回傳相對路徑
-  const logPath = writeGateLog(projectRoot, args.iter, 'error', detailLines.join('\n'), args.changed);
-
-  // 精簡終端輸出
-  console.log(`@BLOCKER | micro-fix-gate | ${blockerSummary}`);
+  const logPath = writeGateLog(projectRoot, 'error', detailLines.join('\n'), args.changed);
+  console.log(`@BLOCKER | micro-fix-gate | ${summary}`);
   if (logPath) {
     console.log(`@READ: ${logPath}`);
-    console.log(`  ↳ 包含: GEMS標籤缺失明細 + Import斷鏈明細 + 修復範例`);
   } else {
-    // fallback：無 log 可存時才直接印出詳情（跳過第一行 @BLOCKER 避免重複）
-    console.log('');
-    detailLines.slice(1).forEach(l => console.log(l));
+    detailLines.slice(1).forEach((line) => console.log(line));
   }
   console.log(`NEXT: ${nextCmd}`);
-  // --- Decision Log ---
-  const { writeDecisionLog } = require('../lib/decision-log.cjs');
-  writeDecisionLog(projectRoot, {
-    gate: 'micro-fix-gate',
-    status: 'BLOCKER',
-    iter: args.iter,
-    errors: [
-      ...tagIssues.map(i => `GEMS-missing:${i.file}`),
-      ...importIssues.map(i => `import-broken:${i.file}`)
-    ]
-  });
-  console.log(`[LOG-REQUIRED] gate=micro-fix-gate status=BLOCKER`);
-  console.log(`  → 補上 why + resolution 到 .gems/decision-log.jsonl 再繼續`);
   console.log('');
-
   process.exit(1);
 }
 

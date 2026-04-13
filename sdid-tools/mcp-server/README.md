@@ -32,11 +32,11 @@ npm install
 |------|------|----------|
 | `sdid-state-guide` | 狀態指令包（狀態/該讀/歷史/下一步/紅線） | 每次進入專案時 |
 | `sdid-build` | 執行 BUILD/POC/PLAN Phase | 開發主流程 |
-| `sdid-scan` | 執行 SCAN（全景報告） | BUILD 完成後 |
+| `sdid-scan` | 執行 canonical SCAN，產出 `.gems/docs/functions.json` | BUILD 完成後 |
 | `sdid-spec-gen` | 字典生成（Draft → specs/*.json） | 藍圖完成後 |
 | `sdid-spec-gate` | 字典品質驗證（5 項檢查） | 字典變更後 |
 | `sdid-dict-sync` | 行號回寫（源碼 → specs） | BUILD 完成後 |
-| `sdid-scanner` | GEMS 標籤掃描（覆蓋率） | 隨時檢查 |
+| `sdid-scanner` | 委派 canonical SCAN，canonical output 是 `.gems/docs/functions.json` | BUILD 完成後 |
 | `sdid-blueprint-gate` | 藍圖品質驗證 | 藍圖設計後 |
 | `sdid-micro-fix-gate` | 小修/POC-FIX 驗收 | 小修完成後 |
 

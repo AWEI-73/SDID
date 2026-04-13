@@ -8,7 +8,7 @@
 
 ## 前置：取得 needsTest 清單
 
-執行語意審查前，需確認來自 `cynefin-report.json` 的 `needsTest:true` actions 清單。
+執行語意審查前，需確認來自 Blueprint / Draft Design Review 的 `needsTest:true` actions 清單。
 若無法取得，假設所有 Complicated/Complex 域的 action 均為 `needsTest:true`。
 
 ---
@@ -123,13 +123,15 @@ export declare function createCourse(input: CreateCourseInput): Promise<Course>
 
 ---
 
-### B-CONTRACT-06：P1/P0 Action 跨越 2+ 架構層 = 必須拆分
-**條件**：單一 STORY-ITEM 的 FLOW、hiddenSteps 或行為描述同時涉及不同架構層組合
+### B-CONTRACT-06：P1/P0 Action 跨越架構層 = 必須拆分
+**條件**：單一 STORY-ITEM 的 FLOW 或行為描述同時涉及不同架構層組合
 
 **架構層 Enum**：
 ```
 visual | state | api | db | compat | routing | validation | calculation | external
 ```
+
+> 架構層是 Blueprint / Design Review 的拆分診斷，不是 Contract 欄位。不要在 Contract artifact 新增 `@GEMS-CONCERN-LAYERS`，也不要要求 `@GEMS-FLOW` 保存 concern layer。
 
 **BLOCKER 層組合**（以下任一）：
 ```
@@ -139,14 +141,13 @@ visual + state + api                        → 全層混合
 ```
 
 **判斷步驟**：
-1. 掃描 FLOW 動作詞、hiddenSteps 內容、行為描述
+1. 掃描 FLOW 動作詞與行為描述
 2. 對每個句子標記所屬架構層
-3. 涉及層數 >= 2 且包含上述 BLOCKER 組合 → BLOCKER（退回 Draft 拆分）
+3. 包含上述 BLOCKER 組合 → BLOCKER（退回 Draft / Blueprint Review 拆分）
 
 **範例違規**：
 ```typescript
 // FLOW: RENDER_DUAL_LAYOUT -> BIND_MILESTONE_PANEL -> SAVE_STATUS_COMPATIBLY
-// hiddenSteps: ["里程碑視覺位置計算", "狀態儲存舊格式相容", "API 錯誤邊界"]
 // ↑ visual + compat + api → BLOCKER，需拆成 3 個 STORY-ITEM
 ```
 
@@ -185,7 +186,7 @@ visual + state + api                        → 全層混合
 ---
 
 ### B-CONTRACT-08：P0/P1 UI STORY-ITEM 缺 @GEMS-SOURCE-TARGETS
-**條件**：P0 或 P1 的 UI STORY-ITEM 完全缺少 `@GEMS-SOURCE-TARGETS` tag，或 source target 數量超標且跨多個 concern layer
+**條件**：P0 或 P1 的 UI STORY-ITEM 完全缺少 `@GEMS-SOURCE-TARGETS` tag，或 source target 數量超標
 
 **設計原則**：
 - `@GEMS-FLOW` 維持行為語意（動詞驅動，不放 PascalCase）
@@ -212,7 +213,7 @@ visual + state + api                        → 全層混合
 | 情況 | 判斷 |
 |------|------|
 | `@GEMS-SOURCE-TARGETS` 完全缺失 | BLOCKER |
-| source targets 數量 > 3 且 concernLayers >= 2 | BLOCKER（應拆分，回 Draft） |
+| source targets 數量 > 3 | BLOCKER（應回 Draft / Blueprint Review 拆分或明確降級） |
 
 **豁免**（不觸發）：
 - SVC / ROUTE / CALC action（命名錨點由 interface/function 名稱覆蓋）

@@ -39,6 +39,8 @@
 
 ## Phase 0.5: Action 層級分析
 
+> Legacy note: Active SDID 不再把 Cynefin / Flow Review 當成獨立 gate，也不把 `concernLayers` 或 `splitRequired` 寫入 FLOW / Contract artifact。跨層拆分應在 Blueprint / Design Review 完成；Contract 只保留行為 FLOW 與 `@GEMS-SOURCE-TARGETS` 命名錨點。
+
 在模組域識別之後，對每個 action（動作清單中的每一行）做個別分析：
 
 | 欄位 | 說明 |
@@ -47,33 +49,29 @@
 | story | 所屬 Story |
 | domain | Clear/Complicated/Complex |
 | hiddenSteps | 這個 action 的隱含步驟（陣列） |
-| concernLayers | 此 action 涉及的架構層（見 Enum，可多個） |
 | needsTest | **腳本自動計算**（見下方規則） |
-| splitRequired | **腳本自動計算**（見下方規則）—優先於 needsTest |
 
-### 架構層 Enum
+### 架構層拆分判斷（移至 Blueprint / Design Review）
 
 ```
 visual | state | api | db | compat | routing | validation | calculation | external
 ```
 
-每個 action 分析時，標記其 hiddenSteps 及 FLOW 中涉及的層，填入 `concernLayers[]`。
-
-### splitRequired 判斷規則（優先檢查，比 needsTest 更強）
+以下判斷不應輸出為 Flow Review JSON 欄位，也不應被 Contract 保存；它是 Blueprint / Design Review 的拆分診斷：
 
 ```
 P0/P1 UI action，且：
-  concernLayers 涉及 (visual 或 state) + (api 或 db 或 compat)
-  → splitRequired: true，verdict: NEEDS_FIX（退回 Draft 拆分）
+  行為同時涉及 (visual 或 state) + (api 或 db 或 compat)
+  → @NEEDS_FIX（退回 Draft 拆分）
 ```
 
-**`splitRequired: true` 的含義**：這個 action 不是「複雜的單一事情」，而是「多件事被包在一起」，必須在 Draft 拆開，不能靠 TDD 解決。
+這種 action 不是「複雜的單一事情」，而是「多件事被包在一起」，必須在 Draft 拆開，不能靠 TDD 解決。
 
-### needsTest 判斷規則（splitRequired=false 才評估）
+### needsTest 判斷規則
 
 - `domain === 'Complicated'` 或 `domain === 'Complex'` → `needsTest: true`
-- `hiddenSteps.length >= 2` 且同一架構層 → `needsTest: true`
-- Complicated UI action 且 concernLayers 單層但 observable behaviors >= 3 → `needsTest: true`
+- `hiddenSteps.length >= 2` → `needsTest: true`
+- Complicated UI action 且 observable behaviors >= 3 → `needsTest: true`
 - 其他 → `needsTest: false`
 
 ---
@@ -96,11 +94,10 @@ P0/P1 UI action，且：
 ---
 
 **分析結果的影響**：
-- `splitRequired: true` → 回傳 NEEDS_FIX，退回 Draft 階段拆分，**不進入 Contract**
-- `needsTest: true` → CYNEFIN @PASS 後，Controller 派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），為此 action 寫測試檔並將 `@GEMS-TDD` 路徑加入 contract.ts，再由 Design Reviewer 審查，之後 Phase 2 執行 vitest
+- `needsTest: true` → Blueprint / Design Review 通過後，Controller 派 **TDD Contract Subagent**（見 `tdd-contract-prompt.md`），為此 action 寫測試檔並將 `@GEMS-TDD` 路徑加入 contract.ts，再由 Design Reviewer 審查，之後 Phase 2 執行 vitest
 - `needsTest: false` → Phase 2 只跑 `tsc --noEmit`（DB CRUD / UI / 外部 API 層）
 
-將 actions[] 填入 JSON report，供 cynefin-log-writer.cjs 寫入 cynefin-report.json，再由 Controller 讀取決定哪些 action 需要 TDD Contract Subagent 寫測試。
+Legacy flow 曾將 actions[] 填入 JSON report，供 cynefin-log-writer.cjs 寫入 cynefin-report.json，再由 Controller 讀取決定哪些 action 需要 TDD Contract Subagent 寫測試。Active SDID 不應新增或依賴此獨立產物。
 
 ---
 
@@ -212,6 +209,8 @@ P0/P1 UI action，且：
 
 ## 完成後
 
+> Legacy-only：以下命令保留給舊迭代讀檔，不是 active SDID workflow。Active flow 由 Blueprint / Draft Design Review 直接承接，不產生新的 cynefin-report。
+
 產出 JSON report，儲存到：
 ```
 {project}/.gems/iterations/iter-N/logs/cynefin-report-<timestamp>.json
@@ -223,9 +222,9 @@ P0/P1 UI action，且：
 node sdid-tools/cynefin-log-writer.cjs --report-file=<上述路徑> --target=<project> --iter=<N>
 ```
 
-log 寫入成功後才算 `@PASS`，loop 才會放行進入 **CONTRACT** 節點。
+Legacy log 寫入成功後才算 `@PASS`，loop 才會放行進入 **CONTRACT** 節點。
 
-> ⚠️ CYNEFIN-CHECK @PASS 後：
+> ⚠️ Legacy CYNEFIN-CHECK @PASS 後：
 > 1. 若有 `needsTest: true` 的 action → 先派 **TDD Contract Subagent**（寫測試檔 + 加 @GEMS-TDD）→ 再派 **Design Reviewer** 審查 contract
 > 2. 所有測試檔準備完畢 → **CONTRACT Gate**（contract-gate.cjs v5）
 > 3. CONTRACT @PASS → **PLAN**（spec-to-plan.cjs，機械轉換）

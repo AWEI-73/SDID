@@ -295,17 +295,38 @@ function getDefaultConfig() {
   };
 }
 
+function isExplicitFoundationStory(target, iteration, storyId) {
+  if (!target || !iteration || !storyId) return false;
+
+  const iterNum = String(iteration).replace('iter-', '');
+  const candidates = [
+    path.join(target, '.gems', 'iterations', iteration, `contract_iter-${iterNum}.ts`),
+    path.join(target, '.gems', 'iterations', iteration, 'plan', `implementation_plan_${storyId}.md`),
+  ];
+
+  return candidates.some((filePath) => {
+    try {
+      if (!fs.existsSync(filePath)) return false;
+      const content = fs.readFileSync(filePath, 'utf8');
+      return /@FOUNDATION-STORY\b|FOUNDATION_STORY:\s*true\b|Foundation Story/i.test(content);
+    } catch {
+      return false;
+    }
+  });
+}
+
 // ============================================
 // 執行階段腳本
 // ============================================
 function runPhase(phase, step, options, config) {
   const phaseLower = phase.toLowerCase();
 
-  // BUILD Phase 3: Foundation Story（X.0）跳過整合層
-  // S/M/L level 已廢棄，改用語意判斷
+  // BUILD Phase 3: Foundation Story 跳過整合層
+  // 僅接受 artifact 內的明確 marker；不能用 Story-X.0 編號推斷，
+  // 因為一般功能迭代也可能使用 Story-N.0。
   if (phase === 'BUILD' && step === '3') {
     const storyId = options.story || '';
-    const isFoundation = /^Story-\d+\.0$/.test(storyId);
+    const isFoundation = isExplicitFoundationStory(options.target, options.iteration, storyId);
     if (isFoundation) {
       log('');
       log(`⊘ SKIP Phase 3 (Foundation Story ${storyId} — 整合層不適用)`, 'yellow');

@@ -57,7 +57,7 @@
     "id": 10,
     "query": "需求已經很清楚了，直接幫我建 InvoiceSystem 專案，功能是：1. 上傳發票圖片 2. OCR 擷取金額 3. 分類管理",
     "should_trigger": true,
-    "reason": "需求明確 + 新專案 → DESIGN-TASKPIPE 路線"
+    "reason": "需求明確 + 新專案 → DESIGN-BLUEPRINT（Blueprint 輪次可縮短，直接建 draft）"
   },
   {
     "id": 11,

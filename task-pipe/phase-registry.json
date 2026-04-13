@@ -63,21 +63,24 @@
                 ]
             },
             "4": {
-                "name": "標籤品質+Fillback層",
+                "name": "Trace Closure + Entrypoint Metadata",
                 "file": "phase-4.cjs",
-                "description": "GEMS 標籤品質複查（全覆蓋驗收）+ 產出 Fillback 與 Suggestions",
+                "description": "Contract→Plan→Source→GEMS tag 鏈條驗證 + GEMS tag 格式（JSDoc 單行）+ skeleton residue 偵測 + entrypoint metadata check（light，不執行 build/typecheck，不宣稱 SCAN）",
                 "actions": [
-                    "Scan GEMS tags quality (all P0-P3, GEMS-FLOW completeness, @TEST path alignment)",
-                    "Scan source to generate Fillback",
-                    "Generate Suggestions JSON",
-                    "Update functions.json"
+                    "Validate Contract→Plan→Source→GEMS tag trace chain per story",
+                    "Check GEMS tag JSDoc single-line format (no multiline)",
+                    "Detect skeleton residue (throw new Error / TODO placeholder)",
+                    "Entrypoint metadata check (package.json / appsscript.json / index.html)"
                 ],
-                "requires": [],
+                "requires": [
+                    "implementation_plan",
+                    "source_code"
+                ],
                 "produces": [
-                    "fillback",
-                    "suggestions"
+                    "phase4_done_marker"
                 ],
-                "checkFile": "build/Fillback_{story}.md"
+                "checkFile": "build/phase4-done_{story}",
+                "_note": "phase4-done_Story-X.Y 是 Build story completion marker。functions.json / project overview 由 SCAN 階段產出，不屬於 Phase 4。"
             }
         }
     },
@@ -90,16 +93,62 @@
             "scan": {
                 "name": "Full Scan",
                 "file": "scan.cjs",
-                "description": "完整專案掃描",
+                "description": "完整專案掃描：掃描 GEMS tag 產出 function cache 與 human/agent docs。在所有 story Build Phase 4 完成後執行，VERIFY 依賴其 canonical product。",
                 "actions": [
-                    "Scan all GEMS tags",
-                    "Generate functions.json",
-                    "Generate system-blueprint.json"
+                    "Scan all GEMS tags → functions.json (canonical)",
+                    "Generate project-overview.json (stats + tech-stack + stories)",
+                    "Generate DB_SCHEMA.md (schema markdown)",
+                    "Generate CONTRACT.md (contract summary markdown, try/catch)",
+                    "Write functions-snapshot.json to iteration dir (diagnostic)",
+                    "Delete deprecated files: system-blueprint.json, schema.json, tech-stack.json, function-index.json"
                 ],
-                "requires": [],
+                "requires": [
+                    "phase4_done_marker"
+                ],
+                "produces": {
+                    "canonical": [
+                        "functions_json"
+                    ],
+                    "auxiliary_docs": [
+                        "project_overview",
+                        "db_schema_md",
+                        "contract_md"
+                    ],
+                    "iteration_diagnostic": [
+                        "functions_snapshot"
+                    ]
+                },
+                "_not_produced": [
+                    "system_blueprint",
+                    "function_index",
+                    "schema_json",
+                    "tech_stack",
+                    "contract_json"
+                ]
+            }
+        }
+    },
+    "VERIFY": {
+        "steps": [
+            "verify"
+        ],
+        "prefix": "",
+        "definitions": {
+            "verify": {
+                "name": "Blueprint Verify",
+                "file": "sdid-tools/blueprint/verify.cjs",
+                "description": "Blueprint ↔ Source 雙向語意比對，使用 SCAN canonical product（functions.json）。不做 auto-scan，不接受隱式 fallback。VERIFY pass 後輸出 BLUEPRINT_FILLBACK_PENDING hook。",
+                "requires": [
+                    "functions_json"
+                ],
+                "_not_accepted": [
+                    "function_index",
+                    "functions_snapshot",
+                    "auto_scan"
+                ],
                 "produces": [
-                    "functions_json",
-                    "system_blueprint"
+                    "blueprint_verify_report",
+                    "blueprint_fillback_pending"
                 ]
             }
         }
@@ -112,25 +161,12 @@
         "default": ["1", "2", "3", "4"]
     },
     "flowSequence": [
-        {
-            "phase": "BUILD",
-            "step": "1"
-        },
-        {
-            "phase": "BUILD",
-            "step": "2"
-        },
-        {
-            "phase": "BUILD",
-            "step": "3"
-        },
-        {
-            "phase": "BUILD",
-            "step": "4"
-        },
-        {
-            "phase": "SCAN",
-            "step": "scan"
-        }
-    ]
+        { "phase": "BUILD",  "step": "1" },
+        { "phase": "BUILD",  "step": "2" },
+        { "phase": "BUILD",  "step": "3" },
+        { "phase": "BUILD",  "step": "4" },
+        { "phase": "SCAN",   "step": "scan" },
+        { "phase": "VERIFY", "step": "verify" }
+    ],
+    "_flowNote": "Build Phase 4 寫 phase4-done_Story-X.Y（每 story）。所有 story 完成後進 SCAN，SCAN pass 後進 VERIFY，VERIFY pass 後 BLUEPRINT_FILLBACK_PENDING（fillback 工具尚待實作）。Fillback_Story-X.Y.md 是 VERIFY 後產物，不再作為 Build story completion marker。"
 }

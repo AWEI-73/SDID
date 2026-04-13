@@ -2,7 +2,7 @@
 
 **用途**：CONTRACT 草稿產出後，取代 AI 自評，由獨立 subagent 做語意審查。
 
-**觸發時機**：TDD Contract Subagent 完成（或無 needsTest:true 時直接觸發）→ 派此 subagent → 審查通過才進 contract-gate 評分。
+**觸發時機**：contract 草稿完成（含 @TEST 路徑填入）後 → 派此 subagent → 審查通過才進 contract-gate 機械驗證。
 
 **Controller 使用方式**：將以下 prompt 填入 Agent tool，把 `[佔位符]` 換成實際內容後 dispatch。
 
@@ -24,14 +24,15 @@ Agent tool (general-purpose):
     - 假設 contract 是完整的
     - 接受模糊或語意不清的介面定義
     - 跳過任何 P0 action 的驗證
-    - 要求 @GEMS-TDD 必須存在（只有 needsTest:true 的 action 才需要）
-    - 對無 @GEMS-TDD 的 DB/UI action 扣分
+    - 要求 @TEST 必須存在（只有 Blueprint Cynefin needsTest candidates 才需要）
+    - 對無 @TEST 的 DB/UI action 扣分
+    - 重新做 Cynefin 域分析（Contract review 只驗 @TEST 存在性）
 
     **DO:**
+    - 先做 Blocker Gate，有 blocker 直接 @NEEDS_FIX，不繼續打分
     - 讀 Draft 的每個 action，對應找 contract 的 method 簽名
-    - 確認 needsTest:true 的 action 是否有對應 @GEMS-TDD 路徑
-    - 驗證 @GEMS-TDD 路徑格式（src/ 開頭，.test.ts 結尾）
-    - 找出所有技術動詞黑名單違規
+    - 確認 needsTest:true 的 action 是否有對應 @TEST: 路徑
+    - 驗證 @TEST 路徑格式（src/ 開頭，.test.ts 結尾）
     - 區分 action 類型再判斷 interface 完整性（見下方規則）
 
     ---
@@ -48,22 +49,35 @@ Agent tool (general-purpose):
 
     ---
 
-    ## needsTest:true 的 Actions（來自 cynefin-report.json）
+    ## needsTest:true 的 Actions（來自 Blueprint Cynefin Analysis）
 
-    [直接貼入 cynefin-report.json 中 needsTest:true 的 actions[] 段落]
+    [貼入 Blueprint R4 Cynefin Analysis 輸出的 needsTest candidates 列表；若無則填 "無"]
 
     ---
 
     ## 審查規則
+
+    ### Step 1: Blocker Gate（先執行，有 blocker 就直接 @NEEDS_FIX）
+
+    以下任一情況即為 blocker：
+    - P0 action 在 contract 中完全找不到對應宣告
+    - needsTest:true action 缺少 `@TEST:` 路徑
+    - 所有型別都是 `any`（整份 contract 無型別邊界）
+
+    有 blocker → 輸出 `@NEEDS_FIX`，列出 blockers，不進入評分。
+
+    ---
+
+    ### Step 2: Quality Score（無 blocker 才執行）
 
     ### CONTRACT 評分維度（門檻 90）
 
     | 維度 | 滿分 | 扣分規則 |
     |------|------|---------|
     | Interface 完整性 | 25 | 每缺一個必要宣告扣 8（見下方分類規則） |
-    | 型別具體性 | 20 | 每個 any / 裸 object / unknown 扣 8 |
-    | TDD 路徑覆蓋 | 25 | 每個 needsTest:true action 缺 @GEMS-TDD 扣 10；格式錯誤扣 5 |
-    | 邊界說明完整性 | 20 | 每個 P0 寫入 action 缺錯誤情境描述（comment 或 hiddenSteps）扣 6 |
+    | 型別精度 | 25 | 每個 any / 裸 object / unknown 扣 8 |
+    | @TEST 路徑覆蓋 | 25 | 每個 needsTest:true action 缺 @TEST 扣 10；格式錯誤扣 5 |
+    | Behavior/Risk 完整性 | 15 | 每個 P0 寫入 action 缺錯誤情境描述扣 6 |
     | 命名一致性 | 10 | 每個與 Draft 不符的實體名稱扣 5 |
 
     ---
@@ -77,8 +91,8 @@ Agent tool (general-purpose):
     | API（Router / Service） | `IXxxService` interface，含所有 CRUD method | `IClassService { getClasses, createClass, updateClass, deleteClass }` |
     | LIB（純計算函式） | `export declare function fnName(args): ReturnType` | `export declare function calcNodeDate(startDate: string, offsetDays: number): Date` |
     | CONST/SVC（副作用函式） | `export declare function fnName(args): ReturnType` | `export declare function initDatabase(): Promise<void>` |
-    | UI（Page / Component） | 不需要 TypeScript 宣告，無 @GEMS-TDD 即可 | — |
-    | ROUTE（AppRouter） | 不需要 TypeScript 宣告，無 @GEMS-TDD 即可 | — |
+    | UI（Page / Component） | 不需要 TypeScript 宣告，無 @TEST 即可 | — |
+    | ROUTE（AppRouter） | 不需要 TypeScript 宣告，無 @TEST 即可 | — |
 
     **判斷邏輯**：
     - API action → 找對應的 `IXxxService` interface，缺少任何 CRUD method 才扣分
@@ -90,20 +104,20 @@ Agent tool (general-purpose):
     ### TDD 路徑覆蓋：判斷標準
 
     **needsTest:true 的 action**（Complicated/Complex 域，或 hiddenSteps.length >= 2 的純計算/業務邏輯）：
-    - 必須有對應的 `// @GEMS-TDD: src/modules/{Module}/.../{function}.test.ts`
+    - 必須有對應的 `// @TEST: src/modules/{Module}/.../{function}.test.ts`
     - 路徑格式：`src/` 開頭 + `.test.ts` 結尾
     - 缺少 → 扣 10 分；格式錯誤 → 扣 5 分
 
     **needsTest:false 的 action**（DB CRUD / UI / 外部 API）：
-    - 不需要 @GEMS-TDD，不扣分
-    - 若有 @GEMS-TDD 且格式正確，不影響分數（bonus，不加分）
+    - 不需要 @TEST，不扣分
+    - 若有 @TEST 且格式正確，不影響分數（bonus，不加分）
 
     ---
 
     ### 邊界說明完整性：豁免規則
 
     **必須有錯誤情境說明的 action（P0 寫入操作）：**
-    - 建立資源（create）→ 必須有空值/缺必填欄位的錯誤情境（comment、hiddenSteps 或 @GEMS-TDD 測試案例）
+    - 建立資源（create）→ 必須有空值/缺必填欄位的錯誤情境（comment、hiddenSteps 或 @TEST 測試案例）
     - 更新資源（update）→ 必須有不存在 id 的錯誤情境
     - 刪除資源（delete）→ 必須有不存在 id 的錯誤情境
 
@@ -118,17 +132,31 @@ Agent tool (general-purpose):
     ## 你的審查步驟
 
     1. **建立 Draft action 清單**：列出所有 action，標記類型（API/LIB/CONST/SVC/UI/ROUTE）和優先級（P0/P1/P2）
-    2. **Interface 完整性檢查**：依分類規則逐一核對（UI/ROUTE 直接跳過）
-    3. **型別具體性檢查**：掃描所有 interface/declare function 的參數和回傳型別，找 any / object / unknown
-    4. **TDD 路徑覆蓋檢查**：對每個 needsTest:true action，確認 @GEMS-TDD 路徑存在且格式正確
-    5. **邊界說明完整性**：只針對 P0 寫入 action，依豁免規則判斷
-    6. **命名一致性檢查**：Draft 的實體名稱 vs contract 的型別名稱
+    2. **Blocker Gate（先執行）**：掃描三項 blocker 條件 → 有任一 blocker 直接 @NEEDS_FIX，不繼續
+    3. **Interface 完整性檢查**：依分類規則逐一核對（UI/ROUTE 直接跳過）
+    4. **型別精度檢查**：掃描所有 interface/declare function 的參數和回傳型別，找 any / object / unknown
+    5. **@TEST 路徑覆蓋**：對每個 needsTest:true action，確認 @TEST 路徑存在且格式正確（不重跑 Cynefin 三問）
+    6. **Behavior/Risk 完整性**：只針對 P0 寫入 action，依豁免規則判斷
+    7. **命名一致性檢查**：Draft 的實體名稱 vs contract 的型別名稱
 
     ---
 
     ## 輸出格式
 
-    ALWAYS 使用以下格式，不要省略任何項目：
+    ALWAYS 使用 Blocker-first 格式，不要省略任何項目：
+
+    ### 第一段：Blocker Gate 結果
+
+    若有 blocker，直接輸出以下格式並停止（不進入評分）：
+
+    ```
+    @NEEDS_FIX
+    blockers:
+      - [具體違規描述，含 contract 位置]
+    score: omitted due to blockers
+    ```
+
+    ### 第二段：Quality Score（無 blocker 才輸出）
 
     ### 審查結果 — iter-[N]
 
@@ -136,15 +164,15 @@ Agent tool (general-purpose):
     [得分]：[說明]
     - ✅ 或 ❌ actionName（類型）→ 對應宣告狀態
 
-    #### 型別具體性（/20）
+    #### 型別具體性（/25）
     [得分]：[說明]
     - ✅ 或 ❌ 宣告名稱 → 問題描述 → 建議修法
 
-    #### TDD 路徑覆蓋（/25）
+    #### @TEST 路徑覆蓋（/25）
     [得分]：[說明]
-    - ✅ 或 ❌ actionName（needsTest:true）→ @GEMS-TDD 路徑狀態
+    - ✅ 或 ❌ actionName（needsTest:true）→ @TEST 路徑狀態
 
-    #### 邊界說明完整性（/20）
+    #### Behavior/Risk 完整性（/15）
     [得分]：[說明]
     - ✅ 或 ❌ actionName（P0 寫入）→ 有/缺 錯誤情境說明
 
@@ -184,7 +212,7 @@ Agent tool (general-purpose):
 2. 取得：
    - draft_iter-N.md 全文
    - contract_iter-N.ts 全文
-   - cynefin-report.json 中 needsTest:true 的 actions[]（可能為空）
+   - Blueprint R4 Cynefin Analysis 輸出的 needsTest candidates 列表（可能為空）
 3. 填入 prompt 的三個佔位符
 4. Dispatch subagent（model: opus）
 ```
@@ -206,15 +234,15 @@ Agent tool (general-purpose):
 ## 與 SDID 流程的銜接點
 
 ```
-CYNEFIN-CHECK @PASS
+draft-gate @PASS
+    ↓
+CONTRACT 語意擴充（AI 介入，展開 interface / 精確化 Behavior / 補邊界條件）
     ↓
 [TDD Contract Subagent]（若有 needsTest:true action）
     ├─ 寫測試檔（RED）
-    └─ 加 @GEMS-TDD 路徑到 contract.ts
+    └─ 加 @TEST 路徑到 contract.ts
     ↓ READY
-CONTRACT 語意擴充完成
-    ↓
-[此 subagent] Design Reviewer
+[此 subagent] Design Reviewer（artifact-level 語意審查，非 state-machine phase）
     ↓ PASS
 contract-gate.cjs v5（機械格式驗證）
     ↓ @PASS

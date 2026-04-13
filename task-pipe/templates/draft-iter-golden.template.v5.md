@@ -81,3 +81,34 @@
   - REVIEW 重跑後 Priority 1 項目清零
   - 某功能在 UI 操作後狀態保留
 -->
+---
+
+## DR-040 / Structure-Ready 補充
+
+- Draft 至少要有一種可機械解析的 structure 來源。
+- 可接受格式 A:
+  - 使用「動作清單」表格
+  - 且每列至少具備 `類型 / 技術名 / 優先級 / 流向`
+- 可接受格式 B:
+  - 另外補 `module-actions`
+  - 或 `module / publicAPI / deps` 區段
+- 若兩者都沒有，`draft-gate` 會以 `DR-040` 擋下並輸出補法提示。
+
+最小範例 A:
+
+```md
+| 描述 | 類型 | 技術名 | 簽名 | 優先級 | 流向 | 依賴 | TDD |
+|------|------|--------|------|--------|------|------|-----|
+| 甘特主區塊 | UI | GanttV5Grid | (props) => JSX.Element | P1 | READ->LAYOUT->RENDER | [gantt-layout] | [UI] |
+```
+
+最小範例 B:
+
+```md
+## Module Actions
+
+- module: gantt
+- publicAPI: GanttV5Grid, MilestoneTimelineMarkers
+- deps: shared/date, lib/layout
+- features: gantt-grid, milestone-stack
+```

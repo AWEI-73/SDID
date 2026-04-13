@@ -176,6 +176,14 @@ function parseDraft(raw) {
   const d = {
     iterNum: null, module: '', goal: '', deps: '',
     storyStrategy: '', actions: [], acDefs: [], apiSummary: [],
+    'DR-040': `請至少提供一種可被 structure 收斂器讀懂的格式：
+- 方案 A：保留「動作清單」表格，並確保每列至少有：類型 / 技術名 / 優先級 / 流向
+- 方案 B：加入 module-actions / module / publicAPI / deps 類區段
+
+最小表格範例：
+| 描述 | 類型 | 技術名 | 簽名 | 優先級 | 流向 | 依賴 | TDD |
+|------|------|--------|------|--------|------|------|-----|
+| 建立 UI header | UI | GanttV5Topbar | (props) => JSX.Element | P1 | RENDER→STYLE | none | false |`,
   };
 
   const iterM = raw.match(/\*\*迭代\*\*:\s*iter-(\d+)/);
@@ -223,6 +231,30 @@ function parseDraft(raw) {
   }
 
   return d;
+}
+
+function detectStructureReadiness(d, raw) {
+  const actionRows = Array.isArray(d.actions) ? d.actions : [];
+  const tableReadyRows = actionRows.filter((item) =>
+    item &&
+    String(item.type || '').trim() &&
+    String(item.techName || '').trim() &&
+    String(item.priority || '').trim() &&
+    String(item.flow || '').trim()
+  );
+
+  if (tableReadyRows.length > 0) {
+    return { ok: true, mode: 'table-actions', count: tableReadyRows.length };
+  }
+
+  const hasModuleActionSection =
+    /##\s*(Module Actions|Modules?|模組動作|模組規劃)/i.test(raw) &&
+    /public\s*api|publicapi|deps|features?/i.test(raw);
+  if (hasModuleActionSection) {
+    return { ok: true, mode: 'module-actions', count: 0 };
+  }
+
+  return { ok: false, mode: null, count: 0 };
 }
 
 // ── Gate checks（只驗大項結構，不驗語意）──
@@ -318,6 +350,11 @@ function checkDraft(d, raw, blueprint) {
     } catch (e) { /* blueprint-gate 不存在時跳過 */ }
   }
 
+  const structure = detectStructureReadiness(d, raw);
+  if (!structure.ok) {
+    B('DR-040', 'Draft 缺少可機械解析的 structure 資訊。請至少提供一種格式：1) 動作清單表格，且每列具備 類型/技術名/優先級/流向；或 2) 明確的 module-actions/module/publicAPI/deps 區段。');
+  }
+
   return { blockers, guided };
 }
 
@@ -332,6 +369,14 @@ function getDraftFixHint(code) {
     'DR-013': `流向格式: STEP1→STEP2→STEP3，例如: VALIDATE→INSERT→RETURN`,
     'DR-016': `P0/P1 動作必須有 TDD 欄位，填 [TDD]（純計算）/ [DB]（資料庫操作）/ [UI]（前端元件）`,
     'DR-020': `## TDD 測試需求\n- createClass: Given 有效資料 / When 呼叫 createClass / Then 回傳含 id 的新建物件`,
+    'DR-040': `請至少提供一種可被 structure 收斂器讀懂的格式：
+- 方案 A：保留「動作清單」表格，並確保每列至少有：類型 / 技術名 / 優先級 / 流向
+- 方案 B：加入 module-actions / module / publicAPI / deps 類區段
+
+最小表格範例：
+| 描述 | 類型 | 技術名 | 簽名 | 優先級 | 流向 | 依賴 | TDD |
+|------|------|--------|------|--------|------|------|-----|
+| 建立 UI header | UI | GanttV5Topbar | (props) => JSX.Element | P1 | RENDER→STYLE | none | false |`,
   };
   return hints[code] || null;
 }
@@ -514,6 +559,11 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
       console.log(`  ACTION: FIX_DRAFT`);
       console.log(`  FILE: ${relDraft}`);
       console.log(`  EXPECTED: [${b.code}] ${b.msg}`);
+      const hint = getDraftFixHint(b.code);
+      if (hint) {
+        console.log(`  HINT:`);
+        hint.split('\n').forEach(line => console.log(`    ${line}`));
+      }
       console.log('');
     });
     if (guided.length > 0) {
@@ -546,5 +596,5 @@ Draft Gate v5.1 — Per-iter Draft 格式門控（機械化）
   process.exit(passed ? 0 : 1);
 }
 
-module.exports = { parseDraft, checkDraft, autoPatch };
+module.exports = { parseDraft, checkDraft, autoPatch, detectStructureReadiness };
 if (require.main === module) main();

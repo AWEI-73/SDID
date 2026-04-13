@@ -1,17 +1,25 @@
 #!/usr/bin/env node
 /**
- * SCAN Phase: 規格書產出
- * 
- * 執行所有 scanner 工具，產出專案規格書到 .gems/docs/
- * 
- * 產出:
- *   - system-blueprint.json - 整合藍圖
- *   - functions.json - 函式清單 (含 specPurpose)
- *   - schema.json - 資料庫結構
- *   - tech-stack.json - 技術棧
- * 
+ * SCAN Phase: 函式 cache + 規格文件產出
+ *
+ * Canonical product（VERIFY 依賴）:
+ *   - .gems/docs/functions.json         — 函式清單，VERIFY 的唯一合法輸入
+ *
+ * Auxiliary docs（human/agent 可讀）:
+ *   - .gems/docs/project-overview.json  — 統計 + tech-stack + stories 分組
+ *   - .gems/docs/DB_SCHEMA.md           — 資料庫結構（Markdown）
+ *   - .gems/docs/CONTRACT.md            — Contract 摘要（Markdown）
+ *
+ * Iteration snapshot（diagnostic，非 VERIFY 輸入）:
+ *   - .gems/iterations/<iter>/functions-snapshot.json
+ *
+ * 不再產出（已刪除或從未產出）:
+ *   - system-blueprint.json — 已廢除，SCAN 不產出
+ *   - schema.json / tech-stack.json / TECH_STACK.md / contract.json — 已廢除
+ *   - function-index.json — 若生成後立刻刪除；VERIFY 不使用
+ *
  * 備份:
- *   - 將當前 iteration 的產物與源碼備份到 .gems/backups/
+ *   - 將當前 iteration 的源碼快照備份到 .gems/backups/
  */
 const fs = require('fs');
 const path = require('path');
@@ -170,17 +178,9 @@ function runBuiltinScan(target, srcDirs, iteration, docsPath, backupsPath, iterP
       console.log(`[SCAN] 使用 gems-scanner-unified (Regex fallback)`);
     }
 
-    // 產出 function-index
-    if (unified.generateFunctionIndexV2 && scanResult.functions?.length > 0) {
-      try {
-        const { generateFunctionIndex } = require('../../lib/scan/gems-scanner-enhanced.cjs');
-        const index = generateFunctionIndex(scanResult.functions);
-        fs.writeFileSync(
-          path.join(docsPath, 'function-index.json'),
-          JSON.stringify(index, null, 2)
-        );
-      } catch { /* enhanced not available, skip index */ }
-    }
+    // Note: function-index.json is NOT generated here.
+    // It was previously generated then deleted in the cleanup step — removed to avoid confusion.
+    // VERIFY uses only functions.json; no other index file is needed.
 
     // M28-8: contract cross-reference — 從 contract 注入 behavior/testPath/flowComplexity
     const contractFlows = loadContractFlows(target, iteration);
@@ -284,7 +284,10 @@ function runBuiltinScan(target, srcDirs, iteration, docsPath, backupsPath, iterP
     };
     fs.writeFileSync(path.join(docsPath, 'project-overview.json'), JSON.stringify(overview, null, 2));
 
-    // 清理舊產物（向後相容：刪掉已整合的檔案）
+    // 清理廢棄產物（確保 .gems/docs/ 不殘留非 canonical 檔案）
+    // system-blueprint.json, schema.json, tech-stack.json, TECH_STACK.md, contract.json:
+    //   已廢除，整合進 project-overview.json / DB_SCHEMA.md / CONTRACT.md
+    // function-index.json: 不是穩定產物，VERIFY 不使用，清除以免混淆
     ['system-blueprint.json', 'schema.json', 'tech-stack.json', 'TECH_STACK.md', 'contract.json', 'function-index.json'].forEach(f => {
       const p = path.join(docsPath, f);
       if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -322,25 +325,30 @@ function runBuiltinScan(target, srcDirs, iteration, docsPath, backupsPath, iterP
       console.log('');
     }
 
-    anchorPass('SCAN', 'Enhanced Scan v7.0',
-      `SCAN 完成 | Funcs: ${scanResult.functions.length} | 平均 ${scanResult.stats.avgFunctionLines || '?'} 行/函式`,
-      `位置: ${path.relative(process.cwd(), docsPath) || docsPath}`,
+    // 確認 canonical product 實際存在
+    const canonicalExists = fs.existsSync(path.join(docsPath, 'functions.json'));
+    const actualProduced  = produced.filter(f => fs.existsSync(path.join(docsPath, f)));
+
+    anchorPass('SCAN', 'Scan v7.0',
+      `functions.json 產出 | Funcs: ${scanResult.functions.length} | 平均 ${scanResult.stats.avgFunctionLines || '?'} 行/函式`,
+      `canonical: .gems/docs/functions.json | 其他: ${actualProduced.filter(f => f !== 'functions.json').join(', ') || '(無)'}`,
       {
         ...runOptions,
         info: {
-          'Version': scannerVersion,
-          'P0': scanResult.stats.p0,
-          'P1': scanResult.stats.p1,
-          '行號索引': scannerVersion === '7.0' ? '✓' : '-',
-          'Shrink': '無'
+          'Version':   scannerVersion,
+          'P0':        scanResult.stats.p0,
+          'P1':        scanResult.stats.p1,
+          'canonical': canonicalExists ? '✓ functions.json' : '❌ MISSING',
+          'snapshot':  fs.existsSync(path.join(iterPath, 'functions-snapshot.json')) ? '✓' : '-',
         }
       }
     );
 
     return {
-      verdict: 'PASS',
-      produced,
-      mode: scannerVersion === '7.0' ? 'enhanced-v7' : 'builtin-lite'
+      verdict:  'PASS',
+      produced: actualProduced,
+      canonical: canonicalExists,
+      mode: scannerVersion === '8.0' ? 'enhanced-v7' : 'builtin-lite',
     };
 
   } catch (err) {

@@ -135,7 +135,7 @@ Agent tool (general-purpose):
 
     ## 需要處理的 Actions
 
-    [直接貼入 cynefin-report.json 中 needsTest:true 的 actions[] 段落]
+    [列出 draft 中標記為 Complicated/Complex 的 actions（needsTest:true）]
 
     ```json
     [
@@ -329,14 +329,13 @@ Agent tool (general-purpose):
 ### 分派前準備
 
 ```
-1. 確認 cynefin-report.json 已產出（CYNEFIN @PASS 後）
-2. 確認 flow-review-pass-*.log 已產出（FLOW-REVIEW @PASS 後）
-3. 取得：
-   - cynefin-report.json 中 needsTest:true 的 actions[]
-   - contract_iter-N.ts 草稿（相關 @GEMS-STORY-ITEM 段落）
+1. 確認 draft 已通過 design-review（draft-gate @PASS）
+2. 取得：
+   - draft_iter-N.md（已標記哪些 action 是 Complicated/Complex）
+   - contract_iter-N.ts 草稿（相關 @CONTRACT 段落）
    - project path
-4. 填入 prompt 的三個佔位符
-5. Dispatch subagent（model: sonnet）
+3. 填入 prompt 的三個佔位符
+4. Dispatch subagent（model: sonnet）
 ```
 
 ### 收到結果後的處理
@@ -352,15 +351,15 @@ Agent tool (general-purpose):
 ## 與 SDID 流程的銜接點
 
 ```
-CYNEFIN-CHECK @PASS
+draft-gate @PASS
     ↓
-[此 subagent] TDD Contract Writer
-    ├─► needsTest:true → 寫測試檔（RED）→ 黃金樣板加入 contract.ts
+[此 subagent] TDD Contract Writer（有 Complicated/Complex action 時）
+    ├─► needsTest:true → 寫測試檔（RED）→ @TEST 路徑加入 contract.ts
     └─► needsTest:false → 不處理（DB/UI 層，Phase 2 只跑 tsc --noEmit）
     ↓ READY
 contract-gate.cjs → 驗證 @CONTRACT P0 必有 @TEST，@TEST 路徑存在 → @PASS
     ↓ @PASS
-Plan Writer → BUILD Phase 1（plan 結構驗證）→ Phase 2（@TEST 跑 GREEN）→ Phase 3（整合）
+Plan Writer → BUILD Phase 1-4 → SCAN
 ```
 
 ---
@@ -374,8 +373,7 @@ contract-gate 在 @PASS 後驗證：
 | CG-001 | @CONTRACT P0 必有 @TEST | BLOCKER |
 | CG-002 | @TEST 路徑必須以 `.test.ts` 結尾 | BLOCKER |
 | CG-003 | @TEST 路徑必須實際存在（RED 測試已寫） | BLOCKER |
-| CG-004 | cynefin-report needsTest:true 的 action 必有 @TEST | BLOCKER |
-| CG-005 | Behavior: 至少有一條錯誤路徑（含 Error/拋出） | WARNING |
+| CG-004 | Behavior: 至少有一條錯誤路徑（含 Error/拋出） | WARNING |
 
 ---
 

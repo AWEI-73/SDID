@@ -25,6 +25,8 @@ const { extractPlanSpec, extractFunctionManifest, getStoryContext } = require('.
 // P0.8: Plan Schema 驗證
 const { validatePlan } = require('../../lib/plan/plan-validator.cjs');
 
+const API_SURFACE_TYPES = new Set(['API', 'SVC', 'HTTP']);
+
 /** GEMS: buildPhase1 | P1 | loadPlan(IO)→generateScaffold(IO)→runTsc(IO)→RETURN:PhaseResult | Story-4.0 */
 function run(options) {
   const { target, iteration = 'iter-1', story, level = 'M' } = options;
@@ -100,12 +102,21 @@ mkdir -p ${planPath}
   // P0.8: Plan Schema 驗證 — 確保 plan 格式正確再進 BUILD
   const planValidation = validatePlan(planFile);
   if (!planValidation.valid) {
-    const errorSummary = planValidation.errors.map(e => `[${e.rule}] ${e.message}`).join('; ');
+    const planRelPath = path.relative(process.cwd(), planFile);
     emitBlock({
       scope: `BUILD Phase 1 | ${story}`,
       summary: `Plan Schema 驗證失敗 (${planValidation.errors.length} 個錯誤)`,
-      detail: errorSummary,
-      nextCmd: `修正 ${path.relative(process.cwd(), planFile)} 後重跑: node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${relativeTarget}`
+      targetFile: planRelPath,
+      details: planValidation.errors.map(e => `[${e.rule}] ${e.message}`).join('\n'),
+      missing: planValidation.errors.map(e => `[${e.rule}] ${e.message}`),
+      tasks: planValidation.errors.map(e => ({
+        action: e.rule === 'IMPL_SKELETON' ? 'FIX_IMPL_SKELETON'
+              : e.rule === 'PLAN_TRACE'    ? 'FIX_PLAN_TRACE'
+              : 'FIX_PLAN_SCHEMA',
+        file: planRelPath,
+        expected: e.message,
+      })),
+      nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${relativeTarget}`
     }, {
       projectRoot: target,
       iteration: parseInt(iteration.replace('iter-', '')),
@@ -138,18 +149,40 @@ mkdir -p ${planPath}
   const storyContext = getStoryContext(planFile);
   const planSpecsBlock = generatePlanSpecsBlock(planSpec, manifest, story);
 
-  // 判斷是 Story-1.0 還是後續模組
+  const apiReadiness = checkApiContractReadiness(target, iteration, story, manifest, content);
+  if (apiReadiness.verdict === 'BLOCKER') {
+    emitBlock({
+      scope: `BUILD Phase 1 | ${story}`,
+      summary: apiReadiness.summary,
+      targetFile: apiReadiness.targetFile,
+      details: apiReadiness.details,
+      missing: apiReadiness.missing,
+      tasks: apiReadiness.tasks,
+      nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${relativeTarget}`
+    }, {
+      projectRoot: target,
+      iteration: parseInt(iteration.replace('iter-', '')),
+      phase: 'build',
+      step: 'phase-1',
+      story
+    });
+    return { verdict: 'BLOCKER', reason: 'api_contract_incomplete', missing: apiReadiness.missing };
+  }
+
+  // 判斷是否為 Foundation。不要用 Story-X.0 推斷，因為後續 iter 也可能有 12.0 這種非基礎建設 Story。
   const storyMatch = story.match(/Story-(\d+)\.(\d+)/);
   const storyX = storyMatch ? parseInt(storyMatch[1]) : 1;
   const storyY = storyMatch ? parseInt(storyMatch[2]) : 0;
-  const isFoundation = storyY === 0; // Story-X.0 都是 Foundation（基礎建設 Story）
+  const isFoundation = /@FOUNDATION-STORY/i.test(content) || (storyX === 1 && storyY === 0);
+  const isVscRefactorExempt = /@VSC-EXEMPT:\s*REFACTOR_ONLY/i.test(content);
+  const existingApiMarker = content.match(/@VSC-EXISTING-API:\s*(.+)/i);
 
   // ========================================
   // 🔍 VSC 垂直切片完整性檢查 (v1.0)
   // Task-Pipe 版本：從 Plan 函式清單掃描類型
   // Feature Story (X.Y, Y > 0) 必須有 ROUTE 類型
   // ========================================
-  if (!isFoundation) {
+  if (!isFoundation && !isVscRefactorExempt) {
     // 從 manifest 的函式清單中，取得所有動作類型
     const allTypes = new Set(
       (manifest?.functions || []).map(fn => (fn.type || fn.actionType || '').toUpperCase())
@@ -162,6 +195,9 @@ mkdir -p ${planPath}
       const t = m.replace(/\|/g, '').trim().toUpperCase();
       allTypes.add(t);
     });
+    if (existingApiMarker) {
+      allTypes.add('API');
+    }
 
     const missingVSC = [];
     // UI 類型也算前端展示層，有 UI 或 ROUTE 都滿足前端進入點需求
@@ -178,17 +214,25 @@ mkdir -p ${planPath}
     }
 
     if (missingVSC.length > 0) {
+      const planRelPath = path.relative(process.cwd(), planFile);
       emitBlock({
         scope: `BUILD Phase 1 | ${story}`,
         summary: `垂直切片不完整 (VSC-002): 缺少 ${missingVSC.join(' | ')}`,
-        detail: [
+        targetFile: planRelPath,
+        details: [
           '每個 Feature Story 必須包含完整的垂直切片，使用者才能實際看到並使用該功能。',
           '請在 implementation_plan 中補充缺少的層次動作：',
           ...missingVSC.map(m => `  - ${m}`),
           '',
           '範例：在動作表格加入 | 頁面路由 | ROUTE | TimerPage | P1 | LOAD→RENDER→BIND |'
         ].join('\n'),
-        nextCmd: `修正 implementation_plan_${story}.md 後重跑: node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${relativeTarget}`
+        missing: missingVSC,
+        tasks: missingVSC.map(m => ({
+          action: 'FIX_PLAN_SCHEMA',
+          file: planRelPath,
+          expected: `補充 ${m} 層的 Item（格式：| 說明 | TYPE | Name | P1 | STEP1→STEP2→ |）`,
+        })),
+        nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${story} --target=${relativeTarget}`
       }, {
         projectRoot: target,
         iteration: parseInt(iteration.replace('iter-', '')),
@@ -199,6 +243,8 @@ mkdir -p ${planPath}
       return { verdict: 'BLOCKER', reason: 'vsc_incomplete', missing: missingVSC };
     }
     console.log('✅ VSC 垂直切片完整性通過');
+  } else if (isVscRefactorExempt) {
+    console.log('⏭️  VSC 垂直切片檢查跳過：@VSC-EXEMPT: REFACTOR_ONLY');
   }
   // ========================================
   // VSC 檢查結束
@@ -1161,6 +1207,124 @@ function generatePlanSpecsBlock(planSpec, manifest, story) {
   return lines.join('\n');
 }
 
+function checkApiContractReadiness(target, iteration, story, manifest, planContent = '') {
+  const apiFns = (manifest?.functions || []).filter(fn =>
+    API_SURFACE_TYPES.has(String(fn.type || fn.actionType || '').toUpperCase())
+  );
+
+  if (apiFns.length === 0 && planContent) {
+    const fallbackFns = [];
+    const lines = String(planContent).split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
+      const cells = trimmed.slice(1, -1).split('|').map(c => c.trim());
+      if (cells.length < 4) continue;
+      const maybeType = String(cells[2] || '').toUpperCase();
+      const maybePriority = String(cells[3] || '').toUpperCase();
+      const maybeName = String(cells[1] || '').replace(/`/g, '').trim();
+      if (!API_SURFACE_TYPES.has(maybeType)) continue;
+      if (!/^P[0-3]$/.test(maybePriority)) continue;
+      if (!/^\w+$/.test(maybeName)) continue;
+      fallbackFns.push({
+        name: maybeName,
+        priority: maybePriority,
+        type: maybeType,
+        signature: ''
+      });
+    }
+    if (fallbackFns.length > 0) {
+      apiFns.push(...fallbackFns);
+    }
+  }
+
+  if (apiFns.length === 0) {
+    return { verdict: 'SKIP', summary: 'no API surface in story manifest' };
+  }
+
+  const planPath = path.join(target, `.gems/iterations/${iteration}/plan/implementation_plan_${story}.md`);
+  const sigMissing = apiFns
+    .filter(fn => !fn.signature || !String(fn.signature).trim())
+    .map(fn => fn.name);
+
+  if (sigMissing.length > 0) {
+    return {
+      verdict: 'BLOCKER',
+      summary: `API surface 缺少簽名 (${sigMissing.length})`,
+      targetFile: planPath,
+      details: [
+        'Phase 1 只做輕量 API readiness gate。',
+        'API/SVC/HTTP 類型的 story 必須在 plan manifest 提供 signature，讓後續 SCAN/VERIFY 可收斂。'
+      ].join('\n'),
+      missing: sigMissing.map(name => `${name} 缺少 signature`),
+      tasks: sigMissing.map(name => ({
+        action: 'ADD_API_SIGNATURE',
+        file: planPath,
+        expected: `${name} 補上 signature，例如 functionName(param: Type): ReturnType`
+      }))
+    };
+  }
+
+  const contractPath = path.join(target, `.gems/iterations/${iteration}/contract_${iteration}.ts`);
+  if (!fs.existsSync(contractPath)) {
+    return {
+      verdict: 'BLOCKER',
+      summary: 'API story 缺少 contract file',
+      targetFile: contractPath,
+      details: 'API/SVC/HTTP story 在 Phase 1 必須有 story-scoped contract surface，否則後續整合檢查只能後置補救。',
+      missing: [`${story} 缺少 contract_${iteration}.ts`],
+      tasks: [{
+        action: 'ADD_CONTRACT_FILE',
+        file: contractPath,
+        expected: `至少加入 ${story} 的 // @CONTRACT: Xxx | P0/P1 | API/SVC/HTTP | ${story}`
+      }]
+    };
+  }
+
+  const contractContent = fs.readFileSync(contractPath, 'utf8');
+  const hasFrontendOnlyMarker = /No GAS API changes|frontend-only|frontend only/i.test(contractContent);
+  const storyScopedContracts = [...contractContent.matchAll(
+    /\/\/\s*@CONTRACT:\s*([^|]+)\|\s*P[0-3]\s*\|\s*([^|]+)\|\s*(Story-[\d.]+)/g
+  )]
+    .map(m => ({ name: m[1].trim(), type: m[2].trim().toUpperCase(), storyId: m[3].trim() }))
+    .filter(m => m.storyId === story && API_SURFACE_TYPES.has(m.type));
+
+  if (hasFrontendOnlyMarker && storyScopedContracts.length === 0) {
+    return {
+      verdict: 'BLOCKER',
+      summary: 'API story 被標成 frontend-only / no API changes',
+      targetFile: contractPath,
+      details: '目前 story manifest 含 API/SVC/HTTP 類型，但 contract 宣告為 frontend-only 或 no API changes，規格不一致。',
+      missing: [`${story} contract 宣告與 plan manifest 不一致`],
+      tasks: [{
+        action: 'ALIGN_CONTRACT_SURFACE',
+        file: contractPath,
+        expected: `移除 frontend-only/no API changes，並加入 ${story} 的 API/SVC/HTTP @CONTRACT block`
+      }]
+    };
+  }
+
+  if (storyScopedContracts.length === 0) {
+    return {
+      verdict: 'BLOCKER',
+      summary: 'API story 缺少 story-scoped API contract surface',
+      targetFile: contractPath,
+      details: [
+        'Phase 1 只要求存在性，不要求完整 integration。',
+        `但 ${story} 的 plan manifest 已含 API/SVC/HTTP 類型，contract 至少要有對應的 @CONTRACT block。`
+      ].join('\n'),
+      missing: apiFns.map(fn => `${fn.name} 需要 story-scoped API/SVC/HTTP contract`),
+      tasks: apiFns.map(fn => ({
+        action: 'ADD_API_CONTRACT',
+        file: contractPath,
+        expected: `加入 // @CONTRACT: ${fn.name} | ${fn.priority || 'P1'} | ${String(fn.type || fn.actionType || 'API').toUpperCase()} | ${story}`
+      }))
+    };
+  }
+
+  return { verdict: 'PASS', summary: `${storyScopedContracts.length} API contract surfaces found` };
+}
+
 /**
  * Foundation Story auto-scaffold
  * 自動建立標準目錄骨架，避免 Phase 1 因缺目錄而 BLOCK
@@ -1243,4 +1407,4 @@ if (require.main === module) {
   run({ target, iteration, story, level });
 }
 
-module.exports = { run };
+module.exports = { run, checkApiContractReadiness };

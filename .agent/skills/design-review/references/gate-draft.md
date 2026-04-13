@@ -1,6 +1,6 @@
 # Gate: Draft BLOCKER 規則
 
-適用階段：`draft_iter-N.md` 完成後，CYNEFIN-CHECK 前
+適用階段：`draft_iter-N.md` 完成後，Draft Gate 前
 
 ---
 
@@ -81,7 +81,33 @@ Action: 更新甘特圖標記樣式（P0）— 無 PascalCase 組件名
 
 ---
 
+### B-DRAFT-06：破壞性 / 持久化 UI 入口晚於 guard 或缺少 guard
+**條件**：P0/P1 UI action 涉及 delete / remove / archive / destructive / save / persist 行為，但 guard / validation / confirmation / adapter 在後續 Story 才定義，或 acceptance 沒有明確說入口在 guard 前必須 disabled / delegated。
+
+**判定規則**：
+
+| 情境 | 結果 |
+|------|------|
+| UI action 建立 delete/remove/archive 入口，且直接依賴後續 Story 才有 guard | BLOCKER |
+| UI action 建立 save/persist 入口，但相容 adapter / validation 在後續 Story 才定義 | BLOCKER |
+| UI action 明確寫「入口 disabled until guard exists」或「delegates to GuardName」 | PASS |
+| guard 與入口在同一 Story，或 guard 是前置 Story | PASS |
+
+**正確範例**：
+```
+Story-12.2: ManagementTaskCrudPanel provides delete entry placeholder; delete entry is disabled or delegates to TaskDeleteGuard and never calls deleteTask directly.
+Story-12.3: TaskDeleteGuard owns delete enablement and deleteTask invocation.
+```
+
+**錯誤範例（BLOCKER）**：
+```
+Story-12.2: Task CRUD panel includes delete button and calls deleteTask.
+Story-12.3: TaskDeleteGuard prevents deleting tasks with milestones.
+```
+
+---
+
 ## 通過條件
 
-B-DRAFT-01 ~ B-DRAFT-04 全部未觸發 → @PASS，進入 CYNEFIN-CHECK
+B-DRAFT-01 ~ B-DRAFT-06 BLOCKER 全部未觸發 → @PASS，進入 Draft Gate
 B-DRAFT-05 WARNING 不阻擋 @PASS，但輸出 review 時標記 ⚠️

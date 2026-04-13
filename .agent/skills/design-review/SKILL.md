@@ -74,7 +74,7 @@ SDID 設計產物品質審查。接受 Blueprint / Draft / Contract 任一 artif
 ```
 Blueprint R4 完成 → design-review → @PASS → R5
 Blueprint R5 完成 → design-review → @PASS → Draft 組裝
-Draft 完成        → design-review → @PASS → CYNEFIN-CHECK
+Draft 完成        → design-review → @PASS → Draft Gate
 Contract 完成     → design-review → @PASS → contract-gate.cjs（機械驗證）
 ```
 

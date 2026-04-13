@@ -1,4 +1,4 @@
-﻿# Contract 黃金樣板 — 完整參考文件
+# Contract 黃金樣板 — 完整參考文件
 
 ## 一、單一 block 格式（LOCKED）
 
@@ -98,13 +98,6 @@ export declare function bulkImportTasks(payload: ImportExportPayload): Record<st
 - 路徑從 project root 開始（含 project 資料夾名）
 - 必須以 `.test.ts` 或 `.spec.ts` 結尾
 - contract-gate 會驗證此路徑實際存在（RED 狀態測試已寫入）
-
-### @INTEGRATION-TEST
-
-- P0（任何 type）或 P1+HOOK 必填
-- 路徑慣例：`src/__tests__/integration.test.ts`（整個 iter 共用）
-- 測試不 mock 任何本地依賴，測真實路徑（hook → API client → LocalStorage/DB）
-- Phase 3 gate 讀此路徑，有就跑，失敗就 BLOCKER
 
 ### @RISK
 
@@ -227,6 +220,10 @@ Scanner 讀此行注入 functions.json：
 | CG-001 | @CONTRACT P0 必有 @TEST | BLOCKER |
 | CG-002 | @TEST 路徑必須以 `.test.ts` 或 `.spec.ts` 結尾 | BLOCKER |
 | CG-003 | @TEST 路徑必須實際存在（RED 測試已寫） | BLOCKER |
-| CG-004 | cynefin-report needsTest:true 的 action 必有 @TEST | BLOCKER |
 | CG-005 | Behavior: 至少有一條含 Error/拋出 的錯誤路徑（P0） | WARNING |
 | CG-006 | FLOW step 數 = Behavior: 行數（對應關係完整） | WARNING |
+| CG-007-L1 | Blueprint needsTest 動作必有對應 @CONTRACT + @TEST 路徑（需 `--blueprint`） | BLOCKER |
+| CG-007-L2 | CG-007 @TEST 路徑檔案必須實際存在 | BLOCKER |
+| CG-007-L3 | it() 案例數 ≥ Behavior: 條目數；Behavior 錯誤碼必出現在測試檔 | WARNING |
+
+> 註：CG-007 僅做 Blueprint / Contract / @TEST / Behavior 的靜態對齊驗證，不執行測試本身；真正的 RED 驗證由 TDD Contract Subagent 先行完成。

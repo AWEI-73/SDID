@@ -26,6 +26,7 @@ const CONFIG_PATH = path.join(TASK_PIPE_ROOT, 'config.json');
 
 // 共用業務邏輯來自 orchestrator
 const orc = require(path.join(TASK_PIPE_ROOT, '..', 'sdid-core', 'orchestrator.cjs'));
+const stateMachine = require(path.join(TASK_PIPE_ROOT, '..', 'sdid-core', 'state-machine.cjs'));
 const {
   BUILD_PHASES,
   getNextBuildPhase,
@@ -117,6 +118,32 @@ function initNewProject(type, projectName) {
 // detectProjectState: thin CLI wrapper → orchestrator
 function detectProjectState(projectPath, _detectedLevel) {
     return orcDetectProjectState(projectPath);
+}
+
+function printRouteBlocker(state) {
+    const blocker = state?.routeBlocker;
+    if (!blocker) return false;
+
+    log('\n@BLOCKER: route-enforced skill review is incomplete', 'red');
+    log(`  Code: ${blocker.code}`, 'red');
+    log(`  Reason: ${blocker.message}`, 'yellow');
+    if (blocker.artifactPath) log(`  Artifact: ${blocker.artifactPath}`, 'cyan');
+    if (blocker.reportPath) log(`  Required report: ${blocker.reportPath}`, 'cyan');
+    if (blocker.checkpointPath) log(`  Required checkpoint: ${blocker.checkpointPath}`, 'cyan');
+    if (Array.isArray(blocker.requiredSkillPaths) && blocker.requiredSkillPaths.length > 0) {
+        log('  Required skill reads:', 'yellow');
+        for (const skillPath of blocker.requiredSkillPaths) {
+            log(`    - ${skillPath}`, 'cyan');
+        }
+    }
+    if (Array.isArray(blocker.missing) && blocker.missing.length > 0) {
+        log(`  Missing: ${blocker.missing.join(', ')}`, 'yellow');
+    }
+    if (blocker.suggestedCommand) {
+        log(`  Next command: ${blocker.suggestedCommand}`, 'cyan');
+    }
+    log('  Report must contain @PASS and be newer than the current artifact.', 'yellow');
+    return true;
 }
 
 // generateNextIteration, generateIterationDraft — 來自 orchestrator（頂部 destructure）
@@ -297,14 +324,18 @@ function main() {
     // 偵測或強制指定狀態
     let state;
     if (args.forceStart) {
+        const baseState = detectProjectState(projectPath, args.level);
         const match = args.forceStart.match(/^(POC|PLAN|BUILD|SCAN)-?(\d+)?$/i);
         if (match) {
-            state = {
+            state = stateMachine.applyRouteEnforcement(projectPath, {
+                ...baseState,
                 phase: match[1].toUpperCase(),
                 step: match[2] || '1',
-                iteration: 'iter-1',
+                story: args.story || baseState.story || baseState.plannedStories?.[0] || null,
+                iteration: baseState.iteration || baseState.iter || 'iter-1',
+                iter: baseState.iter || baseState.iteration || 'iter-1',
                 reason: `強制指定: ${args.forceStart}`
-            };
+            });
         } else {
             log(`\n❌ 無效的 --force-start 格式: ${args.forceStart}`, 'red');
             log('   有效格式: POC-1, PLAN-1, BUILD-1, SCAN', 'yellow');
@@ -330,6 +361,10 @@ function main() {
         }
     }
     
+    if (printRouteBlocker(state)) {
+        process.exit(2);
+    }
+
     // 檢查是否完成
     if (state.phase === 'COMPLETE') {
         // 多 Story 檢查：COMPLETE 前先確認所有 Story 的 BUILD 都完成
@@ -338,7 +373,13 @@ function main() {
         if (fs.existsSync(planPath)) {
             const planFiles = fs.readdirSync(planPath).filter(f => f.startsWith('implementation_plan_'));
             const completedStories = fs.existsSync(buildPath)
-                ? fs.readdirSync(buildPath).filter(f => f.startsWith('Fillback_')).map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean)
+                // Canonical: phase4-done_Story-X.Y | Legacy fallback: Fillback_Story-X.Y.md
+                ? (() => {
+                    const files = fs.readdirSync(buildPath);
+                    const phase4Done = files.filter(f => f.startsWith('phase4-done_')).map(f => { const m = f.match(/Story-([\d.]+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean);
+                    if (phase4Done.length > 0) return phase4Done;
+                    return files.filter(f => f.startsWith('Fillback_')).map(f => { const m = f.match(/Story-([\d.]+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean);
+                  })()
                 : [];
             const allPlanStories = planFiles.map(f => { const m = f.match(/Story-(\d+\.\d+)/i); return m ? `Story-${m[1]}` : null; }).filter(Boolean).sort();
             const nextIncompleteStory = allPlanStories.find(s => !completedStories.includes(s));
@@ -527,6 +568,54 @@ function main() {
         }
     }
 
+    if (state.phase === 'PLAN') {
+        const specToPlanPath = path.join(TASK_PIPE_ROOT, 'tools', 'spec-to-plan.cjs');
+        log(`\n📐 執行: spec-to-plan.cjs (contract → plan skeletons)`, 'cyan');
+        log(`   node task-pipe/tools/spec-to-plan.cjs --target=${projectPath} --iteration=${state.iteration}`, 'cyan');
+        if (args.dryRun) {
+            log('\n🧪 [DRY-RUN] 將執行上方指令', 'yellow');
+            return;
+        }
+        const specResult = spawnSync('node', [specToPlanPath, `--target=${projectPath}`, `--iteration=${state.iteration}`], {
+            stdio: 'inherit',
+            cwd: TASK_PIPE_ROOT,
+            encoding: 'utf-8'
+        });
+        process.exit(specResult.status || 0);
+    }
+
+    if (state.phase === 'PLAN_GATE') {
+        const planGatePath = path.join(TASK_PIPE_ROOT, 'tools', 'plan-gate.cjs');
+        log(`\n📋 執行: plan-gate.cjs (implementation_plan gate before BUILD)`, 'cyan');
+        log(`   node task-pipe/tools/plan-gate.cjs --target=${projectPath} --iteration=${state.iteration}`, 'cyan');
+        if (args.dryRun) {
+            log('\n🧪 [DRY-RUN] 將執行上方指令', 'yellow');
+            return;
+        }
+        const gateResult = spawnSync('node', [planGatePath, `--target=${projectPath}`, `--iteration=${state.iteration}`], {
+            stdio: 'inherit',
+            cwd: TASK_PIPE_ROOT,
+            encoding: 'utf-8'
+        });
+        process.exit(gateResult.status || 0);
+    }
+
+    if (state.phase === 'IMPLEMENTATION_READY') {
+        const implReadyPath = path.join(TASK_PIPE_ROOT, 'tools', 'implementation-ready-gate.cjs');
+        log(`\n📋 執行: implementation-ready-gate.cjs (source alignment gate before BUILD)`, 'cyan');
+        log(`   node task-pipe/tools/implementation-ready-gate.cjs --target=${projectPath} --iteration=${state.iteration}`, 'cyan');
+        if (args.dryRun) {
+            log('\n🧪 [DRY-RUN] 將執行上方指令', 'yellow');
+            return;
+        }
+        const implResult = spawnSync('node', [implReadyPath, `--target=${projectPath}`, `--iteration=${state.iteration}`], {
+            stdio: 'inherit',
+            cwd: TASK_PIPE_ROOT,
+            encoding: 'utf-8'
+        });
+        process.exit(implResult.status || 0);
+    }
+
     // 執行 runner
     // BUILD 階段：如果 story 未指定，從 plan 目錄自動偵測第一個未完成的 Story
     let resolvedStory = args.story || state.story || null;
@@ -536,7 +625,13 @@ function main() {
         if (fs.existsSync(planPath)) {
             const planFiles = fs.readdirSync(planPath).filter(f => f.startsWith('implementation_plan_'));
             const completedStories = fs.existsSync(buildPath)
-                ? fs.readdirSync(buildPath).filter(f => f.startsWith('Fillback_')).map(f => { const m = f.match(/Story-(\d+\.\d+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean)
+                // Canonical: phase4-done_Story-X.Y | Legacy fallback: Fillback_Story-X.Y.md
+                ? (() => {
+                    const files = fs.readdirSync(buildPath);
+                    const phase4Done = files.filter(f => f.startsWith('phase4-done_')).map(f => { const m = f.match(/Story-([\d.]+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean);
+                    if (phase4Done.length > 0) return phase4Done;
+                    return files.filter(f => f.startsWith('Fillback_')).map(f => { const m = f.match(/Story-([\d.]+)/); return m ? `Story-${m[1]}` : null; }).filter(Boolean);
+                  })()
                 : [];
             const allPlanStories = planFiles.map(f => { const m = f.match(/Story-(\d+\.\d+)/i); return m ? `Story-${m[1]}` : null; }).filter(Boolean).sort();
             resolvedStory = allPlanStories.find(s => !completedStories.includes(s)) || allPlanStories[0] || null;

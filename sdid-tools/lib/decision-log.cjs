@@ -1,26 +1,55 @@
 'use strict';
-/**
- * Decision Log v1.0
- * 將 gate 執行結果寫入 {target}/.gems/decision-log.jsonl
- *
- * 機械寫入：gate 負責 ts / gate / status / errors
- * 語意補充：AI 負責 why / resolution（見 [LOG-REQUIRED] 提示）
- */
+
 const fs = require('fs');
 const path = require('path');
 
-/**
- * @param {string} target   - 專案根目錄（來自 gate 的 --target 參數）
- * @param {object} opts
- *   gate     {string}   - gate 名稱（e.g. 'contract-gate'）
- *   status   {string}   - 'PASS' | 'BLOCKER'
- *   iter     {number|string|null}
- *   story    {string|null}
- *   errors   {string[]} - blocker error codes
- *   context  {string|null} - 額外上下文（可選）
- * @returns {string|null} log 檔相對路徑（供 console 輸出用）
- */
-function writeDecisionLog(target, { gate, status, iter = null, story = null, errors = [], context = null }) {
+const DETAIL_STATUSES = new Set(['BLOCKER-RESOLVED', 'PASS-DETAIL']);
+const NORMALIZED_STATUSES = new Set([
+  'PASS',
+  'BLOCKER',
+  'ERROR',
+  'PENDING',
+  'READY_TO_PASS',
+  'BLOCKER-RESOLVED',
+  'PASS-DETAIL',
+  'SKIPPED',
+]);
+
+function normalizeIter(iter) {
+  if (iter === undefined || iter === null || iter === '') return null;
+  if (typeof iter === 'number' && Number.isFinite(iter)) return `iter-${iter}`;
+
+  const text = String(iter).trim();
+  if (!text) return null;
+  if (/^iter-\d+$/.test(text)) return text;
+  if (/^\d+$/.test(text)) return `iter-${text}`;
+  return text;
+}
+
+function normalizeStatus(status) {
+  const text = String(status || '').trim().toUpperCase();
+  return NORMALIZED_STATUSES.has(text) ? text : (text || 'ERROR');
+}
+
+function normalizeErrors(errors) {
+  if (!Array.isArray(errors)) return [];
+  return errors
+    .map((error) => String(error || '').trim())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function writeDecisionLog(target, {
+  gate,
+  status,
+  iter = null,
+  story = null,
+  errors = [],
+  context = null,
+  why = null,
+  resolution = null,
+  supersedes = null,
+}) {
   if (!target) return null;
 
   try {
@@ -28,24 +57,31 @@ function writeDecisionLog(target, { gate, status, iter = null, story = null, err
     if (!fs.existsSync(gemsDir)) fs.mkdirSync(gemsDir, { recursive: true });
 
     const logPath = path.join(gemsDir, 'decision-log.jsonl');
+    const normalizedStatus = normalizeStatus(status);
+    const needsNarrative = DETAIL_STATUSES.has(normalizedStatus);
     const entry = {
       ts: new Date().toISOString(),
-      gate,
-      status,
-      iter: iter !== undefined ? iter : null,
-      story: story || null,
-      errors: errors || [],
+      gate: String(gate || '').trim(),
+      status: normalizedStatus,
+      iter: normalizeIter(iter),
+      story: story ? String(story).trim() : null,
+      errors: normalizeErrors(errors),
       context: context || null,
-      why: null,        // AI 補：為什麼這樣改 / 做了什麼決定
-      resolution: null  // AI 補：BLOCKER 時怎麼解的
+      why: needsNarrative && why ? String(why).trim() : null,
+      resolution: needsNarrative && resolution ? String(resolution).trim() : null,
+      supersedes: supersedes ? String(supersedes).trim() : null,
     };
 
     fs.appendFileSync(logPath, JSON.stringify(entry) + '\n', 'utf8');
     return path.relative(process.cwd(), logPath);
-  } catch (e) {
-    // silent — 不讓 log 失敗影響 gate 主流程
+  } catch (error) {
     return null;
   }
 }
 
-module.exports = { writeDecisionLog };
+module.exports = {
+  writeDecisionLog,
+  normalizeIter,
+  normalizeStatus,
+  normalizeErrors,
+};

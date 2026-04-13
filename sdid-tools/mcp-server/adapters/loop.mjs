@@ -44,14 +44,27 @@ export async function handler({ project, iter, story, forceStart }) {
     const baseState = orchestrator.detectProjectState(projectRoot, { iter: iterOpt, story: story || null });
     const buildMatch = forceStart.match(/^BUILD-?(\d+)?$/i);
     if (buildMatch) {
-      state = { ...baseState, phase: 'BUILD', step: parseInt(buildMatch[1] || '1'), story: story || baseState.plannedStories?.[0] };
+      state = stateMachine.applyRouteEnforcement(projectRoot, {
+        ...baseState,
+        phase: 'BUILD',
+        step: parseInt(buildMatch[1] || '1'),
+        story: story || baseState.story || baseState.plannedStories?.[0] || null,
+        iteration: baseState.iteration || baseState.iter || 'iter-1',
+        iter: baseState.iter || baseState.iteration || 'iter-1',
+      });
     } else {
       const phaseMap = { GATE: 'GATE', PLAN: 'PLAN', SHRINK: 'SHRINK', VERIFY: 'VERIFY', POC: 'POC', SCAN: 'SCAN', 'POC-FIX': 'POC-FIX', 'MICRO-FIX': 'MICRO-FIX', 'CONTRACT': 'CONTRACT' };
       const phase = phaseMap[forceStart.toUpperCase()];
       if (!phase) {
         return { content: [{ type: 'text', text: `ERROR: 無效的 forceStart: ${forceStart}\n有效值: GATE, PLAN, BUILD-N, VERIFY, POC, SCAN, POC-FIX, MICRO-FIX, CONTRACT\n💡 SHRINK 已移為可選工具，請直接執行: node task-pipe/tools/shrink-tags.cjs --target=<project>\n⚠️  CYNEFIN-CHECK 已移除，Cynefin 分析現在內嵌於 Blueprint R4 review，不是獨立 phase。` }] };
       }
-      state = { ...baseState, phase };
+      state = stateMachine.applyRouteEnforcement(projectRoot, {
+        ...baseState,
+        phase,
+        story: story || baseState.story || null,
+        iteration: baseState.iteration || baseState.iter || 'iter-1',
+        iter: baseState.iter || baseState.iteration || 'iter-1',
+      });
     }
   } else {
     state = orchestrator.detectProjectState(projectRoot, { iter: iterOpt, story: story || null });
@@ -71,6 +84,28 @@ export async function handler({ project, iter, story, forceStart }) {
   lines.push(`📍 迭代: iter-${iterNum}`);
   lines.push(`📍 路線: ${detectedRoute}`);
   lines.push(`📍 狀態: ${state.phase}${state.step ? ' Phase ' + state.step : ''}${state.story ? ' ' + state.story : ''}`);
+
+  if (state.routeBlocker) {
+    lines.push('');
+    lines.push('@BLOCKER: route-enforced skill review is incomplete');
+    lines.push(`CODE: ${state.routeBlocker.code}`);
+    lines.push(`REASON: ${state.routeBlocker.message}`);
+    if (state.routeBlocker.artifactPath) lines.push(`ARTIFACT: ${state.routeBlocker.artifactPath}`);
+    if (state.routeBlocker.reportPath) lines.push(`REQUIRED_REPORT: ${state.routeBlocker.reportPath}`);
+    if (state.routeBlocker.checkpointPath) lines.push(`REQUIRED_CHECKPOINT: ${state.routeBlocker.checkpointPath}`);
+    lines.push('REQUIRED_SKILL_PATHS:');
+    for (const skillPath of state.routeBlocker.requiredSkillPaths || []) {
+      lines.push(`- ${skillPath}`);
+    }
+    if (Array.isArray(state.routeBlocker.missing) && state.routeBlocker.missing.length > 0) {
+      lines.push(`MISSING: ${state.routeBlocker.missing.join(', ')}`);
+    }
+    if (state.routeBlocker.suggestedCommand) {
+      lines.push(`NEXT_COMMAND: ${state.routeBlocker.suggestedCommand}`);
+    }
+    lines.push('RULE: report must contain @PASS and must be newer than the current artifact.');
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  }
 
   // ========== HUB: 注入現有程式碼 context ==========
   const functionsPath = path.join(projectRoot, '.gems', 'docs', 'functions.json');
@@ -297,6 +332,16 @@ export async function handler({ project, iter, story, forceStart }) {
       // Blueprint 路線：contract 已在 CONTRACT phase 通過 quality gate，直接 spec-to-plan
       lines.push(`🚀 執行: spec-to-plan.cjs (contract/spec → plan 機械轉換)`);
       result = await runCli('../task-pipe/tools/spec-to-plan.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
+      break;
+    }
+    case 'PLAN_GATE': {
+      lines.push(`🚀 執行: plan-gate.cjs (validate implementation_plan before BUILD)`);
+      result = await runCli('../task-pipe/tools/plan-gate.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
+      break;
+    }
+    case 'IMPLEMENTATION_READY': {
+      lines.push(`🚀 執行: implementation-ready-gate.cjs (validate plan/source alignment before BUILD)`);
+      result = await runCli('../task-pipe/tools/implementation-ready-gate.cjs', [`--target=${projectRoot}`, `--iteration=iter-${iterNum}`]);
       break;
     }
     case 'BUILD': {

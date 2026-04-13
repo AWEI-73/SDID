@@ -41,7 +41,7 @@
 | `@NEEDS_CLARIFICATION` | 需要澄清 | POC 模糊消除 |
 | `@GEMS-VERIFIED` | POC 功能驗證標籤 | POC Step 4 |
 | `@GEMS-CONTRACT` | 契約設計標籤 | POC Step 3 |
-| `@PLAN_TRACE` | contract→plan 轉換可追蹤記錄（SOURCE_CONTRACT / TARGET_PLAN / SLICE_COUNT） | spec-to-plan @PASS 時 |
+| `@PLAN_TRACE` | contract→plan 轉換可追蹤記錄；plan 內嵌 HTML comment，validator 讀 plan 檔驗證 | spec-to-plan / plan-generator |
 
 ### 已移除/合併的標記
 
@@ -52,6 +52,9 @@
 | `[MILITARY-SPECS]` | → `@GUARD` | 統一施工紅線 |
 | `@ARCHITECTURE_REVIEW` | 保留在 anchorOutput 內部 | 語義轉換 |
 | `@ITERATION_ADVICE` | 保留在 anchorOutput 內部 | 語義轉換 |
+
+> `@PLAN_TRACE` 會同時出現在 spec-to-plan 的 log 摘要與 generated plan 檔頂部；
+> `plan-validator` 以 plan 檔內容為準，檢查 `SOURCE_CONTRACT`、`TARGET_PLAN`、`SLICE_COUNT`。
 
 ---
 

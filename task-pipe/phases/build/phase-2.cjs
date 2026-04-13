@@ -110,7 +110,14 @@ function runVitest(target, tddPaths, options) {
     emitBlock({
       scope: `BUILD Phase 2 | ${story}`,
       summary: `@TEST 指定的測試檔均不存在，請確認 contract-gate CG-003 已通過`,
+      targetFile: tddPaths[0],
       details: tddPaths.map(p => `  ✗ ${p}`).join('\n'),
+      missing: tddPaths,
+      tasks: tddPaths.map(p => ({
+        action: 'CREATE_TEST_FILE',
+        file: p,
+        expected: '建立測試檔並加入 it()/test() 案例',
+      })),
       nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
     }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
     return { verdict: 'BLOCKER' };
@@ -152,7 +159,15 @@ function runVitest(target, tddPaths, options) {
     emitBlock({
       scope: `BUILD Phase 2 | ${story}`,
       summary: `TDD FAIL — 測試未通過，修實作讓測試 GREEN（不能動測試檔）`,
+      targetFile: existingPaths[0],
       details: failLines.join('\n') || output.split('\n').slice(-20).join('\n'),
+      missing: failLines.slice(0, 5),
+      tasks: existingPaths.map(p => ({
+        action: 'FIX_SOURCE_TO_GREEN_TEST',
+        file: p,
+        expected: '修改對應實作檔（非測試檔本身），讓 vitest 通過',
+        acSpec: '測試是規格，不能修改測試檔',
+      })),
       nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
     }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
     console.log('💡 測試是規格，不能修改測試檔。修改實作讓測試通過後重跑。');
@@ -253,10 +268,19 @@ function run(options) {
 
   const contractFile = findContractFile(target, iteration);
   if (!contractFile) {
+    const contractRelPath = `.gems/iterations/${iteration}/contract_iter-${iterNum}.ts`;
     emitBlock({
       scope: `BUILD Phase 2 | ${story}`,
       summary: `contract_iter-${iterNum}.ts 不存在，無法執行 Phase 2`,
-      nextCmd: `確認 contract-gate 已通過後重跑`
+      targetFile: contractRelPath,
+      details: `contract 不存在，需先執行 CONTRACT 階段產生 contract 後再重跑 Phase 2`,
+      missing: [`contract_iter-${iterNum}.ts`],
+      tasks: [{
+        action: 'RUN_CONTRACT_GATE',
+        file: contractRelPath,
+        expected: 'contract_iter-N.ts 存在且已通過 contract-gate',
+      }],
+      nextCmd: `node task-pipe/runner.cjs --phase=CONTRACT --story=${story} --target=${relativeTarget}`
     }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
     return { verdict: 'BLOCKER' };
   }
@@ -275,8 +299,15 @@ function run(options) {
         emitBlock({
           scope: `BUILD Phase 2 | ${story}`,
           summary: `@TEST 檔案存在但無 it()/test() 呼叫（空殼測試）`,
+          targetFile: emptyFiles[0],
           details: emptyFiles.map(p => `  ✗ ${p} — 缺少 it() 或 test() 呼叫`).join('\n'),
-          nextCmd: `補齊測試案例後重跑 phase-2`
+          missing: emptyFiles.map(p => `${p} 缺少 it() / test() 呼叫`),
+          tasks: emptyFiles.map(p => ({
+            action: 'FILL_TEST_CASE',
+            file: p,
+            expected: '至少一個 it() 或 test() 案例，覆蓋 @CONTRACT 指定的 behavior',
+          })),
+          nextCmd: `node task-pipe/runner.cjs --phase=BUILD --step=2 --story=${story} --target=${relativeTarget}`
         }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
         return { verdict: 'BLOCKER' };
       }
@@ -288,11 +319,18 @@ function run(options) {
     emitBlock({
       scope: `BUILD Phase 2 | ${story}`,
       summary: `${story} 有 P0/TDD 型 @CONTRACT 但缺少 @TEST 路徑`,
+      targetFile: contractRel,
       details: [
         `Contract: ${contractRel}`,
         `P0 或 SVC/ACTION/HTTP/HOOK/LIB 型 contract 必須在 contract 中填 @TEST 路徑`,
         `請先修 contract 補 @TEST，重跑 contract-gate，再重跑 BUILD`,
       ].join('\n'),
+      missing: [`${story} 的 @CONTRACT block 缺少 @TEST 路徑`],
+      tasks: [{
+        action: 'ADD_TEST_TAG',
+        file: contractRel,
+        expected: `在 ${story} 的 @CONTRACT block 補 // @TEST: src/path/to/*.test.ts`,
+      }],
       nextCmd: `node sdid-tools/blueprint/v5/contract-gate.cjs --contract=${contractRel} --target=${relativeTarget} --iter=${iterNum}`
     }, { projectRoot: target, iteration: iterNum, phase: 'build', step: 'phase-2', story });
     return { verdict: 'BLOCKER' };

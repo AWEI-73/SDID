@@ -1,42 +1,74 @@
 ---
 name: sdid
 description: >
-  觸發：(1) 出現「SDID」「.gems/」「iter-N」「blueprint」「draft」「contract」
-  「implementation_plan」「cynefin」「GEMS 標籤」等框架詞彙；
-  (2) 開始或繼續結構化開發流程（新專案、新 iter、BUILD 斷點、Phase 重跑）。
-  不觸發：純程式問答、無 SDID 脈絡的 bug fix、只討論架構不實作。
+  Use when working inside SDID flow or seeing SDID artifacts/terms such as
+  .gems/, iter-N, blueprint, draft, contract, implementation_plan, BUILD
+  phase, SCAN, VERIFY, GEMS tags, or phase reruns. Do not use for unrelated
+  one-off code questions without SDID context.
 ---
 
 # SDID
 
-Blueprint → Draft → Contract → Plan → Build
+Canonical flow:
 
-## STEP 0 — 確認現況
+```text
+Blueprint -> Draft -> Contract -> Plan -> PLAN-GATE -> IMPLEMENTATION_READY -> Build 1-4 -> SCAN -> VERIFY -> BLUEPRINT_FILLBACK_PENDING / Complete
+```
+
+Always load first:
+
+```text
+references/SDID_ARCHITECTURE.md
+```
+
+## Step 0: Locate State
+
+Check in this order:
 
 1. `sdid-monitor/hub.json`
-2. `.gems/iterations/` 找最大 iter-N → 確認當前 N
+2. `.gems/iterations/` for latest `iter-N`
 3. `.gems/iterations/iter-N/.state.json`
-4. `.gems/iterations/iter-N/logs/` 最新一筆
-5. 檢查工件是否存在：`blueprint.md` · `draft_iter-N.md` · `contract_iter-N.ts` · `implementation_plan_*.md`
+4. `.gems/iterations/iter-N/logs/`
+5. Artifact presence:
+   - `.gems/design/blueprint.md` optional
+   - `.gems/design/draft_iter-N.md`
+   - `.gems/iterations/iter-N/contract_iter-N.ts`
+   - `.gems/iterations/iter-N/plan/implementation_plan_Story-X.Y.md`
+   - `.gems/iterations/iter-N/build/phase4-done_Story-X.Y`
+   - `.gems/docs/functions.json`
 
-## ROUTE — 由上到下，第一個符合就停止
+## Routing
 
-| 工件狀態 | Mode | Load |
+| State | Mode | Load |
 |---|---|---|
-| 有 contract + 有 plan | `BUILD-AUTO` | `references/build-execution.md` |
-| 有 contract，沒有 plan | `PLAN-WRITE` → 寫完 plan 進 BUILD-AUTO | `references/plan-writer.md` |
-| 有 draft，沒有 contract | `TDD-CONTRACT` → 寫完 contract 進 PLAN-WRITE | `references/tdd-contract-prompt.md` |
-| 有 blueprint，沒有 draft | `BLUEPRINT-CONTINUE` | `references/blueprint-design.md` |
-| 什麼都沒有 / 需求不清楚 | `DESIGN-BLUEPRINT` | `references/blueprint-design.md` |
-| 重跑某個 phase | `RERUN-PHASE` | task-pipe runner |
+| No draft / unclear request | `DESIGN-BLUEPRINT` | `references/blueprint-design.md` |
+| Blueprint exists, no draft | `BLUEPRINT-CONTINUE` | `references/blueprint-design.md` |
+| Draft exists, no contract | `TDD-CONTRACT` | `references/tdd-contract-prompt.md` |
+| Contract exists, no plan | `PLAN-WRITE` | `references/plan-writer.md` |
+| Plan files exist, no `gate-plan-pass-*` | `PLAN-GATE` | `task-pipe/tools/plan-gate.cjs` + `references/plan-writer.md` |
+| Plan gate passed, no `gate-implementation-ready-pass-*` | `IMPLEMENTATION_READY` | `task-pipe/tools/implementation-ready-gate.cjs` |
+| Contract + plan-gate + implementation-ready pass exist | `BUILD-AUTO` | `references/build-execution.md` |
+| Build Phase 4 all stories done | `SCAN` | `task-pipe/runner.cjs --phase=SCAN` |
+| SCAN pass / functions.json exists | `VERIFY` | `sdid-tools/blueprint/verify.cjs` |
+| Rerun a specific phase | `RERUN-PHASE` | `task-pipe/runner.cjs` |
+| Small local fix outside iter | `MICRO-FIX` | `references/micro-fix.md` |
+| POC exploration inside iter | `POC-FIX` | `references/poc-fix.md` |
 
-找到 Mode 後，載入對應 reference 並依照其指示執行。
+## Hard Rules
 
-背景文件（需要時讀）：`ROADMAP.md` · `ARCHITECTURE.md` · `MEMORY_LAYER.md`
+- Do not use `Task-Pipe` as a design route. `task-pipe/` is the Build/Scan execution engine only.
+- Do not surface `CYNEFIN_CHECK`, `cynefin-log-writer.cjs`, or `cynefin-report.json` as active workflow steps.
+- Do not use `ac-runner.cjs`; Phase 2 owns `@TEST` / vitest / tsc.
+- Contract is spec-only; implementation details belong in `implementation_plan`.
+- Phase 4 completion marker is `phase4-done_Story-X.Y`.
+- `Fillback_Story-X.Y.md` is legacy / VERIFY-after only, not Build completion.
+- VERIFY must consume SCAN canonical `.gems/docs/functions.json`; it must not auto-scan.
 
-## PENDING
-- `references/micro-fix.md`
-- `references/poc-fix.md`
-- flow-review (optional)
+## Retired References
+
+Do not load these for active flow guidance:
+
+- `references/cynefin-check.md`
 - `references/taskpipe-design.md`
-- `references/architecture-rules.md`
+
+They are legacy-only if still present in an older installation.

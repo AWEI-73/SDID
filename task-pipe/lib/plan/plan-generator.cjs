@@ -210,6 +210,7 @@ function generatePlanForStory(story, iterNum, parsed, srcRoot = 'src', v4Info = 
     const depsRisk = depsStr === '無' ? 'LOW' : (depsStr.split(',').length >= 3 ? 'HIGH' : 'MEDIUM');
     const filePath = inferFilePath(item.name, item.type, story.module, srcRoot);
     const riskLine = item.risk ? `\n**Risk**: ${item.risk}` : '';
+    const implSkeleton = inferFunctionSkeleton(item);
 
     // v4 PRESERVE 區塊：@CONTRACT/@TEST/Behavior 原樣嵌入（機械驗證用）
     const preserveRef = isV4 ? `
@@ -231,6 +232,7 @@ ${preserveRef}
  */
 ${item.ac && item.ac !== '無' && item.ac !== 'SKIP' ? `// ${item.ac}` : ''}
 ${stepAnchors}
+${implSkeleton}
 \`\`\`
 
 **檔案**:
@@ -384,6 +386,38 @@ ${contractSection}
 **產出日期**: ${today}
 **生成方式**: plan-generator v2.0 (從 contract @GEMS-STORIES 機械轉換)
 `;
+}
+
+/**
+ * 推導 implementation skeleton（空函式體，供 Phase 1 填入實作）
+ * @param {object} item - { name, type, priority }
+ * @returns {string} skeleton 程式碼（含 export 宣告 + throw new Error）
+ */
+function inferFunctionSkeleton(item) {
+  const type = (item.type || '').toUpperCase();
+  const name = item.name;
+  // camelCase 首字母小寫（用於 function name；Class/Hook 維持原大小寫）
+  const fnName = name.charAt(0).toLowerCase() + name.slice(1);
+
+  if (type === 'DB') {
+    return `// DB layer — schema/migration only, no function skeleton`;
+  }
+  if (type === 'CONST') {
+    return `export const ${name.toUpperCase()}: unknown = undefined; // TODO: fill in type and value`;
+  }
+  if (type === 'UI' || type === 'ROUTE') {
+    return `export function ${name}(/* props */): JSX.Element {\n  throw new Error('not implemented');\n}`;
+  }
+  if (type === 'HOOK') {
+    const hookName = fnName.startsWith('use') ? fnName : `use${name}`;
+    return `export function ${hookName}(/* TODO: fill in params */): unknown {\n  throw new Error('not implemented');\n}`;
+  }
+  // SVC, ACTION, HTTP, LIB → async; default → sync
+  const isAsync = ['SVC', 'ACTION', 'HTTP', 'LIB'].includes(type);
+  if (isAsync) {
+    return `export async function ${fnName}(/* TODO: fill in params */): Promise<unknown> {\n  throw new Error('not implemented');\n}`;
+  }
+  return `export function ${fnName}(/* TODO: fill in params */): unknown {\n  throw new Error('not implemented');\n}`;
 }
 
 /**

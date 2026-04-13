@@ -85,7 +85,7 @@ Draft 完成
 Contract AI 語意擴充完成
   └─ [flow-review]（選用，補 @GEMS-WHY）
   └─ [design-review] @PASS
-       └─ [contract-gate.cjs] @PASS → spec-to-plan → BUILD
+       └─ [contract-gate.cjs] @PASS → spec-to-plan → PLAN-GATE → BUILD
 ```
 
 **原則：語意 gate 先跑，機械 gate 後跑。**

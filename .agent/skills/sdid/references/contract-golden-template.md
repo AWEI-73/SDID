@@ -125,7 +125,7 @@ export declare function bulkImportTasks(payload: ImportExportPayload): Record<st
 - 格式：`{P0|P1} — {操作描述}，{失敗後果}`
 - 必須說明「什麼出錯」和「什麼後果」，不能只寫功能名稱
 
-### @GEMS-SOURCE-TARGETS（P0/P1 COMPONENT 必填）
+### @GEMS-SOURCE-TARGETS（P0/P1 UI STORY-ITEM 必填）
 
 ```
 @GEMS-SOURCE-TARGETS: {PascalCaseName1}, {PascalCaseName2}, ...
@@ -133,10 +133,10 @@ export declare function bulkImportTasks(payload: ImportExportPayload): Record<st
 
 | 規則 | 說明 |
 |------|------|
-| 必填對象 | P0/P1 的 COMPONENT type action |
+| 必填對象 | P0/P1 的 UI STORY-ITEM（包含 COMPONENT，或語意上屬於 UI interaction 的 ACTION） |
 | 格式 | 逗號分隔 PascalCase 名稱 |
-| 數量上限 | 最多 3 個；超過 3 個且跨 2+ concern layer → 應拆分 |
-| 豁免 | SVC / ACTION / HTTP / Foundation / P2/P3 |
+| 數量上限 | 最多 3 個；超過 3 個 → 回 Draft / Blueprint Review 拆分或明確降級 |
+| 豁免 | SVC / 非 UI ACTION / HTTP / Foundation / P2/P3 |
 
 **SOURCE-TARGETS vs FLOW 的分工**：
 - `@GEMS-FLOW`：描述行為語意（動詞驅動，不放 PascalCase）
@@ -211,7 +211,7 @@ Behavior:   getAll() →         create() →            update() →
 // @TEST: {path}.test.ts
 // @RISK: P0 — {說明}
 // @GEMS-FLOW: METHOD1(Clear)→METHOD2(Complicated)
-// @GEMS-SOURCE-TARGETS: {PascalCase1}, {PascalCase2}   ← COMPONENT type 必填
+// @GEMS-SOURCE-TARGETS: {PascalCase1}, {PascalCase2}   ← P0/P1 UI STORY-ITEM 必填
 //
 // Behavior:
 // - method1() → {具體結果}
@@ -222,7 +222,7 @@ export interface I{Name} { ... }
 // @TEST: {path}.test.ts    ← P1 建議填
 // @RISK: P1 — {說明}
 // @GEMS-FLOW: ACTION1(Clear)→ACTION2(Clear)
-// @GEMS-SOURCE-TARGETS: {PascalCase1}                  ← COMPONENT P1 必填
+// @GEMS-SOURCE-TARGETS: {PascalCase1}                  ← UI STORY-ITEM P1 必填
 //
 // Behavior:
 // - action1() → {具體結果}
@@ -267,6 +267,6 @@ Scanner 讀此行注入 functions.json：
 | CG-007-L1 | Blueprint needsTest 動作必有對應 @CONTRACT + @TEST 路徑（需 `--blueprint`） | BLOCKER |
 | CG-007-L2 | CG-007 @TEST 路徑檔案必須實際存在 | BLOCKER |
 | CG-007-L3 | it() 案例數 ≥ Behavior: 條目數；Behavior 錯誤碼必出現在測試檔 | WARNING |
-| CG-008 | P0/P1 COMPONENT 必有 @GEMS-SOURCE-TARGETS；targets > 3 且 concernLayers >= 2 → BLOCKER | BLOCKER |
+| CG-008 | P0/P1 UI STORY-ITEM 必有 @GEMS-SOURCE-TARGETS；targets > 3 → BLOCKER（回 Draft / Blueprint Review 拆分） | BLOCKER |
 
 > 註：CG-007 僅做 Blueprint / Contract / @TEST / Behavior 的靜態對齊驗證，不執行測試本身；真正的 RED 驗證由 TDD Contract Subagent 先行完成。

@@ -1,16 +1,28 @@
 #!/usr/bin/env node
 /**
- * Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
- * 
+ * Blueprint Verify v1.1 - 藍圖↔源碼 雙向語意比對
+ *
  * 比較活藍圖的動作清單 vs SCAN 產出的 functions.json，
  * 輸出語意差異報告 (什麼該有但沒有、什麼有但不在藍圖中)。
- * 
+ *
+ * 依賴關係（hard）：
+ *   - SCAN canonical product: .gems/docs/functions.json
+ *   - VERIFY 不自行掃描源碼，不 require gems-scanner-unified
+ *   - 若 functions.json 不存在或為空 → BLOCKER，next command 指向 SCAN
+ *
+ * 隱式 fallback 說明（均已移除）：
+ *   - function-index.json：scan.cjs 生成後立刻刪除，不是穩定產物
+ *   - functions-snapshot.json：iter diagnostic，非 VERIFY 輸入
+ *   - auto-scan：VERIFY 不生成 cache，由 SCAN 階段負責
+ *
+ * 若需指定非 canonical 路徑（如測試），請顯式 --functions=<path>。
+ *
  * 獨立工具，不 import task-pipe。
- * 
+ *
  * 用法:
+ *   node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> [--iter=1] [--out=<dir>]
  *   node sdid-tools/blueprint/verify.cjs --draft=<path> --functions=<path> [--iter=1] [--out=<dir>]
- *   node sdid-tools/blueprint/verify.cjs --draft=<path> --target=<project> [--iter=1]
- * 
+ *
  * 輸出 (寫入 .gems/docs/ 或 --out):
  *   blueprint-verify.json  — 結構化差異
  *   BLUEPRINT_VERIFY.md    — 人類可讀報告
@@ -436,9 +448,20 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
     args.iter = parser.getCurrentIter(draft);
   }
 
-  // 載入 functions.json
-  let functionsPath = args.functions;
+  // ── 載入 functions.json ──────────────────────────────────────────────────────
+  // VERIFY 依賴 SCAN 的 canonical product：.gems/docs/functions.json
+  // 不做 auto-scan，不做隱式 fallback 到 function-index.json / functions-snapshot.json。
+  // 若需用其他路徑，請顯式傳 --functions=<path>。
+  const logOptionsBase = args.target ? {
+    projectRoot: args.target,
+    iteration: args.iter,
+    phase: 'gate',
+    step: 'verify',
+  } : {};
+
+  let functionsPath = args.functions; // --functions= 顯式指定：接受任何路徑
   if (!functionsPath && args.target) {
+    // Canonical SCAN output only — no fallbacks to index or snapshot
     functionsPath = path.join(args.target, '.gems', 'docs', 'functions.json');
   }
   if (!functionsPath) {
@@ -446,68 +469,15 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
     process.exit(1);
   }
 
-  // Wave 3.2: Also re-scan when functions.json exists but has 0 functions.
-  // Handles stale SCAN output written before GEMS tags were added to source files.
-  if (fs.existsSync(functionsPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(functionsPath, 'utf8'));
-      const fns = raw.functions || raw;
-      if (Array.isArray(fns) && fns.length === 0) {
-        console.log('   ℹ️  functions.json 存在但函式數為 0，強制重新掃描...');
-        fs.unlinkSync(functionsPath);
-      }
-    } catch { /* leave file in place if unreadable */ }
-  }
-
+  // BLOCKER: functions.json 不存在 → 必須先跑 SCAN
   if (!fs.existsSync(functionsPath)) {
-    // Wave 3.1: Auto-scan if functions.json missing (Blueprint Flow doesn't require SCAN)
-    // 使用 gems-scanner-unified（支援 shrink 格式 + AST 降級鏈）
-    const unifiedPath = path.resolve(__dirname, '..', '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
-    if (args.target && fs.existsSync(unifiedPath)) {
-      try {
-        const unified = require(unifiedPath);
-        const srcDir = path.join(args.target, 'src');
-        if (fs.existsSync(srcDir)) {
-          console.log('   ℹ️  functions.json 不存在，自動掃描源碼...');
-          const scanResult = unified.scan(srcDir, args.target);
-          const docsDir = path.dirname(functionsPath);
-          if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true });
-          const output = {
-            functions: (scanResult.functions || []).map(f => ({
-              name: f.name, file: f.file, startLine: f.startLine, endLine: f.endLine,
-              risk: f.priority || f.risk, priority: f.priority || f.risk,
-              flow: f.flow, deps: f.deps, depsRisk: f.depsRisk,
-              test: f.test, testFile: f.testFile, description: f.description,
-              gemsId: f.gemsId || null, storyId: f.storyId || null,
-              acIds: f.acIds || [],
-            })),
-            stats: scanResult.stats,
-            generatedBy: 'blueprint-verify auto-scan',
-            generatedAt: new Date().toISOString(),
-          };
-          fs.writeFileSync(functionsPath, JSON.stringify(output, null, 2), 'utf8');
-          console.log(`   ✅ 自動產出: ${functionsPath} (${output.functions.length} 函式)`);
-        }
-      } catch (e) {
-        console.log(`   ⚠️ 自動掃描失敗: ${e.message}`);
-      }
-    }
-  }
-
-  if (!fs.existsSync(functionsPath)) {
-    const logProjectRoot = args.target || null;
-    const logOptions = logProjectRoot ? {
-      projectRoot: logProjectRoot,
-      iteration: args.iter,
-      phase: 'gate',
-      step: 'verify',
-    } : {};
     const errMsg = `functions.json 不存在: ${functionsPath}`;
+    const iterArg = args.iter ? ` --iteration=iter-${args.iter}` : '';
     const fixCmd = args.target
-      ? `先執行 SCAN 產出 functions.json: node task-pipe/runner.cjs --phase=SCAN --target=${args.target}`
-      : `請先執行 SCAN 階段或用 --functions= 指定 functions.json 路徑`;
-    if (logProjectRoot) {
-      logOutput.anchorError('ARCHITECTURE_REVIEW', errMsg, fixCmd, logOptions);
+      ? `node task-pipe/runner.cjs --phase=SCAN --target=${args.target}${iterArg}`
+      : '請先執行 SCAN 階段或用 --functions= 指定 functions.json 路徑';
+    if (args.target) {
+      logOutput.anchorError('ARCHITECTURE_REVIEW', errMsg, fixCmd, logOptionsBase);
     } else {
       console.error(`@BLOCKER | ${errMsg}`);
       console.error(`修復: ${fixCmd}`);
@@ -515,26 +485,31 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
     process.exit(1);
   }
 
-  const codeFunctions = loadFunctions(functionsPath);
-
-  // Wave 3.3: Refresh stale acIds from source code.
-  // functions.json may have been generated before BUILD added // AC-X.Y comments.
-  // enrichWithACIds is lightweight (reads only affected files) and safe to re-run.
-  if (args.target) {
-    const unifiedPath = path.resolve(__dirname, '..', '..', 'task-pipe', 'lib', 'scan', 'gems-scanner-unified.cjs');
-    if (fs.existsSync(unifiedPath)) {
-      try {
-        const unified = require(unifiedPath);
-        if (unified.enrichWithACIds) {
-          // Clear empty acIds arrays so enrichment can repopulate them
-          for (const fn of codeFunctions) {
-            if (fn.acIds && fn.acIds.length === 0) delete fn.acIds;
-          }
-          unified.enrichWithACIds(codeFunctions, path.join(args.target, 'src'));
-        }
-      } catch { /* enrichment is optional, skip on error */ }
+  // BLOCKER: functions.json 存在但 functions 陣列為空 → SCAN 可能早於 GEMS tag 完成，要求重跑
+  {
+    let raw;
+    try { raw = JSON.parse(fs.readFileSync(functionsPath, 'utf8')); } catch { raw = null; }
+    const fns = raw ? (raw.functions || raw) : null;
+    if (Array.isArray(fns) && fns.length === 0) {
+      const errMsg = `functions.json 存在但 functions 陣列為空（可能 SCAN 在 GEMS tag 補齊前執行）`;
+      const iterArg = args.iter ? ` --iteration=iter-${args.iter}` : '';
+      const fixCmd = args.target
+        ? `node task-pipe/runner.cjs --phase=SCAN --target=${args.target}${iterArg}`
+        : '請重新執行 SCAN 階段';
+      if (args.target) {
+        logOutput.anchorError('ARCHITECTURE_REVIEW', errMsg, fixCmd, logOptionsBase);
+      } else {
+        console.error(`@BLOCKER | ${errMsg}`);
+        console.error(`修復: ${fixCmd}`);
+      }
+      process.exit(1);
     }
   }
+
+  const codeFunctions = loadFunctions(functionsPath);
+
+  // Note: VERIFY does NOT call gems-scanner-unified or any scanner.
+  // acIds enrichment (if needed) must be done by SCAN before VERIFY is run.
 
   // 提取藍圖動作
   let blueprintActions = extractBlueprintActions(draft, args.iter);
@@ -655,11 +630,16 @@ Blueprint Verify v1.0 - 藍圖↔源碼 雙向語意比對
   const acAllTagged = !acCoverage || acCoverage.untagged.length === 0;
 
   if (s.missing === 0 && s.mismatches === 0 && acAllTagged) {
-    const nextCmd = '藍圖與程式碼完全一致，可進入下一個 iter';
+    // BLUEPRINT_FILLBACK_PENDING: Blueprint Fillback/Update 工具尚未實作，
+    // 本輪僅輸出 pending hook。待 fillback engine 建立後，此處替換為實際回填命令。
+    const fillbackNote = args.target
+      ? `BLUEPRINT_FILLBACK_PENDING — 可執行下一 iter 或等待 fillback 工具實作。下一步: node sdid-tools/blueprint/expand.cjs --draft=${args.draft} --target=${args.target} --iter=${(args.iter || 1) + 1}`
+      : 'BLUEPRINT_FILLBACK_PENDING — Blueprint Fillback/Update 尚未實作';
     if (logProjectRoot) {
-      logOutput.anchorPass('gate', 'verify', `Blueprint Verify — 覆蓋率 ${s.coverage}%`, nextCmd, logOptions);
+      logOutput.anchorPass('gate', 'verify', `Blueprint Verify — 覆蓋率 ${s.coverage}%`, fillbackNote, logOptions);
     } else {
       console.log(`\n@PASS | Blueprint Verify — 藍圖與程式碼完全一致`);
+      console.log(`BLUEPRINT_FILLBACK_PENDING — Blueprint Fillback/Update 尚未實作`);
     }
   } else if (s.missing === 0 && s.mismatches === 0 && !acAllTagged) {
     const summary = `Blueprint Verify — 結構一致但 ${acCoverage.untagged.length} 個 AC 未標記 (${acCoverage.untagged.join(', ')})`;

@@ -63,7 +63,7 @@ function main() {
     anchorError('BLOCKER',
       `找不到 contract_iter-${iterNum}.ts`,
       `先完成 CONTRACT 階段（contract 位置: .gems/iterations/${args.iteration}/contract_iter-${iterNum}.ts）`,
-      { projectRoot: args.target, iteration: iterNum, phase: 'poc', step: 'spec-to-plan' }
+      { projectRoot: args.target, iteration: iterNum, phase: 'plan', step: 'generate' }
     );
     process.exit(1);
   }
@@ -79,7 +79,7 @@ function main() {
     anchorError('BLOCKER',
       `plan-generator 失敗: ${result.errors.join('; ')}`,
       `確認 contract 的 @GEMS-STORY / @GEMS-STORY-ITEM 格式正確`,
-      { projectRoot: args.target, iteration: iterNum, phase: 'poc', step: 'spec-to-plan' }
+      { projectRoot: args.target, iteration: iterNum, phase: 'plan', step: 'generate' }
     );
     process.exit(1);
   }
@@ -94,17 +94,50 @@ function main() {
     console.log(`  SLICE_COUNT: ${g.functionCount}`);
   }
 
-  const firstStory = result.generated[0]?.storyId;
-  const nextCmd = `node task-pipe/runner.cjs --phase=BUILD --step=1 --story=${firstStory} --target=${args.target} --iteration=${args.iteration}`;
+  const emptyPlans = result.generated.filter(g => Number(g.functionCount) <= 0);
+  if (emptyPlans.length > 0) {
+    const detailLines = [
+      'spec-to-plan generated empty plan skeletons.',
+      '',
+      'REFERENCE:',
+      '- .agent/skills/sdid/references/plan-writer.md',
+      '- .agent/skills/superpowers/writing-plans/plan-document-reviewer-prompt.md',
+      '',
+      'EMPTY_PLANS:',
+      ...emptyPlans.map(g => `- ${g.storyId} -> ${g.file} | SLICE_COUNT=${g.functionCount}`),
+      '',
+      'NEXT:',
+      `- Rewrite the invalid plan(s) using the canonical writer guidance`,
+      `- Then run: node task-pipe/tools/plan-gate.cjs --target="${args.target}" --iteration=${args.iteration}`,
+    ];
+    console.log('REFERENCE: .agent/skills/sdid/references/plan-writer.md');
+    console.log('REFERENCE: .agent/skills/superpowers/writing-plans/plan-document-reviewer-prompt.md');
+    anchorError('BLOCKER',
+      `spec-to-plan generated ${emptyPlans.length} empty Story plan(s); route to PLAN-WRITE/PLAN-GATE, not BUILD`,
+      `node task-pipe/tools/plan-gate.cjs --target="${args.target}" --iteration=${args.iteration}`,
+      {
+        projectRoot: args.target,
+        iteration: iterNum,
+        phase: 'plan',
+        step: 'generate',
+        details: detailLines.join('\n'),
+      }
+    );
+    process.exit(1);
+  }
 
-  anchorPass('poc', 'spec-to-plan',
-    `spec-to-plan 完成 — ${result.generated.length} 個 Story plan 產出，直接進 BUILD`,
+  const nextCmd = `node task-pipe/tools/plan-gate.cjs --target="${args.target}" --iteration=${args.iteration}`;
+  console.log(`REFERENCE: .agent/skills/sdid/references/plan-writer.md`);
+  console.log(`NEXT_GATE: ${nextCmd}`);
+
+  anchorPass('plan', 'generate',
+    `spec-to-plan completed — ${result.generated.length} Story plan skeleton(s) generated; run PLAN-GATE before BUILD`,
     nextCmd,
     {
       projectRoot: args.target,
       iteration: iterNum,
-      phase: 'poc',
-      step: 'spec-to-plan',
+      phase: 'plan',
+      step: 'generate',
       details: result.generated.map(g => `${g.storyId} → ${g.module} (${g.functionCount} 函式)`).join('\n'),
     }
   );
